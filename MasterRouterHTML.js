@@ -12,7 +12,7 @@
             factory( global, true ) :
             function( w ) {
                 if ( !w.document ) {
-                    throw new Error( "Master Router requires a window with a document" );
+                    throw new Error( "Master Router HTML requires a window with a document" );
                 }
                 return factory( w );
             };
