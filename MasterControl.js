@@ -1,5 +1,5 @@
 // MasterControl - by Alexander Batista - Tailer 2016 - MIT Licensed 
-// version 1.12 -- node compatiable
+// version 1.13 -- node compatiable
 
 
 ( function( global, factory ) {
@@ -41,13 +41,13 @@
 
                         // if couter is 0 then it did not find controller for attribute
                         if (counter === 0) {
-                            throw new TypeError( "Error could not find controller with name " + controllerName);
+                            throw new Error( "Error could not find controller with name " + controllerName);
                         }
 
                         return null
                     }
                     else {
-                        throw new TypeError( "Error could not find any controller");
+                        throw new Error( "Error could not find any controller");
                     }
                 }
     };
@@ -83,7 +83,7 @@
                                         counter++;
                                         $$actionList[b].aFunction(scope);
                                     }else{
-                                        throw new TypeError( "cannot find action " + actionNameLowercase + " and method type: " + methodType);
+                                        throw new Error( "cannot find action " + actionNameLowercase + " and method type: " + methodType);
                                     }
                                 }
                                 else{
@@ -97,13 +97,13 @@
 
                     // if couter is 0 then it did not find controller for attribute
                     if (counter === 0) {
-                        throw new TypeError( "Error could not find action with name " + actionName);
+                        throw new Error( "Error could not find action with name " + actionName);
                     }
 
                     return null
                 }
                 else {
-                    throw new TypeError( "Error could not find any action");
+                    throw new Error( "Error could not find any action");
                 }
             }
     };
@@ -139,13 +139,13 @@
 
                     // if couter is 0 then it did not find controller for attribute
                     if (counter === 0) {
-                        throw new TypeError( "Error could not find module with name " + moduleName);
+                        throw new Error( "Error could not find module with name " + moduleName);
                     }
 
                     return null
                 }
                 else {
-                    throw new TypeError( "Error could not find any module");
+                    throw new Error( "Error could not find any module");
                 }
             }
 
