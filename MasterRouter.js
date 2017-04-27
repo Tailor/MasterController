@@ -1,4 +1,4 @@
-// version 1
+// version 1.1
 // TESTING NEEDED -> NODESERVER
 
 
@@ -99,6 +99,10 @@
                 // TODO: if no routes found then just call regular routes and default to get
                 _callController(controller);
                 _callAction(action, controller);
+                return {
+                    controller :controller,
+                    action : action
+                }
             }
 
         else{
@@ -108,6 +112,10 @@
             routeAction = routeAction === undefined || routeAction === "" ? "index" : routeAction;
             _callController(routeController);
             _callAction(routeAction, routeController);
+            return {
+                controller :routeController,
+                action : routeAction
+            }
         }
     };
 
@@ -240,10 +248,9 @@
                 moduleSelector = actionSelector.querySelectorAll("[fan-module]");
                 actionName = actionSelector.getAttribute("fan-action");
             }
-            _digestRoute(controllerName, actionName);
-
+            var newRoute = _digestRoute(controllerName, actionName);
             for (var m = 0; m < moduleSelector.length; m++) {
-                _callModule(moduleSelector[m].getAttribute("fan-module"), actionName, controllerName, moduleSelector[m]);
+                _callModule(moduleSelector[m].getAttribute("fan-module"), newRoute.action, newRoute.controller, moduleSelector[m]);
              }
 
             return {
