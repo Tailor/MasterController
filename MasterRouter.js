@@ -95,7 +95,6 @@
         
         // find route accociated with controller and action
         var route = _findRoute(controller, action, type);
-        console.log("route", route)
         if(route < 0){
                 // TODO: if no routes found then just call regular routes and default to get
                 _callController(controller);
