@@ -1,5 +1,5 @@
-// MasterControl - by Alexander Batista - Tailer 2016 - MIT Licensed 
-// version 1.13 -- node compatiable
+// MasterControl - by Alexander Batista - Tailer 2017 - MIT Licensed 
+// version 1.14 -- node compatiable
 
 
 ( function( global, factory ) {
@@ -52,51 +52,41 @@
                 }
     };
 
-    var _call_action = function (methodType, actionName, controllerName, scope) {
+    var _call_action = function (actionName, controllerName, scope) {
 
             $$currentActionName =  actionName;
             
             if(actionName && controllerName){
 
-                var counter = 0;
+                var counter = false;
 
-                // loop through all the actions that were loaded 
+                // loop through all the actions that were loaded
                 if ($$actionList.length > 0) {
 
                     for(var b = 0; $$actionList.length > b; b++){
 
                         var actionNameLowercase = $$actionList[b].actionName.toLowerCase();
                         var controllerNameLowercase = $$actionList[b].controllerName.toLowerCase();
-                        var methodTypeLowercase = $$actionList[b].methodType === undefined ? 0 : $$actionList[b].methodType.toLowerCase();
                             
 
                         var actionName = actionName.toLowerCase();
                         var controllerName = controllerName.toLowerCase();
-                        var methodType = methodType.toLowerCase();
 
                         if(actionNameLowercase === actionName){
 
                             if (actionNameLowercase === actionName && controllerNameLowercase == controllerName) {
-   
-                                if(methodTypeLowercase !== 0 ){
-                                    if(methodType === methodTypeLowercase){
-                                        counter++;
-                                        $$actionList[b].aFunction(scope);
-                                    }else{
-                                        throw new Error( "cannot find action " + actionNameLowercase + " and method type: " + methodType);
-                                    }
-                                }
-                                else{
-                                    counter++;
-                                    $$actionList[b].aFunction(scope);
-                                }
+                                $$actionList[b].aFunction(scope);
+                                counter = true;
+                            }
+                            else{
+                                throw new Error( "cannot find action " + actionNameLowercase );
                             }
                         }
 
                     }
 
                     // if couter is 0 then it did not find controller for attribute
-                    if (counter === 0) {
+                    if (counter === false) {
                         throw new Error( "Error could not find action with name " + actionName);
                     }
 
@@ -166,9 +156,9 @@
             },
 
             // call action using name
-            callAction : function(methodType, actionName, controllerName, scope){
+            callAction : function(actionName, controllerName, scope){
 
-                var returnAction = _call_action(methodType, actionName, controllerName, scope);
+                var returnAction = _call_action(actionName, controllerName, scope);
                 return returnAction;
             },
 
@@ -193,14 +183,13 @@
             },
 
             // this gets called by the declairation of the function on the page
-            action : function (methodType, actionName, controllerName,  aFunction) {
+            action : function (actionName, controllerName,  aFunction) {
 
                 // this will push an object into array
                 var objectAction = {
                     controllerName: controllerName,
                     actionName: actionName,
-                    aFunction: aFunction,
-                    methodType: methodType
+                    aFunction: aFunction
                 };
 
                 $$actionList.push(objectAction);
@@ -261,15 +250,15 @@
 
 // declare a Controller
 // EXAMPLE:
-// app.controller('name', function (action, scope) {});
+// app.controller('ControllerName', function (action, scope) {});
 
 // declare a Action -- add type like get or post
 // EXAMPLE:
-// app.action('method Type', 'action name', 'controllerName', function (scope) {});
+// app.action('actionName', 'controllerName', function (scope) {});
 
 // declare a Module
 // EXAMPLE:
-// app.module( 'module name', 'actionName', 'controllerName', function (scope) {});
+// app.module( 'moduleName', 'actionName', 'controllerName', function (scope) {});
 
 // calling any controller at anytime using the name
 // EXAMPLE:
@@ -277,7 +266,7 @@
 
 // calling any action at anytime using the action name and controller name
 // EXAMPLE:
-// app.callAction(post, actionName, controllerName, scope);
+// app.callAction(actionName, controllerName, scope);
 
 // calling any module at anytime using the module name and action name and controller name
 // EXAMPLE:
