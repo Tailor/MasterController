@@ -1,5 +1,5 @@
 // MasterControl - by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.2 - beta -- node compatiable
+// version 1.3 - beta -- node compatiable
 
 
 ( function( global, factory ) {
@@ -99,9 +99,9 @@
             }
     };
 
-    var _call_module = function (moduleName, actionName, controllerName, scope) {
+    var _call_module = function (moduleName, controllerName, scope) {
 
-            if(controllerName && actionName && moduleName){
+            if(controllerName && moduleName){
 
                 var counter = 0;
 
@@ -109,18 +109,15 @@
                 if ($$moduleList.length > 0) {
 
                     for(var m = 0; $$moduleList.length > m; m++){
-
-                        var actionNameLowercase = $$moduleList[m].actionName.toLowerCase();
                         var moduleNameLowercase = $$moduleList[m].moduleName.toLowerCase();
                         var controllerNameLowercase = $$moduleList[m].controllerName.toLowerCase();
 
-                        var actionName = actionName.toLowerCase();
                          var moduleName = moduleName.toLowerCase();
                         var controllerName = controllerName.toLowerCase();
 
                         if(moduleNameLowercase === moduleName){
                             // only call the ones that we find in the DOM
-                            if (actionNameLowercase === actionName && controllerNameLowercase == controllerName) {
+                            if (controllerNameLowercase == controllerName) {
                                 counter++;
                                 $$moduleList[m].aFunction(scope);
                             }
@@ -165,9 +162,9 @@
 
 
             // call action using name
-            callModule : function( moduleName, actionName, controllerName, scope){
+            callModule : function( moduleName,controllerName, scope){
 
-                var returnModule = _call_module(moduleName, actionName, controllerName, scope);
+                var returnModule = _call_module(moduleName,controllerName, scope);
                 return returnModule;
             },
 
@@ -198,11 +195,10 @@
             },
 
             // this gets called by the declairation of the function on the page
-            module : function (moduleName, actionName, controllerName, aFunction) {
+            module : function (moduleName, controllerName, aFunction) {
                 // this will push an object into array
                 var objectModule = {
                     controllerName: controllerName,
-                    actionName: actionName,
                     moduleName: moduleName,
                     aFunction: aFunction
                 };
@@ -410,16 +406,13 @@
             }
 
             var actionSelector = controllerSelector.querySelector("[fan-action]");
-            var actionName = "index";
+            var actionName = actionSelector === null ? "index" : actionSelector.getAttribute("fan-action");
+            // get all modules inside controller
             var moduleSelector =  controllerSelector.querySelectorAll("[fan-module]");
-
-            if(actionSelector !== null){
-                moduleSelector = actionSelector.querySelectorAll("[fan-module]");
-                actionName = actionSelector.getAttribute("fan-action");
-            }
             var newRoute = _digestRoute(controllerName, actionName);
+
             for (var m = 0; m < moduleSelector.length; m++) {
-                _call_module(moduleSelector[m].getAttribute("fan-module"), newRoute.action, newRoute.controller, moduleSelector[m]);
+                _call_module(moduleSelector[m].getAttribute("fan-module"), newRoute.controller, moduleSelector[m]);
              }
 
             return {
@@ -427,7 +420,7 @@
                     if(scope !== null){
                         var moduleScope = scope.querySelector("[fan-module]");
                         var moduleName = moduleScope.getAttribute("fan-module");
-                        _call_module(moduleName, actionName, controllerName, moduleScope);
+                        _call_module(moduleName, controllerName, moduleScope);
                                 
                     }else{
                         throw new Error("Must provide HTML scope to refresh module");
