@@ -6,18 +6,25 @@
 
 ### APP Start:
  var app = MasterController();
+ 
+### Declare application
+ app.MasterRouter.(MasterControlFunction, function(){ // CallBack Function });
 
+### Must Delare a Route
+app.MasterRouter.(MasterControlFunction, function(){ // CallBack Function }).route();
+
+### Must select Framework Type
+ app.MasterRouter.(MasterControlFunction, function(){ // CallBack Function }).route().dom();
+ app.MasterRouter.(MasterControlFunction, function(){ // CallBack Function }).route().uri();
+ app.MasterRouter.(MasterControlFunction, function(){ // CallBack Function }).route().node();
+ 
 ### Declare a Controller
 EXAMPLE:
 app.controller('ControllerName', function (action, scope) {});
 
 ### Declare a Action -- add type like get or post
 EXAMPLE:
-app.action('actionName', 'controllerName', function (scope) {});
-
-### Declare a Module
-EXAMPLE:
-app.module( 'moduleName', 'actionName', 'controllerName', function (scope) {});
+app.action('actionName', 'type', function (scope) {});
 
 ### Calling any controller at anytime using the name
 EXAMPLE:
@@ -25,11 +32,7 @@ app.callController(controllerName, scope);
 
 ### Calling any action at anytime using the action name and controller name
 EXAMPLE:
-app.callAction(actionName, controllerName, scope);
-
-### Calling any module at anytime using the module name and action name and controller name
-EXAMPLE:
-app.callModule( moduleName,  actionName, controllerName, scope);
+app.callAction(actionName, type, scope);
 
 ## ROUTING EXAMPLES
 
@@ -39,9 +42,6 @@ app.callModule( moduleName,  actionName, controllerName, scope);
 *********  Must declare at lease one route for the root url
 *********  You can delare a route without a method type like get
 *********  This version is compatible with Node.js
-
-### Declare application
-MasterRouter.(MasterControlFunction, function(){ // CallBack Function });
 
 ### Declare routes
 MasterRouter.route("root", "/home/index", "get");
@@ -53,27 +53,17 @@ MasterRouter.route("root", "/home/index", "get");
 3. unlimited modules per page
 4. every page must have a controller and an action
 
-### HTML Syntex
-<body fan-controller="drake">
-    <div fan-action="index">
-        <div fan-module="content">
-            The content of the document......
-        </div>
-    </div>
-</body>
-
 ### Declaritive Syntex
-masterControl.MasterRouter().route(controllerName, actionName).url(true);
-masterControl.MasterRouter().route(controllerName, actionName).html(true);
+masterControl.MasterRouter().route(controllerName, actionName).uri(true);
+masterControl.MasterRouter().route(controllerName, actionName).dom(true);
 masterControl.MasterRouter().route(controllerName, actionName).node(true);
 
 ### ROUTING IN HTML
 #### Declare Controller in HTML
     fan-controller="controllerName"
-#### Declare Action in HTML
-    fan-action="actionName"
-#### Declare Module in HTML 
-    fan-module-"moduleName"
+#### HTML Syntex
+<body fan-controller="drake">
+</body>
 
 ### URL ROUTING EXAMPLES
 
