@@ -1,5 +1,5 @@
 // MasterControl - by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.3 - beta -- node compatiable
+// version 1.4 - beta -- node compatiable
 
 
 ( function( global, factory ) {
@@ -15,422 +15,24 @@
 // Pass this if window is not defined yet
 } )( typeof window !== "undefined" ? window : this, function( window, noGlobal ) {
 
-    var $$controllerList = [];
-    var $$actionList = [];
-    var $$moduleList = [];
-    var $$currentControllerName;
-    var $$currentActionName;
-    var $$routeList =[];
-
-    var _call_controller = function (controllerName, scope) {
-            $$currentControllerName = controllerName;
-
-            if(controllerName){
-
-                   var counter = 0;
-
-                    // loop through all the controller that were loaded 
-                    if ($$controllerList.length > 0) {
-                        // call an anonymous function that has object
-                        $$controllerList.forEach(function (callback) {
-                            // only call the ones that we find in the DOM
-                            if (callback.controllerName === controllerName) {
-                                counter++;
-                                callback.aFunction(scope);
-                            }
-                        });
-
-                        // if couter is 0 then it did not find controller for attribute
-                        if (counter === 0) {
-                            throw new Error( "Error could not find controller with name " + controllerName);
-                        }
-
-                        return null
-                    }
-                    else {
-                        throw new Error( "Error could not find any controller");
-                    }
-                }
-    };
-
-    var _call_action = function (actionName, controllerName, scope) {
-
-            $$currentActionName =  actionName;
-            
-            if(actionName && controllerName){
-
-                var counter = false;
-
-                // loop through all the actions that were loaded
-                if ($$actionList.length > 0) {
-
-                    for(var b = 0; $$actionList.length > b; b++){
-
-                        var actionNameLowercase = $$actionList[b].actionName.toLowerCase();
-                        var controllerNameLowercase = $$actionList[b].controllerName.toLowerCase();
-                            
-
-                        var actionName = actionName.toLowerCase();
-                        var controllerName = controllerName.toLowerCase();
-
-                        if(actionNameLowercase === actionName){
-
-                            if (actionNameLowercase === actionName && controllerNameLowercase == controllerName) {
-                                $$actionList[b].aFunction(scope);
-                                counter = true;
-                            }
-                            else{
-                                throw new Error( "cannot find action " + actionNameLowercase );
-                            }
-                        }
-
-                    }
-
-                    // if couter is 0 then it did not find controller for attribute
-                    if (counter === false) {
-                        throw new Error( "Error could not find action with name " + actionName);
-                    }
-
-                    return null
-                }
-                else {
-                    throw new Error( "Error could not find any action");
-                }
-            }
-    };
-
-    var _call_module = function (moduleName, controllerName, scope) {
-
-            if(controllerName && moduleName){
-
-                var counter = 0;
-
-                // loop through all the actions that were loaded 
-                if ($$moduleList.length > 0) {
-
-                    for(var m = 0; $$moduleList.length > m; m++){
-                        var moduleNameLowercase = $$moduleList[m].moduleName.toLowerCase();
-                        var controllerNameLowercase = $$moduleList[m].controllerName.toLowerCase();
-
-                         var moduleName = moduleName.toLowerCase();
-                        var controllerName = controllerName.toLowerCase();
-
-                        if(moduleNameLowercase === moduleName){
-                            // only call the ones that we find in the DOM
-                            if (controllerNameLowercase == controllerName) {
-                                counter++;
-                                $$moduleList[m].aFunction(scope);
-                            }
-                        }
-
-                    }
-
-                    // if couter is 0 then it did not find controller for attribute
-                    if (counter === 0) {
-                        throw new Error( "Error could not find module with name " + moduleName);
-                    }
-
-                    return null
-                }
-                else {
-                    throw new Error( "Error could not find any module");
-                }
-            }
-
-    };
-
-    var MasterController = function() {
-
-        return MasterController.fn;
-    };
-
     // return only the api that we want to use
-    MasterController.fn = MasterController.prototype = {
+    var MasterController = {
 
-            // call controller using name
-            callController : function(controllerName, scope){
-                var returnController = _call_controller(controllerName, scope);
-                return returnController;
-            },
+            extend : function (){
+                var i = arguments.length;
 
-            // call action using name
-            callAction : function(actionName, controllerName, scope){
+                while (i--) {
 
-                var returnAction = _call_action(actionName, controllerName, scope);
-                return returnAction;
-            },
-
-
-            // call action using name
-            callModule : function( moduleName,controllerName, scope){
-
-                var returnModule = _call_module(moduleName,controllerName, scope);
-                return returnModule;
-            },
-
-            // this gets called by the declairation of the function on the page
-            controller : function (controllerName, aFunction) {
-                // this will push an object into array
-                var objectController = {
-                    controllerName: controllerName,
-                    aFunction: aFunction
-                };
-
-                $$controllerList.push(objectController);
-                return this;
-            },
-
-            // this gets called by the declairation of the function on the page
-            action : function (actionName, controllerName,  aFunction) {
-
-                // this will push an object into array
-                var objectAction = {
-                    controllerName: controllerName,
-                    actionName: actionName,
-                    aFunction: aFunction
-                };
-
-                $$actionList.push(objectAction);
-                return this;
-            },
-
-            // this gets called by the declairation of the function on the page
-            module : function (moduleName, controllerName, aFunction) {
-                // this will push an object into array
-                var objectModule = {
-                    controllerName: controllerName,
-                    moduleName: moduleName,
-                    aFunction: aFunction
-                };
-
-                $$moduleList.push(objectModule);
-                return this;
-            }
-
-
-    };
-
-    // *****************************************************************************************************************************************
-    // **********************************************************  Extend MasterController  ****************************************************
-    // *****************************************************************************************************************************************
-
-
-    MasterController.fn.MasterRouter = function(callBack) {
-        if(callBack !== undefined){
-            callBack();
-        }
-
-        return {
-            route : function( path, toPath, type){
-
-                var route = {
-                    type: type,
-                    path: path,
-                    toPath :toPath
-                }
-
-                $$routeList.push(route);
-                return MasterController.fn.MasterRouter.fn
-            }
-        }
-    };
-
-    MasterController.fn.MasterRouter.fn = {};
-
-    var _getControllerNameFromPath = function(pathName){
-        const url = pathName.split("/");
-        var controller = url[1];
-        if (controller === null) {
-            controller = "root";
-        }
-        return controller;
-    };
-
-    var _getActionNameFromPath = function(pathName){
-        const url = pathName.split("/");
-        var action = url[2];
-        if (action === null) {
-            action = "index";
-        }
-        return action;
-    };
-
-    // at this point have the path, controler, and action names
-    var _digestRoute = function(controller, action, type) {
-        
-        // find route accociated with controller and action
-        var route = _findRoute(controller, action, type);
-        if(route < 0){
-                // TODO: if no routes found then just call regular routes and default to get
-                _call_controller(controller);
-                _call_action(action, controller);
-                return {
-                    controller :controller,
-                    action : action
-                }
-            }
-
-        else{
-            // TODO if route is found then use route to call controller
-            var routeController = _getControllerNameFromPath(route.toPath);
-            var routeAction = _getActionNameFromPath(route.toPath);
-            routeAction = routeAction === undefined || routeAction === "" ? "index" : routeAction;
-            _call_controller(routeController);
-            _call_action(routeAction, routeController);
-            return {
-                controller :routeController,
-                action : routeAction
-            }
-        }
-    };
-
-
-    var _findRoute = function(controller, action, type){
-        // url path
-        var path = null;
-        type = type === undefined ? "" : type;
-
-        if(controller === "root"){
-             path = controller;
-        }else{
-             path = controller + "/" + action;
-        }
-
-        for(var item in $$routeList){
-            // remove forward slash "/" from string start and end
-            var routePath = $$routeList[item].path.replace(/^\/|\/$/g, '');
-            if(routePath === path && $$routeList[item].type === type){
-                return $$routeList[item];
-            }else{
-                if(routePath === path && type === ""){
-                    return $$routeList[item];
-                 }
-                 else{
-                    return -1
-                 }
-            }
-        };
-        return -1
-    };
-
-    // will get the url and hash
-    MasterController.fn.MasterRouter.fn.url = function(isHash){
-
-            isHash = isHash === null ? false : isHash;
-
-            if (isHash === true) {
-
-                var onloadHash = window.location.hash;
-                var controller = _getControllerNameFromPath(onloadHash);
-                controller = controller === undefined || controller === "" ? "root" : controller;
-                var action = _getActionNameFromPath(onloadHash);
-                action = action === undefined || action === "" ? "index" : action;
-
-                if (controller != null) {
-                    _digestRoute(controller, action);
-                } else {
-                   throw new Error("Cannot find Controller");
-                }
-
-                // this starts listening to url hash changes
-                window.onhashchange = function() {
-                    var currentHash = window.location.hash;
-                    var controller = _getControllerNameFromPath(currentHash);
-                    controller = controller === undefined || controller === "" ? "root" : controller;
-                    var action = _getActionNameFromPath(currentHash);
-                    action = action === undefined || action === "" ? "index" : action;
-                    _digestRoute(controller, action);
-                };
-
-            } else {
-                var onloadPath = window.location.pathname;
-                var controller = _getControllerNameFromPath(onloadPath);
-                controller = controller === undefined || controller === "" ? "root" : controller;
-                var action = _getActionNameFromPath(onloadPath);
-                action = action === undefined || action === "" ? "index" : action;
-                _digestRoute(controller, action);
-            }
-    };
-
-    MasterController.fn.MasterRouter.fn.nodeserver = function(request, response) {
-            // node stuff
-            var url = require("url");
-            request.requrl = url.parse(request.url, true);
-
-            // test if request is a css file using regular expression
-            if (/.(css)$/.test(request.requrl)) {
-                
-                response.writeHead(200, {
-                  'Content-Type': 'text/css'
-                });
-                
-                // get css file
-                fileserver.readFile(__dirname + request.requrl, 'utf8', function(err, data) {
-                  if (err) throw err;
-                  response.write(data, 'utf8');
-                  response.end();
-                });
-
-            }
-            else{
-                    var controller = _getControllerNameFromPath(request.requrl.pathname);
-                    var action = _getActionNameFromPath(request.requrl.pathname);
-
-                    // call master controller and controller to load page
-                    const controllerUrl = "../app/controllers/" + controller + "_controller";
-                    // always call the master controller first before any controllers
-                    const masterUrl = "../app/controllers/master_controller"; 
-                    // call the javascript pages
-                    require(masterUrl);
-                    require(controllerUrl);
-
-                    _digestRoute(controllerName, actionName, request.method);
-
-                    masterControl.callAction(request.method, router.controller, router.action, options);
-            }
-    };
-
-
-    // build json representation of the view page
-    MasterController.fn.MasterRouter.fn.html = function(){
-
-            // should be only one controller per page
-            var controllerSelector = window.document.querySelector("[fan-controller]");
-            var controllerName = "root";
-            // check that we find a controller declaration inside the app declaration
-            if (controllerSelector === undefined || controllerSelector === null) {
-                controllerSelector = window.document;
-            }
-            else{
-                controllerName = controllerSelector.getAttribute("fan-controller");
-            }
-
-            var actionSelector = controllerSelector.querySelector("[fan-action]");
-            var actionName = actionSelector === null ? "index" : actionSelector.getAttribute("fan-action");
-            // get all modules inside controller
-            var moduleSelector =  controllerSelector.querySelectorAll("[fan-module]");
-            var newRoute = _digestRoute(controllerName, actionName);
-
-            for (var m = 0; m < moduleSelector.length; m++) {
-                _call_module(moduleSelector[m].getAttribute("fan-module"), newRoute.controller, moduleSelector[m]);
-             }
-
-            return {
-                refreshModule:function(actionName, controllerName, scope){
-                    if(scope !== null){
-                        var moduleScope = scope.querySelector("[fan-module]");
-                        var moduleName = moduleScope.getAttribute("fan-module");
-                        _call_module(moduleName, controllerName, moduleScope);
-                                
-                    }else{
-                        throw new Error("Must provide HTML scope to refresh module");
+                    for (var m in arguments[i]) {
+                        MasterController[m] = arguments[i][m];
                     }
                 }
+                return MasterController;
             }
 
     };
 
-
+    // closing function
     if ( typeof define === "function" && define.amd ) {
         define( "mastercontroller", [], function() {
             return MasterController;
@@ -439,21 +41,333 @@
 
     var _MasterController = window.MasterController;
 
-
-    MasterController.noConflict = function( deep ) {
-
-        if ( deep && window.MasterController === MasterController ) {
-            window.MasterController = _MasterController;
-        }
-
-        return MasterController;
-    };
-
     if ( !noGlobal ) {
         window.MasterController = MasterController;
     };
 
+});
 
-    return MasterController;
 
+
+
+( function( global, factory ) {
+
+    "use strict";
+
+    if ( typeof module === "object" && typeof module.exports === "object" ) {
+        module.exports = factory( global );
+    } else {
+        factory( global );
+    }
+
+// Pass this if window is not defined yet
+} )( typeof window !== "undefined" ? window : this, function( window, noGlobal ) {
+
+   MasterController.extend({
+            masterController : function(aFunc){
+                    if(aFunc !== undefined && aFunc !== null && typeof aFunc === "function"){
+                        aFunc();
+                    };
+            },
+            // call controller using name
+            call : function(options, scope){
+
+                var controllerOptions = {
+                    namespace : options.namespace,
+                    name: options.name,
+                    type: options.type
+                };
+
+                var returnController = MasterController.utils._call(controllerOptions, scope);
+                return returnController;
+            },
+
+            // this gets called by the declairation of the function on the page
+            controller : function (options, aFunction) {
+
+                var controllerOptions = {
+                    namespace : options.namespace,
+                    name: options.name,
+                    type: options.type,
+                    func : aFunction
+                };
+
+                MasterController.utils._controllerList.push(controllerOptions);
+                return this;
+            }
+
+        });
+
+});
+
+( function( global, factory ) {
+
+    "use strict";
+
+    if ( typeof module === "object" && typeof module.exports === "object" ) {
+        module.exports = factory( global );
+    } else {
+        factory( global );
+    }
+
+// Pass this if window is not defined yet
+} )( typeof window !== "undefined" ? window : this, function( window, noGlobal ) {
+
+
+    MasterController.extend({
+
+        utils : {
+
+            _controllerList :[],
+                _routeList :[],
+                _controllerModal :{
+                    namespace : "",
+                    name: "",
+                    type: "",
+                    func : ""
+                },
+                _getNameSpaceFromURI : function(pathName){
+                    const uri = pathName.replace(/^\/|\/$/g, '');
+                    const uriArray = uri.split("/");
+
+                    var controller = uriArray[0];
+                    if (controller === undefined) {
+                        controller = "";
+                    }
+                    return controller;
+                },
+                _getControllerFromURI : function(pathName){
+                    const uri = pathName.replace(/^\/|\/$/g, '');
+                    const uriArray = uri.split("/");
+                    var action = uriArray[1];
+                    if (action === undefined) {
+                        action = "";
+                    }
+                    return action;
+                },
+                    // at this point have the path, controler, and action names
+                _digestRoute : function(model, scope) {
+                    
+                    // find route accociated with controller and action
+                    var route = this._findRoute(model);
+
+                    // not found
+                    if(route === null){
+                            // TODO: if no routes found then just call regular routes and default to get
+                            this._call(model, scope);
+                            return 1;
+                        }
+
+                    else{
+                        // digest new route from routes
+                        var routeNameSpace = this._getNameSpaceFromURI(route.toPath);
+                        var routeController = this._getControllerFromURI(route.toPath);
+
+                        this._call({
+                            name: routeController,
+                            namespace: routeNameSpace,
+                            type: model.type
+                        }, scope);
+
+                        return {
+                            controller :model
+                        }
+                    }
+                },
+                        // find the route associated with controller, action and type
+                _findRoute : function(model){
+                    // namepsace and controller come from the page URL;
+                    var path = name === "" ? model.namespace : model.namespace + "/" + model.name;
+                    
+                    // loop through routes
+                    for(var item in this._routeList){
+                        // remove forward slash "/" from string start and end
+                        var routePath = this._routeList[item].path.replace(/^\/|\/$/g, '');
+
+                        if(routePath === path && this._routeList[item].type === model.type){
+                            return this._routeList[item];
+                        }else{
+                            return null;
+                        }
+                    };
+                    return null;
+                },
+                _call : function (model, scope) {
+
+                    if(model.namespace){
+
+                           var counter = 0;
+
+                            // loop through all the controller that were loaded 
+                            if (this._controllerList.length > 0) {
+                                // call an anonymous function that has object
+                                this._controllerList.forEach(function (callback) {
+                                    // only call the ones that we find in the DOM
+                                    if (model.name === callback.name && model.namespace === callback.namespace && model.type === callback.type) {
+                                        counter++;
+                                        if(callback.func !== undefined ){
+                                            callback.func(scope);
+                                        }
+                                    }
+                                });
+                            }
+                    }
+                }
+        }
+    });   
+
+});
+
+
+
+( function( global, factory ) {
+
+    "use strict";
+
+    if ( typeof module === "object" && typeof module.exports === "object" ) {
+        module.exports = factory( global );
+    } else {
+        factory( global );
+    }
+
+// Pass this if window is not defined yet
+} )( typeof window !== "undefined" ? window : this, function( window, noGlobal ) {
+
+     MasterController.extend({
+        route : function(path, toPath, type){
+
+                var route = {
+                    type: type,
+                    path: path,
+                    toPath :toPath
+                }
+
+                MasterController.utils._routeList.push(route);
+                return MasterController.fn;
+        }
+    });
+
+    // will get the url and hash
+    MasterController.extend({
+
+        spa : function(isHash){
+            console.log("aaps")
+            
+            var controllerModal = Object.create(MasterController.utils._controllerModal);
+            isHash = isHash === null ? false : isHash;
+
+            if (isHash === true) {
+
+                var onloadHash = window.location.hash;
+                var controller = MasterController.utils._getNameSpaceFromURI(onloadHash);
+                controller = controller === undefined || controller === "" ? "root" : controller;
+                var action = MasterController.utils._getControllerFromURI(onloadHash);
+                action = action === undefined || action === "" ? "index" : action;
+
+                if (controller != null) {
+                    MasterController.utils._digestRoute(controller, action);
+                } else {
+                   throw new Error("Cannot find Controller");
+                }
+
+                // this starts listening to url hash changes
+                window.onhashchange = function() {
+                    var currentHash = window.location.hash;
+                    var controller = MasterController.utils._getNameSpaceFromURI(currentHash);
+                    controller = controller === undefined || controller === "" ? "root" : controller;
+                    var action = MasterController.utils._getControllerFromURI(currentHash);
+                    action = action === undefined || action === "" ? "index" : action;
+                    MasterController.utils._digestRoute(controller, action);
+                };
+
+            } else {
+                // get url path
+                var onloadPath = window.location.pathname;
+                controllerModal.namespace = MasterController.utils._getNameSpaceFromURI(onloadPath);
+                controllerModal.name = MasterController.utils._getControllerFromURI(onloadPath);
+                controllerModal.type= "get";
+                MasterController.utils._digestRoute(controllerModal, this);
+            }
+        }
+    });
+
+    MasterController.extend({
+
+        node : function(request, response) {
+                // node stuff
+                var url = require("url");
+                request.requrl = url.parse(request.url, true);
+
+                // test if request is a css file using regular expression
+                if (/.(css)$/.test(request.requrl)) {
+                    
+                    response.writeHead(200, {
+                      'Content-Type': 'text/css'
+                    });
+                    
+                    // get css file
+                    fileserver.readFile(__dirname + request.requrl, 'utf8', function(err, data) {
+                      if (err) throw err;
+                      response.write(data, 'utf8');
+                      response.end();
+                    });
+
+                }
+                else{
+                        var controller = MasterController.utils._getNameSpaceFromURI(request.requrl.pathname);
+                        var action = MasterController.utils._getControllerFromURI(request.requrl.pathname);
+
+                        // call master controller and controller to load page
+                        const controllerUrl = "../app/controllers/" + controller + "_controller";
+                        // always call the master controller first before any controllers
+                        const masterUrl = "../app/controllers/master_controller"; 
+                        // call the javascript pages
+                        require(masterUrl);
+                        require(controllerUrl);
+
+                        MasterController.utils._digestRoute(controllerName, actionName, request.method);
+                }
+        }
+    });
+
+    // build json representation of the view page
+     MasterController.extend({
+            dom : function(){
+                // should be only one controller per page
+                var controllerSelector = window.document.querySelector("[fan-controller]");
+                // check that we find a controller declaration inside the app declaration
+                if (controllerSelector !== undefined && controllerSelector !== null) {
+                        // set object literal with data.
+                        var controllerModal = Object.create(MasterController.utils._controllerModal);
+                        controllerModal.namespace = controllerSelector.getAttribute("fan-namespace");
+                        controllerModal.name = controllerSelector.getAttribute("fan-controller");
+                        controllerModal.type = controllerSelector.getAttribute("fan-type");
+                        MasterController.utils._digestRoute(controllerModal, controllerSelector);
+
+                        return {
+                            refresh:function(scope){
+                                if(scope !== null && scope !== undefined){
+                                    var refreshScope = scope.querySelector("[fan-controller]");
+                                    if (refreshScope!== undefined && refreshScope !== null) {
+                                        var refreshControllerName = refreshScope.getAttribute("fan-controller");
+                                        var refreshNamespace = refreshScope.getAttribute("fan-namespace");
+                                        var $refreshType =refreshScope.getAttribute("fan-type");
+                                        $refreshType = $refreshType === null ? "get": $refreshType;
+
+                                        MasterController.utils._digestRoute({
+                                            name: refreshControllerName,
+                                            type:$refreshType,
+                                            namespace: refreshNamespace,
+                                            scope :scope
+                                        });
+                                    }
+                                            
+                                }else{
+                                    throw new Error("Must provide a scope to refresh ");
+                                }
+                            }
+                        }
+                }
+            }
+    });
 });
