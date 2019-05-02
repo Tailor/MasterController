@@ -1,0 +1,55 @@
+{
+  "_from": "mastercontroller@1.0.26",
+  "_id": "mastercontroller@1.0.26",
+  "_inBundle": false,
+  "_integrity": "sha512-FCdQAfc71LAJDap7ffh1WipfXJZtnyYDscxctU4QwTQe1DxE4DX3YBt3g8gLCRNghgz7SuTsTrkAOtk66nWQuQ==",
+  "_location": "/mastercontroller",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "version",
+    "registry": true,
+    "raw": "mastercontroller@1.0.26",
+    "name": "mastercontroller",
+    "escapedName": "mastercontroller",
+    "rawSpec": "1.0.26",
+    "saveSpec": null,
+    "fetchSpec": "1.0.26"
+  },
+  "_requiredBy": [
+    "#USER",
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.25.tgz",
+  "_shasum": "16a3d441a5d1e965cfa27065e5ae2453401037e6",
+  "_spec": "mastercontroller@1.0.26",
+  "_where": "C:\\Users\\rbatista\\Desktop\\kollege-masters",
+  "author": {
+    "name": "Alexander Batista",
+    "email": "spidergt1@aol.com"
+  },
+  "bugs": {
+    "url": "https://github.com/Tailor/MasterController/issues"
+  },
+  "bundleDependencies": [],
+  "dependencies": {
+    "busboy": "^0.2.14",
+    "cookie": "^0.3.1",
+    "ejs": "^2.6.1",
+    "log4js": "^3.0.6",
+    "winston": "^3.1.0"
+  },
+  "deprecated": false,
+  "description": "A Master framework to manage routing, sessions, sockets, controllers, JWT, views, errors",
+  "homepage": "https://github.com/Tailor/MasterController#readme",
+  "license": "Apache-2.0",
+  "main": "MasterControl.js",
+  "name": "mastercontroller",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tailor/MasterController.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "version": "1.0.26"
+}
