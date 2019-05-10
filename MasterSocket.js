@@ -14,7 +14,7 @@ class MasterSocket{
     }
 
     async load(data, socket, io){
-        var controller = jsUcfirst(socket.handshake.query.controller);
+        var controller = jsUcfirst(socket.handshake.query.socket);
         if(controller){
             try{
                 var moduleName = this._baseurl + "/app/sockets/" + controller + "Socket";
