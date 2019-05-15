@@ -31,6 +31,7 @@ class Tools{
     };
 
     static combineObjects(obj, src) {
+        obj = Object.prototype.toString.call(obj) === "[object Object]" ?  obj : {};
         Object.keys(src).forEach(function(key) { obj[key] = src[key]; });
         return obj;
     };
