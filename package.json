@@ -1,6 +1,6 @@
 {
-  "_from": "mastercontroller@1.0.27",
-  "_id": "mastercontroller@1.0.27",
+  "_from": "mastercontroller@1.0.28",
+  "_id": "mastercontroller@1.0.28",
   "_inBundle": false,
   "_integrity": "sha512-FCdQAfc71LAJDap7ffh1WipfXJZtnyYDscxctU4QwTQe1DxE4DX3YBt3g8gLCRNghgz7SuTsTrkAOtk66nWQuQ==",
   "_location": "/mastercontroller",
@@ -8,20 +8,20 @@
   "_requested": {
     "type": "version",
     "registry": true,
-    "raw": "mastercontroller@1.0.27",
+    "raw": "mastercontroller@1.0.28",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "1.0.26",
+    "rawSpec": "1.0.28",
     "saveSpec": null,
-    "fetchSpec": "1.0.26"
+    "fetchSpec": "1.0.28"
   },
   "_requiredBy": [
     "#USER",
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.25.tgz",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.28.tgz",
   "_shasum": "16a3d441a5d1e965cfa27065e5ae2453401037e6",
-  "_spec": "mastercontroller@1.0.27",
+  "_spec": "mastercontroller@1.0.28",
   "_where": "C:\\Users\\rbatista\\Desktop\\kollege-masters",
   "author": {
     "name": "Alexander Batista",
@@ -32,11 +32,11 @@
   },
   "bundleDependencies": [],
   "dependencies": {
-    "busboy": "^0.2.14",
+    "busboy": "^0.3.1",
     "cookie": "^0.3.1",
     "ejs": "^2.6.1",
-    "log4js": "^3.0.6",
-    "winston": "^3.1.0"
+    "log4js": "^4.2.0",
+    "winston": "^3.2.1"
   },
   "deprecated": false,
   "description": "A Master framework to manage routing, sessions, sockets, controllers, JWT, views, errors",
@@ -51,5 +51,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.27"
+  "version": "1.0.28"
 }

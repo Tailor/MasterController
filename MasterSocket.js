@@ -1,5 +1,4 @@
 // MasterSocket- by Alexander Batista - Tailor 2018 - MIT Licensed 
-// version 1.0.13 - beta -- node compatiable
 
 var master = require('./MasterControl');
 
