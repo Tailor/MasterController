@@ -20,6 +20,10 @@ var mergingObjectLiteral = function(){
      return string.charAt(0).toUpperCase() + string.slice(1);
  };
 
+ var firstLetterlowercase = function(string){
+    return string.charAt(0).toLowerCase() + string.slice(1);
+};
+
  var appendResponseToController = function(requestObj, controller){
 
     var controller = controller === undefined ? master.error.log("controller no instantiated", "warn") : controller;
@@ -161,7 +165,7 @@ class MasterRouter {
 
     _call(requestObject){
 
-         var Control = require(requestObject.baseUrl + "/app/controllers/" + firstLetterUppercase(requestObject.namespace) + "Controller");
+         var Control = require(requestObject.baseUrl + "/app/controllers/" + firstLetterlowercase(requestObject.namespace) + "Controller");
          master.appendControllerMethodsToClass(Control);
          var control = new Control();
          var response = appendResponseToController(requestObject, control);
@@ -200,99 +204,55 @@ class MasterRouter {
 
     resources(routeName){ // function to add to list of routes using resources bulk
 
-            var routeList = [];
-            routeList.push({
+            var indexRoute = routeName + "/index";
+            _routeList.push({
                 type: "get",
                 path: routeName,
-                toPath : routeName + "/index".split("/")
+                toPath : indexRoute.split("/")
             });
 
-            routeList.push({
+            var newRoute = routeName + "/new";
+            _routeList.push({
                 type: "get",
                 path: routeName + "/new",
-                toPath : routeName + "/new".split("/")
+                toPath : newRoute.split("/")
             });
 
-            routeList.push({
+            var createRoute = routeName + "/create";
+            _routeList.push({
                 type: "post",
                 path: routeName,
-                toPath : routeName + "/create".split("/")
+                toPath : createRoute.split("/")
             });
 
-            routeList.push({
+            var showRoute = routeName + "/show";
+            _routeList.push({
                 // pages/3
                 type: "get",
                 path: routeName + "/:id",
-                toPath : routeName + "/show".split("/")
+                toPath : showRoute.split("/")
             });
 
-            routeList.push({
+            var editRoute = routeName + "/edit";
+            _routeList.push({
                 type: "get",
                 path: routeName + "/:id/" + "edit",
-                toPath : routeName + "/edit".split("/")
+                toPath : editRoute.split("/")
             });
 
-            routeList.push({
+            var updateRoute = routeName + "/update";
+            _routeList.push({
                 type: "put",
                 path: routeName + "/:id",
-                toPath :routeName + "/update".split("/")
+                toPath : updateRoute.split("/")
             });
 
-            routeList.push({
+            var destroyRoute = routeName + "/destroy";
+            _routeList.push({
                 type: "delete",
                 path: routeName + "/:id",
-                toPath : routeName + "/destroy".split("/")
-            });
-
-            routeList.forEach(function(obj){
-                _routeList.push(obj);
-            });    
-    }
-
-    resource(routeName){ // function to add to list of routes using resources bulk
-
-        var routeList = [];
-
-        routeList.push({
-            type: "get",
-            path:  routeName + "/new",
-            toPath : routeName + "/new".split("/")
-        });
-
-        routeList.push({
-            type: "post",
-            path: routeName,
-            toPath : routeName + "/create".split("/")
-        });
-
-        routeList.push({
-            // pages/3
-            type: "get",
-            path: routeName,
-            toPath :routeName + "/show".split("/")
-        });
-
-        routeList.push({
-            type: "get",
-            path: routeName + "/edit",
-            toPath : routeName + "/edit".split("/")
-        });
-
-        routeList.push({
-            type: "put",
-            path:  routeName,
-            toPath :routeName + "/update".split("/")
-        });
-
-        routeList.push({
-            type: "delete",
-            path: routeName,
-            toPath : routeName + "/destroy".split("/")
-        });
-
-        routeList.forEach(function(obj){
-            _routeList.push(obj);
-        });    
+                toPath : destroyRoute.split("/")
+            });   
     }
 
     load(rr){ // load the the router

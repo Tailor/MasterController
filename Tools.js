@@ -37,7 +37,7 @@ class Tools{
     };
 
     static convertArrayToObject(obj, keyPath, value) {
-        lastKeyIndex = keyPath.length-1;
+       var lastKeyIndex = keyPath.length-1;
         for (var i = 0; i < lastKeyIndex; ++ i) {
           key = keyPath[i];
           if (!(key in obj))
