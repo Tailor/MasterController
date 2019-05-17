@@ -76,7 +76,7 @@ class MasterAction{
 	}
 	
 	// this will allow static pages without master view
-	returnViewWithoutMaster(data, location){
+	returnViewWithoutMaster( location, data){
 		this.params = toosl.combineObjects(data, this.params);
 		var func = master.view.get();
         this.params = tools.combineObjects(this.params, func);
@@ -98,11 +98,11 @@ class MasterAction{
 		}
 	}
 
-	returnView(data, location){
+	returnView( location, data){
         this.params = tools.combineObjects(data, this.params);
         var func = master.view.get();
         this.params = tools.combineObjects(this.params, func);
-		var viewUrl = (location === undefined) ? this.baseUrl + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.baseUrl + location;
+		var viewUrl = (location === undefined) ? this.baseUrl + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.baseUrl + "/app/" + location;
 
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
 		var childView = ejs.render(viewFile, this.params);
