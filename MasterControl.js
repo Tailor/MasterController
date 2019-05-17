@@ -1,14 +1,11 @@
 
+// MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
 var url = require('url');
 var fileserver = require('fs');
 var tools = require('./Tools');
-
-// MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed 
-// version 1.0.14 - beta -- node compatiable
+ 
 class MasterControl {
-    constructor() {
-        this.controllerList = {};
-    }
+    controllerList = {}
 
     // this extends master framework
     extend(){

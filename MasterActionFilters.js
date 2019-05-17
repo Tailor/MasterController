@@ -5,10 +5,7 @@ var emit = "";
 
 class MasterActionFilters {
     constructor() {
-        _beforeActionList = [];
-        _afterActionList = [];
         this.namespace = this.constructor.name;
-        //master.appendControllerListToObject(this);
     }
 
     // add function to list

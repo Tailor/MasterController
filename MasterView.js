@@ -3,12 +3,13 @@
 
 var master = require('./MasterControl');
 
-var viewParams = {};
-
 class MasterView{
+	
+	viewParams = {};
+
 	extend(element, extention){
 		if(extention !== undefined){
-			viewParams[extention] = {};
+			this.viewParams[extention] = {};
 		}
 		if(element.prototype === undefined) {
             throw "cannot extend MasterView using an instantiated class";
@@ -21,10 +22,10 @@ class MasterView{
 				for(var i in propertyNames){
 					if (propertyNames.hasOwnProperty(i)) {
 						if(extention === undefined){
-							viewParams[propertyNames[i]] = elementInstance[propertyNames[i]];
+							this.viewParams[propertyNames[i]] = elementInstance[propertyNames[i]];
 						}
 						else{
-							viewParams[extention][propertyNames[i]] = elementInstance[propertyNames[i]];
+							this.viewParams[extention][propertyNames[i]] = elementInstance[propertyNames[i]];
 						}
 					}
 				};
@@ -33,10 +34,10 @@ class MasterView{
 				for(var i in propertyNames){
 					if (propertyNames.hasOwnProperty(i)) {
 						if(extention === undefined){
-							viewParams[propertyNames[i]] = propertyNames[i];
+							this.viewParams[propertyNames[i]] = propertyNames[i];
 						}
 						else{
-							viewParams[extention][propertyNames[i]] = propertyNames[i];
+							this.viewParams[extention][propertyNames[i]] = propertyNames[i];
 						}
 					}
 				};
@@ -46,7 +47,7 @@ class MasterView{
 	}
 
 	get(){
-		return viewParams;
+		return this.viewParams;
 	}
 }
 

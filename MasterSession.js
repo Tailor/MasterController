@@ -5,7 +5,6 @@ var master = require('./MasterControl');
 var crypto = require('crypto');
 var cookie = require('cookie');
 
-var sessions = {};
 var encrypt = function(payload, secret, algorithm ){
     const hash = crypto.createHash("sha1");
     hash.update(secret);
@@ -41,6 +40,8 @@ var generateRandomKey = function(hash) {
 
 class MasterSession{
 
+    sessions = {};
+    
     init(options){
 
         if(options.secret === undefined){
@@ -105,12 +106,12 @@ class MasterSession{
         var sessionID = sessions[name];
         this.options.expires = new Date(0);
         response.setHeader('Set-Cookie', cookie.serialize(sessionID, "", this.options));
-        delete sessions[name];
+        delete this.sessions[name];
         this.options.expires = undefined;
     }
 
     reset(){
-        sessions = {};
+        this.sessions = {};
     }
 
     set(name, payload, encrypted, opt, response){
@@ -119,7 +120,7 @@ class MasterSession{
         var encrypted = encrypted === undefined ? false : true;
 
         var sessionID = generateRandomKey('sha256');
-        sessions[name] = sessionID;
+        this.sessions[name] = sessionID;
         if(encrypted === true){
             response.setHeader('Set-Cookie', cookie.serialize(sessionID, encrypt(payload, options.secret), options));
         }
@@ -130,7 +131,7 @@ class MasterSession{
 
     get(name, encrypted, request){
         var encrypted = encrypted === undefined ? false : true;
-        var sessionID = sessions[name];
+        var sessionID = this.sessions[name];
         if(sessionID !== undefined){
             var cooks = cookie.parse(request.headers.cookie || '');
             if(cooks !== undefined){

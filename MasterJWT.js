@@ -6,8 +6,9 @@ var crypto = require('crypto');
 var encryptionTools = require("./EncryptionTools");
 var tools = require("./Tools");
 
-class MasterJWT{
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
+class MasterJWT{
+    
         init(options){
             this.alg = typeof options.algorithm === "undefined" ? "sha256": options.algorithm;
 

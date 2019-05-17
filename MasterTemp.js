@@ -1,7 +1,9 @@
 var master = require('./MasterControl');
 
-var temp = {};
 class MasterTemp{
+
+    temp = {};
+
     add(name, data){
 
         if(name !== "add" && name !== "clear"){
@@ -14,9 +16,9 @@ class MasterTemp{
 
     clearAll(){
         for (var key in this) {
-            if (temp.hasOwnProperty(key)) {
-                if(temp[key] !== "add" && temp[key] !== "clear"){
-                    delete temp[key];
+            if (this.temp.hasOwnProperty(key)) {
+                if(this.temp[key] !== "add" && this.temp[key] !== "clear"){
+                    delete this.temp[key];
                 }
             }
         };

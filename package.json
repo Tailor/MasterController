@@ -1,6 +1,6 @@
 {
-  "_from": "mastercontroller@1.0.31",
-  "_id": "mastercontroller@1.0.31",
+  "_from": "mastercontroller@1.0.32",
+  "_id": "mastercontroller@1.0.32",
   "_inBundle": false,
   "_integrity": "sha512-FCdQAfc71LAJDap7ffh1WipfXJZtnyYDscxctU4QwTQe1DxE4DX3YBt3g8gLCRNghgz7SuTsTrkAOtk66nWQuQ==",
   "_location": "/mastercontroller",
@@ -8,20 +8,20 @@
   "_requested": {
     "type": "version",
     "registry": true,
-    "raw": "mastercontroller@1.0.31",
+    "raw": "mastercontroller@1.0.32",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "1.0.31",
+    "rawSpec": "1.0.32",
     "saveSpec": null,
-    "fetchSpec": "1.0.31"
+    "fetchSpec": "1.0.32"
   },
   "_requiredBy": [
     "#USER",
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.31.tgz",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.32.tgz",
   "_shasum": "16a3d441a5d1e965cfa27065e5ae2453401037e6",
-  "_spec": "mastercontroller@1.0.31",
+  "_spec": "mastercontroller@1.0.32",
   "_where": "C:\\Users\\rbatista\\Desktop\\kollege-masters",
   "author": {
     "name": "Alexander Batista",
@@ -51,5 +51,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.31"
+  "version": "1.0.32"
 }

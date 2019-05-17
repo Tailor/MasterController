@@ -4,12 +4,11 @@
 var master = require('./MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
-var logger = "";
-var statuses = [];
-
 
 class MasterError{
-
+    logger = "";
+    statuses = [];
+    
     init(statusCodes){
 
         var that = this;
@@ -17,7 +16,7 @@ class MasterError{
         this.env = master.env.type;
         this._baseUrl = master.root;
 
-        logger = winston.createLogger({
+        this.logger = winston.createLogger({
             format: winston.format.json(),
             transports: [
                   new winston.transports.Console(),
@@ -38,13 +37,13 @@ class MasterError{
         if(msg === undefined){
             throw "error has been thrown with no message.";
         };
-        if(logger === ""){
+        if(this.logger === ""){
             throw "error init function has not been called.";
         };
         
         var message = msg.message === undefined ? msg : msg.message;
     
-        logger.log({
+        this.logger.log({
             level: level,
             message: message,
             stack : msg.stack
@@ -52,7 +51,7 @@ class MasterError{
     }
 
     clearStatuses(){
-        statuses = [];
+        this.statuses = [];
     }
 
     // add error status functions
@@ -62,7 +61,7 @@ class MasterError{
             // skip loop if the property is from prototype
             if (!statusCodes.error.hasOwnProperty(code)) continue;
 
-            statuses.push({
+            this.statuses.push({
                 code: code,
                 route : statusCodes.error[code],
                 folder: statusCodes.publicfolder
@@ -75,7 +74,7 @@ class MasterError{
     callHttpStatus(statusCode, response){
         try{
             var that = this;
-            var status = statuses;
+            var status = this.statuses;
             var res = response;
             if(status.length !== 0){
                 if(Number.isInteger(statusCode) ){
