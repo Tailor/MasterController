@@ -3,18 +3,10 @@
 
 var master = require('./MasterControl');
 var Controller = require('./Controller');
+const fs = require("fs");
 master.appendControllerMethodsToClass(Controller);
 const EventEmitter = require("events");
 var _routeList = []; // list of routes being added Array
-
-var mergingObjectLiteral = function(){
-    var o = {}
-    for (var i = arguments.length - 1; i >= 0; i --) {
-      var s = arguments[i]
-      for (var k in s) o[k] = s[k]
-    }
-    return o
-}
 
  var firstLetterUppercase = function(string){
      return string.charAt(0).toUpperCase() + string.slice(1);
@@ -32,7 +24,7 @@ var mergingObjectLiteral = function(){
     controller.response = requestObj.response;
     controller.namespace = requestObj.namespace;
     controller.action = requestObj.action;
-    controller.baseUrl = requestObj.baseUrl;
+    controller.root = requestObj.root;
     controller.environment = requestObj.environment;
     controller.pathName = requestObj.pathName;
     controller.type = requestObj.type;
@@ -123,6 +115,21 @@ var mergingObjectLiteral = function(){
                         }
                     }
                 }
+                else{
+                    if( _routeList[item].isComponent === true){
+                        var loadPath = `${master.root}/${_routeList[item].path}/${_routeList[item].toPath}`;
+                        if(fs.existsSync(loadPath)){
+                            requestObject.masterRoot = requestObject.root;
+                            requestObject.root = loadPath;
+                            require(loadPath + "/component")(requestObject);
+                        }
+                    }
+
+                    if((parseInt(item, 10) + 1) === _routeList.length){
+                        master.error.log("Cannot find module", "warn");
+                        master.error.callHttpStatus(404, requestObject.response);
+                    }
+                }
             }
         };
     }
@@ -165,7 +172,7 @@ class MasterRouter {
 
     _call(requestObject){
 
-         var Control = require(requestObject.baseUrl + "/app/controllers/" + firstLetterlowercase(requestObject.namespace) + "Controller");
+         var Control = require(requestObject.root + "/app/controllers/" + firstLetterlowercase(requestObject.namespace) + "Controller");
          master.appendControllerMethodsToClass(Control);
          var control = new Control();
          var response = appendResponseToController(requestObject, control);
@@ -188,14 +195,26 @@ class MasterRouter {
          }
 
     }
-     
+    componentRoute(folder, name){
+        var route = {
+            type: "",
+            path: folder,
+            toPath : name,
+            constraint : "",
+            isComponent : true
+        };
+
+        _routeList.push(route);  
+    }
+
     route(path, toPath, type, constraint){ // function to add to list of routes
 
             var route = {
                 type: type.toLowerCase(),
                 path: path.replace(/^\/|\/$/g, ''),
                 toPath : toPath.replace(/^\/|\/$/g, '').split("/"),
-                constraint : constraint
+                constraint : constraint,
+                isComponent : false
             };
 
             _routeList.push(route);     

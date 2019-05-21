@@ -18,7 +18,7 @@ class MasterAction{
 
 	// location starts from the view folder. Ex: partialViews/fileName.html
 	returnPartialView(location, data){
-		var actionUrl = this.baseUrl + "/app/views/" + location;
+		var actionUrl = this.root + "/app/views/" + location;
 		var getAction = fileserver.readFileSync(actionUrl, 'utf8');
 		return ejs.render(getAction, data);
 	}
@@ -80,7 +80,7 @@ class MasterAction{
 		this.params = toosl.combineObjects(data, this.params);
 		var func = master.view.get();
         this.params = tools.combineObjects(this.params, func);
-		var actionUrl = (location === undefined) ? this.baseUrl + "/app/views/" +  this.namespace + "/" +  this.action + ".html" : this.baseUrl + location;
+		var actionUrl = (location === undefined) ? this.root + "/app/views/" +  this.namespace + "/" +  this.action + ".html" : this.root + location;
 		var actionView = fileserver.readFileSync(actionUrl, 'utf8');
 		var masterView = ejs.render(actionView, data);
 		if (!this.response.headersSent) {
@@ -90,7 +90,7 @@ class MasterAction{
 	}
 
 	returnViewWithoutEngine(location){
-		var actionUrl =  this.baseUrl + location;
+		var actionUrl =  this.root + location;
 		var masterView = fileserver.readFileSync(actionUrl, 'utf8');
 		if (!this.response.headersSent) {
 			this.response.writeHead(200, {'Content-Type': 'text/html'});
@@ -102,12 +102,12 @@ class MasterAction{
         this.params = tools.combineObjects(data, this.params);
         var func = master.view.get();
         this.params = tools.combineObjects(this.params, func);
-		var viewUrl = (location === undefined) ? this.baseUrl + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.baseUrl + "/app/" + location;
+		var viewUrl = (location === undefined) ? this.root + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.root + "/app/" + location;
 
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
 		var childView = ejs.render(viewFile, this.params);
 		this.params.yield = childView;
-		var masterFile = fileserver.readFileSync(this.baseUrl + "/app/views/layouts/master.html", 'utf8');
+		var masterFile = fileserver.readFileSync(this.root + "/app/views/layouts/master.html", 'utf8');
 		var masterView = ejs.render(masterFile, this.params);
 
 		if (!this.response.headersSent) {

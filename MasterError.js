@@ -12,7 +12,9 @@ class MasterError{
     init(statusCodes){
 
         var that = this;
-        this.statusCodes = statusCodes;
+        var stat = statusCodes.error;
+        stat.publicfolder = statusCodes.publicfolder;
+        this.addStatuses(stat);
         this.env = master.env.type;
         this._baseUrl = master.root;
 
@@ -29,42 +31,22 @@ class MasterError{
             that.log(reason, "warn");
         });
     }
-    
-    // log your error
-    log(msg, level){
-
-        var level = level === undefined ? "info": level;
-        if(msg === undefined){
-            throw "error has been thrown with no message.";
-        };
-        if(this.logger === ""){
-            throw "error init function has not been called.";
-        };
-        
-        var message = msg.message === undefined ? msg : msg.message;
-    
-        this.logger.log({
-            level: level,
-            message: message,
-            stack : msg.stack
-        });
-    }
 
     clearStatuses(){
         this.statuses = [];
     }
 
     // add error status functions
-    httpStatus(){
+    addStatuses(status){
         // loop through object and add all codes
-        for (var code in this.statusCodes.error) {
+        for (var code in status) {
             // skip loop if the property is from prototype
-            if (!statusCodes.error.hasOwnProperty(code)) continue;
+            if (!status.hasOwnProperty(code)) continue;
 
             this.statuses.push({
                 code: code,
-                route : statusCodes.error[code],
-                folder: statusCodes.publicfolder
+                route : status[code],
+                folder: status.publicfolder
             });
            
         }
@@ -104,6 +86,26 @@ class MasterError{
             this.log(err, "error");
             throw err;
         }
+    }
+
+    // log your error
+    log(msg, level){
+
+        var level = level === undefined ? "info": level;
+        if(msg === undefined){
+            throw "error has been thrown with no message.";
+        };
+        if(this.logger === ""){
+            throw "error init function has not been called.";
+        };
+        
+        var message = msg.message === undefined ? msg : msg.message;
+    
+        this.logger.log({
+            level: level,
+            message: message,
+            stack : msg.stack
+        });
     }
 }
 

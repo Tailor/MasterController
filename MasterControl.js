@@ -89,7 +89,7 @@ class MasterControl {
             return {
                 request : request,
                 response : response,
-                baseUrl : this.root,
+                root : this.root,
                 environment : this._env,
                 pathName : request.requrl.pathname,
                 type: request.method.toLowerCase(),
