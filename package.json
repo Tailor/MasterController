@@ -1,6 +1,6 @@
 {
-  "_from": "mastercontroller@^1.0.32",
-  "_id": "mastercontroller@1.0.32",
+  "_from": "mastercontroller@^1.0.33",
+  "_id": "mastercontroller@1.0.33",
   "_inBundle": false,
   "_integrity": "sha512-BOq1ZlQDCkekWDJjVsgFBc7svKs828YAj5uAMFwamhpnNiCEZbLR2QFmU+NJp4vUrrxoPERMyd/S+f0KoWQkFA==",
   "_location": "/mastercontroller",
@@ -8,19 +8,19 @@
   "_requested": {
     "type": "range",
     "registry": true,
-    "raw": "mastercontroller@^1.0.32",
+    "raw": "mastercontroller@^1.0.33",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "^1.0.32",
+    "rawSpec": "^1.0.33",
     "saveSpec": null,
-    "fetchSpec": "^1.0.32"
+    "fetchSpec": "^1.0.33"
   },
   "_requiredBy": [
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.32.tgz",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.33.tgz",
   "_shasum": "9e7bd06810ab6c2eadf3c889ea1f3b4678271231",
-  "_spec": "mastercontroller@^1.0.32",
+  "_spec": "mastercontroller@^1.0.33",
   "_where": "C:\\Users\\rbatista\\Desktop\\homeroom",
   "author": {
     "name": "Alexander Batista",
@@ -32,7 +32,7 @@
   "bundleDependencies": [],
   "dependencies": {
     "busboy": "^0.3.1",
-    "cookie": "^0.3.1",
+    "cookie": "^0.4.0",
     "ejs": "^2.6.1",
     "log4js": "^4.2.0",
     "winston": "^3.2.1"
@@ -50,5 +50,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.32"
+  "version": "1.0.33"
 }
