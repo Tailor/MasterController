@@ -2,41 +2,8 @@
 // version 1.0.12 - beta -- node compatiable
 
 var master = require('./MasterControl');
-var crypto = require('crypto');
 var cookie = require('cookie');
-
-var encrypt = function(payload, secret, algorithm ){
-    const hash = crypto.createHash("sha1");
-    hash.update(secret);
-    var key = Buffer.from(hash.digest("hex").substring(0, 16), "hex");
-    var algorithm = algorithm === undefined ? 'aes-256-ctr': algorithm;
-    var cipher = crypto.createCipher(algorithm,  key);
-    var crypted = cipher.update(payload,'utf8','hex');
-    crypted += cipher.final('hex');
-    return crypted;
-};
-
-var decrypt = function(encryption, secret, algorithm){
-      const hash = crypto.createHash("sha1");
-      hash.update(secret);
-      var key = Buffer.from(hash.digest("hex").substring(0, 16), "hex");
-      var algorithm = algorithm === undefined ? 'aes-256-ctr': algorithm;
-      var decipher = crypto.createDecipher(algorithm, key);
-      var dec = decipher.update(encryption,'hex','utf8');
-      dec += decipher.final('utf8');
-      return dec;
-};
-
-var combine = function(obj, src) {
-    Object.keys(src).forEach(function(key) { obj[key] = src[key]; });
-    return obj;
-};
-
-var generateRandomKey = function(hash) {
-    var sha = crypto.createHash(hash);
-    sha.update(Math.random().toString());
-    return sha.digest('hex');
-};
+var tools = master.tools;
 
 class MasterSession{
 
@@ -58,16 +25,16 @@ class MasterSession{
             sameSite : false,
         };
 
-        this.options = combine(options, defaultOpt);
+        this.options = tools.combineObjects(options, defaultOpt);
     }
 
     setCookie(name, payload, encrypted, response, opt){
 
         opt = typeof opt === "undefined" ? {} : opt;
-        var options = combine(this.options, opt);
+        var options = tools.combineObjects(this.options, opt);
         var encrypted = encrypted === undefined ? false : true;
         if(encrypted === true){
-            response.setHeader('Set-Cookie', cookie.serialize(name, encrypt(payload, options.secret), options));
+            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, options.secret), options));
         }
         else{
             response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), options));
@@ -86,7 +53,7 @@ class MasterSession{
                     return -1
                 }
                 else{
-                    return decrypt(cooks[name], this.options.secret);
+                    return tools.decrypt(cooks[name], this.options.secret);
                 }
                
             }
@@ -116,13 +83,13 @@ class MasterSession{
 
     set(name, payload, encrypted, opt, response){
         opt = typeof opt === "undefined" ? {} : opt;
-        var options = combine(this.options, opt);
+        var options = tools.combineObjects(this.options, opt);
         var encrypted = encrypted === undefined ? false : true;
 
-        var sessionID = generateRandomKey('sha256');
+        var sessionID = tools.generateRandomKey('sha256');
         this.sessions[name] = sessionID;
         if(encrypted === true){
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, encrypt(payload, options.secret), options));
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, options.secret), options));
         }
         else{
             response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), options));
@@ -139,7 +106,7 @@ class MasterSession{
                     return cooks[sessionID];
                 }
                 else{
-                   return decrypt(cooks[sessionID], this.options.secret);
+                   return tools.decrypt(cooks[sessionID], this.options.secret);
                 }
             }
         }

@@ -4,14 +4,11 @@ var _afterActionList = [];
 var emit = "";
 
 class MasterActionFilters {
-    constructor() {
-        this.namespace = this.constructor.name;
-    }
 
     // add function to list
     beforeAction(actionlist, func){
         if (typeof func === 'function') {
-            var namespace = (this.namespace.toLowerCase()).replace(/controller/g, "");
+            var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
             _beforeActionList.push({
                 namespace :   namespace,
                 actionList : actionlist,
@@ -28,7 +25,7 @@ class MasterActionFilters {
     // add function to list
     afterAction(actionlist, func){
         if (typeof func === 'function') {
-            var namespace = (this.namespace.toLowerCase()).replace(/controller/g, "");
+            var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
             _afterActionList.push({
                 namespace :   namespace,
                 actionList : actionlist,

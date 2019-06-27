@@ -4,7 +4,7 @@
 var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
-var tools = require('./Tools');
+var tools =  master.tools;
 
 class MasterAction{
 	
@@ -24,9 +24,13 @@ class MasterAction{
 	}
 
 	redirectBack(fallback){
-		var fallback = fallback === undefined ? "/" : fallback;
-		var backURL = this.request.header('Referer') || fallback;
-		this.redirectTo(backURL);
+		if(fallback === undefined){
+			var backUrl = this.request.headers.referer === "" ? "/" : this.request.headers.referer
+			this.redirectTo(backUrl);
+		}
+		else{
+			this.redirectTo(fallback);
+		}
 	}
 
 	// redirects to another controller =  does not reload the page
@@ -98,11 +102,13 @@ class MasterAction{
 		}
 	}
 
-	returnView( location, data){
+	returnView(data, location){
+		data = data === undefined ? {} : data;
+		this.params = this.params === undefined ? {} : this.params;
         this.params = tools.combineObjects(data, this.params);
         var func = master.view.get();
         this.params = tools.combineObjects(this.params, func);
-		var viewUrl = (location === undefined) ? this.root + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.root + "/app/" + location;
+		var viewUrl = (location === undefined || location === "" || location === null) ? this.root + "/app/views/" + this.namespace + "/" +  this.action + ".html": this.root + "/app/" + location;
 
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
 		var childView = ejs.render(viewFile, this.params);

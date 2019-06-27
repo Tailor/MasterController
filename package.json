@@ -1,27 +1,27 @@
 {
-  "_from": "mastercontroller@^1.0.33",
-  "_id": "mastercontroller@1.0.33",
+  "_from": "mastercontroller@^1.0.34",
+  "_id": "mastercontroller@1.0.34",
   "_inBundle": false,
-  "_integrity": "sha512-BOq1ZlQDCkekWDJjVsgFBc7svKs828YAj5uAMFwamhpnNiCEZbLR2QFmU+NJp4vUrrxoPERMyd/S+f0KoWQkFA==",
+  "_integrity": "sha512-zRwNgI8rIGv+nBnxBpaT8egdykTv/AwjOBvP2vpoXo1GSBBf/00bpXCQvuV3TFsQ6MhIhUTCarRP/lrCJfViYA==",
   "_location": "/mastercontroller",
   "_phantomChildren": {},
   "_requested": {
     "type": "range",
     "registry": true,
-    "raw": "mastercontroller@^1.0.33",
+    "raw": "mastercontroller@^1.0.34",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "^1.0.33",
+    "rawSpec": "^1.0.34",
     "saveSpec": null,
-    "fetchSpec": "^1.0.33"
+    "fetchSpec": "^1.0.34"
   },
   "_requiredBy": [
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.33.tgz",
-  "_shasum": "9e7bd06810ab6c2eadf3c889ea1f3b4678271231",
-  "_spec": "mastercontroller@^1.0.33",
-  "_where": "C:\\Users\\rbatista\\Desktop\\homeroom",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.34.tgz",
+  "_shasum": "dfe8c853f25461c0f5078366948900527d215e66",
+  "_spec": "mastercontroller@^1.0.34",
+  "_where": "C:\\Users\\rbatista\\Desktop\\tailor.work",
   "author": {
     "name": "Alexander Batista",
     "email": "spidergt1@aol.com"
@@ -33,8 +33,8 @@
   "dependencies": {
     "busboy": "^0.3.1",
     "cookie": "^0.4.0",
-    "ejs": "^2.6.1",
-    "log4js": "^4.2.0",
+    "ejs": "^2.6.2",
+    "log4js": "^4.4.0",
     "winston": "^3.2.1"
   },
   "deprecated": false,
@@ -50,5 +50,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.33"
+  "version": "1.0.34"
 }

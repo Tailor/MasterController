@@ -3,7 +3,7 @@ var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
 var fs = require('fs');
-var tools = require("./Tools");
+var tools =  master.tools;
 
 class MasterHtml {
 	// render partial views

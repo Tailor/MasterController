@@ -4,7 +4,7 @@
 var master = require('./MasterControl');
 var Controller = require('./Controller');
 const fs = require("fs");
-master.appendControllerMethodsToClass(Controller);
+//master.appendControllerMethodsToClass(Controller);
 const EventEmitter = require("events");
 var _routeList = []; // list of routes being added Array
 
@@ -174,6 +174,7 @@ class MasterRouter {
 
          var Control = require(requestObject.root + "/app/controllers/" + firstLetterlowercase(requestObject.namespace) + "Controller");
          master.appendControllerMethodsToClass(Control);
+         Control.prototype.__namespace = Control.name;
          var control = new Control();
          var response = appendResponseToController(requestObject, control);
 
