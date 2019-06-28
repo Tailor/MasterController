@@ -1,5 +1,5 @@
 // MasterRouter- by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
+// version 1.0.13 - beta -- node compatiable
 
 var master = require('./MasterControl');
 var Controller = require('./Controller');
@@ -18,7 +18,7 @@ var _routeList = []; // list of routes being added Array
 
  var appendResponseToController = function(requestObj, controller){
 
-    var controller = controller === undefined ? master.error.log("controller no instantiated", "warn") : controller;
+    var controller = controller === undefined ? master.error.log("controller not instantiated", "warn") : controller;
 
     controller.request = requestObj.request;
     controller.response = requestObj.response;
@@ -126,7 +126,9 @@ var _routeList = []; // list of routes being added Array
                     }
 
                     if((parseInt(item, 10) + 1) === _routeList.length){
-                        master.error.log("Cannot find module", "warn");
+                        var namespaceError = namespace ? "undefined": namespace;
+                        var actionError = action ? "undefined" :action;
+                        master.error.log("Cannot find module namespace:" + namespaceError + " and action:" + actionError, "warn");
                         master.error.callHttpStatus(404, requestObject.response);
                     }
                 }

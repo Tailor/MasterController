@@ -1,27 +1,24 @@
 {
-  "_from": "mastercontroller@^1.0.34",
-  "_id": "mastercontroller@1.0.34",
-  "_inBundle": false,
-  "_integrity": "sha512-zRwNgI8rIGv+nBnxBpaT8egdykTv/AwjOBvP2vpoXo1GSBBf/00bpXCQvuV3TFsQ6MhIhUTCarRP/lrCJfViYA==",
+  "_from": "mastercontroller@1.0.35",
+  "_id": "mastercontroller@1.0.35",
   "_location": "/mastercontroller",
   "_phantomChildren": {},
   "_requested": {
-    "type": "range",
+    "type": "version",
     "registry": true,
-    "raw": "mastercontroller@^1.0.34",
+    "raw": "mastercontroller@1.0.35",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "^1.0.34",
+    "rawSpec": "1.0.34",
     "saveSpec": null,
-    "fetchSpec": "^1.0.34"
+    "fetchSpec": "1.0.34"
   },
   "_requiredBy": [
+    "#USER",
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.34.tgz",
-  "_shasum": "dfe8c853f25461c0f5078366948900527d215e66",
-  "_spec": "mastercontroller@^1.0.34",
-  "_where": "C:\\Users\\rbatista\\Desktop\\tailor.work",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.35.tgz",
+  "_spec": "mastercontroller@1.0.35",
   "author": {
     "name": "Alexander Batista",
     "email": "spidergt1@aol.com"
@@ -50,5 +47,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.34"
+  "version": "1.0.35"
 }
