@@ -34,7 +34,7 @@ var _routeList = []; // list of routes being added Array
 
  var processControllerRoute = function(requestObject, emitter){
 
-    // request object needs action, controller, and next functionsS
+    // request object needs action, controller, and next functions
     var params = {};
     var pathList = requestObject.pathName.split("/");
 
@@ -116,21 +116,41 @@ var _routeList = []; // list of routes being added Array
                     }
                 }
                 else{
+                    // check for components
                     if( _routeList[item].isComponent === true){
-                        var loadPath = `${master.root}/${_routeList[item].path}/${_routeList[item].toPath}`;
+                        var loadPath = `${master.root}/${_routeList[item].path}/${_routeList[item].toPath[0]}`;
                         if(fs.existsSync(loadPath)){
                             requestObject.masterRoot = requestObject.root;
                             requestObject.root = loadPath;
+                            requestObject.component = {
+                                isError : false,
+                                isComponent : true
+                            };
+                            // load component file
                             require(loadPath + "/component")(requestObject);
+                            requestObject.component.isComponent = false;
+                        }
+                        
+                    }
+                    // if it's the last one 
+                    if((parseInt(item, 10) + 1) === _routeList.length){
+                        if(requestObject.component.isComponent === true){
+                            requestObject.component.isError = true;
+                            return true;
+                        }
+                        else{
+                            if(requestObject.component.isError === false){
+                                return true;
+                            }
+                            else{
+                                var namespaceError = namespace ? namespace:"undefined";
+                                var actionError = action ? action : "undefined";
+                                master.error.log("Cannot find module namespace:" + namespaceError + " and action:" + actionError, "warn");
+                                master.error.callHttpStatus(404, requestObject.response);  
+                            }
                         }
                     }
-
-                    if((parseInt(item, 10) + 1) === _routeList.length){
-                        var namespaceError = namespace ? "undefined": namespace;
-                        var actionError = action ? "undefined" :action;
-                        master.error.log("Cannot find module namespace:" + namespaceError + " and action:" + actionError, "warn");
-                        master.error.callHttpStatus(404, requestObject.response);
-                    }
+                
                 }
             }
         };
@@ -202,7 +222,7 @@ class MasterRouter {
         var route = {
             type: "",
             path: folder,
-            toPath : name,
+            toPath : [name],
             constraint : "",
             isComponent : true
         };
