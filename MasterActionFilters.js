@@ -1,3 +1,4 @@
+// version 1.3
 var master = require('mastercontroller');
 var _beforeActionFunc = {
     namespace :   "",
@@ -12,7 +13,6 @@ var _afterActionFunc = {
     that : ""
 };
 var emit = "";
-// version 1.3
 
 class MasterActionFilters {
 

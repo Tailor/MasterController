@@ -1,6 +1,6 @@
 {
-  "_from": "mastercontroller@1.0.36",
-  "_id": "mastercontroller@1.0.36",
+  "_from": "mastercontroller@1.0.37",
+  "_id": "mastercontroller@1.0.37",
   "_inBundle": false,
   "_integrity": "sha512-mQGJtDGoTTUO1QfUyfrI64BFpY5xfjyXPtTXteSDqYnqzZvvQg1mZUEeQ7dZUOvVXwqeCV4ZLdKt4wbbIRIAGw==",
   "_location": "/mastercontroller",
@@ -8,7 +8,7 @@
   "_requested": {
     "type": "version",
     "registry": true,
-    "raw": "mastercontroller@1.0.36",
+    "raw": "mastercontroller@1.0.37",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
     "rawSpec": "1.0.36",
@@ -21,7 +21,7 @@
   ],
   "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.0.35.tgz",
   "_shasum": "6653bde00531a8b896fa1a045f0e7a9cd95bed41",
-  "_spec": "mastercontroller@1.0.36",
+  "_spec": "mastercontroller@1.0.37",
   "_where": "C:\\Users\\rbatista\\Downloads\\kollege\\tailor.support\\components\\directoryAPI",
   "author": {
     "name": "Alexander Batista",
@@ -47,5 +47,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.0.36"
+  "version": "1.0.37"
 }
