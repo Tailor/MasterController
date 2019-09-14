@@ -1,5 +1,5 @@
 // MasterError- by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
+// version 1.0.13 - beta -- node compatiable
 
 var master = require('./MasterControl');
 var winston = require('winston');
@@ -16,7 +16,7 @@ class MasterError{
         stat.publicfolder = statusCodes.publicfolder;
         this.addStatuses(stat);
         this.env = master.env.type;
-        this._baseUrl = master.root;
+        this._baseUrl = master.masterRoot;
 
         this.logger = winston.createLogger({
             format: winston.format.json(),

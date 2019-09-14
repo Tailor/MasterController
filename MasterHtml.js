@@ -3,7 +3,10 @@ var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
 var fs = require('fs');
-var tools = require("./Tools");
+var tools =  master.tools;
+// get the ending part of the url
+const getDiff = (string, diffBy) => string.split(diffBy).join('');
+const rootFolder = getDiff(master.root, master.masterRoot);
 
 class MasterHtml {
 	// render partial views
@@ -21,9 +24,8 @@ class MasterHtml {
 
 	   // render all your link tags styles given the folder location
 	renderStyles(folderName, typeArray){
-
 		var styles = [];
-		var styleLocation = '/app/assets/stylesheets/';
+		var styleLocation = rootFolder + '/app/assets/stylesheets/';
 		var styleFolder = master.root + '/app/assets/stylesheets/';
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
@@ -49,7 +51,7 @@ class MasterHtml {
 
 		var scripts = [];
 		var jsFolder = master.root + '/app/assets/javascripts/';
-		var jsLocation = '/app/assets/javascripts/';
+		var jsLocation = rootFolder +'/app/assets/javascripts/';
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
 		   if(folderName !== undefined && folderName !== ""){
@@ -76,7 +78,7 @@ class MasterHtml {
 			return '';
 		}
 		else{
-			var jsLocation = '/app/assets/javascripts/';
+			var jsLocation = rootFolder +'/app/assets/javascripts/';
 			if(folder !== undefined && folder !== ""){
 				jsLocation = jsLocation + folder + "/" + name;
 			}else{
@@ -92,7 +94,7 @@ class MasterHtml {
 			return "";
 		}
 		else{
-			var styleFolder = '/app/assets/stylesheets/';
+			var styleFolder = rootFolder + '/app/assets/stylesheets/';
 			if(folder !== undefined && folder !== ""){
 				styleFolder = styleFolder + folder + "/" + name;
 			}else{
@@ -109,7 +111,7 @@ class MasterHtml {
 
 	   // return image tag
 	imgTag(alt, location){
-		return '<img src=' + location + ' alt='+ location +'>';
+		return '<img src=' + location + ' alt='+ alt +'>';
 	}
 
 	   // return text are tag
@@ -396,18 +398,6 @@ class MasterHtml {
 			master.view.extend(newObj);
 		}
 	}
-
-	//master.view.helpers.add(name, func);
-	// add to helper to current params for view 
-	// add(name, func){
-	// 	var data = { };
-	// 	data.helpers = {};
-	// 	data.helpers[name] = func;
-	// 	if(name !== "add"){
-	// 		this.addDataToParams(data);
-	// 		MasterView.helpers[name] = func;
-	// 	};
-	// }
 	
 }
 

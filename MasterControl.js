@@ -1,9 +1,10 @@
-
 // MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
+// version 1.0.0
 var url = require('url');
 var fileserver = require('fs');
-var tools = require('./Tools');
- 
+var busboy = require('busboy');
+var url = require('url');
+
 class MasterControl {
     controllerList = {}
 
@@ -25,7 +26,7 @@ class MasterControl {
     // extends class methods to be used inside of the controller class using the THIS keyword
     extendController(element){
         if(element.prototype === undefined) {
-            throw "cannot extend extend controller using an instantiated class";
+            throw "cannot extend controller using an instantiated class";
         }
         else{
             var propertyNames = Object.getOwnPropertyNames(element.prototype);
@@ -85,7 +86,7 @@ class MasterControl {
             return -1;
         }
         else{
-            var params = await tools._getRequestParam(request, request.method.toLowerCase());
+            var params = await _getRequestParam(request, request.method.toLowerCase());
             return {
                 request : request,
                 response : response,
@@ -100,5 +101,57 @@ class MasterControl {
     }
 };
 
-
 module.exports = new MasterControl();
+ 
+var master = require('./MasterControl');
+
+var _getRequestParam = function(request, type){
+
+    try {
+            // routing get data sent through request
+            if(type === "get"){
+                var parsedURL = url.parse(request.requrl, true);
+                return parsedURL.query;
+            }
+
+            // routing Post data sent through request
+            if (type === "post" || type === "put") {
+                
+                var body = {};
+                body.files = [];
+
+                var form = new busboy({ headers: request.headers });
+
+                form.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
+                    var dotNotation = fieldname.replace(/[\[\]']+/g,',').replace(/,\s*$/, "").split(",");
+                    master.tools.convertArrayToObject(body, dotNotation, val);
+                
+                });
+
+                form.on('file', function(fieldname, file, filename, encoding, mimetype) {
+
+                    if(body.files){
+                        body.files.push({
+                            fieldname : fieldname,
+                            file : file,
+                            filename : filename,
+                            mimetype :  mimetype
+                        });
+                    }
+
+                });
+
+                request.pipe(form);
+                
+                return new Promise(function (resolve, reject) {
+                    request.on('end', function () {
+                        //var query = qs.parse(body);
+                        return resolve(body);
+                    });
+                });
+            }
+        }
+        catch (ex) {
+            throw ex;
+        }
+};

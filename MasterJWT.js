@@ -3,8 +3,7 @@
 
 var master = require('./MasterControl');
 var crypto = require('crypto');
-var encryptionTools = require("./EncryptionTools");
-var tools = require("./Tools");
+var tools =  master.tools;
 
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
 class MasterJWT{
@@ -19,36 +18,50 @@ class MasterJWT{
             this.secret = options.secret;
         }
 
-        sign(payload, encrypted){
+        create(payload, encrypted, encryptionKey){
+            var hmac = null;
+            var now = new Date();
+            var twoHoursLater = new Date(now.getTime() + (2*1000*60*60))
+            var encrypted = typeof encrypted === "undefined" ? false : true;
+            var encodePayload = null;
+            
             if(typeof payload === "string"){
                 throw "payload must be object not string";
             }
-            var encrypted = typeof encrypted === "undefined" ? false : true;
 
             var header = {
                     typ: 'JWT',
                     alg: this.alg
             };
-            var now = new Date();
-            var twoHoursLater = new Date(now.getTime() + (2*1000*60*60))
+
             var body = {
-                jti: encryptionTools.generateRandomKey('sha256'),
+                jti: tools.generateRandomKey('sha256'),
                 iat: Math.floor(new Date() / 1000),
                 exp: twoHoursLater
                 };
 
             body = tools.combineObjects(body, payload);
             
-            var encodePayload = "";
             if(encrypted === true){
-                encodePayload =  encryptionTools.base64().encode(encryptionTools.encrypt(JSON.stringify(body), this.secret));
+                header["encrypt"] = 'aes-256-ctr';
+                if(encryptionKey ===  undefined){
+                    encodePayload =  tools.base64().encode(tools.encrypt(JSON.stringify(body), this.secret));
+                }else{
+                    encodePayload =  tools.base64().encode(tools.encrypt(JSON.stringify(body), encryptionKey));
+                }
             }
             else{
-                encodePayload =  encryptionTools.base64().encode(JSON.stringify(body));
+                encodePayload =  tools.base64().encode(JSON.stringify(body));
             }
-            // make sure you can to string json object
-            var encodeHeader = encryptionTools.base64().encode(JSON.stringify(header));
-            var hmac = crypto.createHmac(this.alg, this.secret);
+
+            
+            if(encryptionKey ===  undefined){
+                hmac = crypto.createHmac(this.alg, this.secret);
+            }else{
+                hmac = crypto.createHmac(this.alg, encryptionKey);
+            }
+
+            var encodeHeader = tools.base64().encode(JSON.stringify(header));
             hmac.update(encodeHeader + "." + encodePayload);
             var sig = hmac.digest('base64');
             
@@ -59,7 +72,7 @@ class MasterJWT{
             var secret = secret === undefined ? this.secret : secret;
             var encrypted = typeof encrypted === "undefined" ? false : true;
             var jwt = signature.split(".");
-            var decodeHeader = JSON.parse(encryptionTools.base64().decode(jwt[0]));
+            var decodeHeader = JSON.parse(tools.base64().decode(jwt[0]));
 
             var hmac = crypto.createHmac(decodeHeader.alg, secret );
             hmac.update(jwt[0] + "." + jwt[1]);
@@ -67,9 +80,9 @@ class MasterJWT{
 
             if(ourSignature === jwt[2]){
                 // if they are the same return json payload or un ecrypt payload
-                var decodePayload = encryptionToolsbase64().decode(jwt[1]);
+                var decodePayload = tools.base64().decode(jwt[1]);
                 if(encrypted === true){
-                    var decryptPayload = JSON.parse(encryptionToolsdecrypt(decodePayload, secret ));
+                    var decryptPayload = JSON.parse(tools.decrypt(decodePayload, secret ));
                     return decryptPayload;
                 }
                 else{
@@ -82,29 +95,29 @@ class MasterJWT{
         }
 
         // creates and sends to cookie
-        set(name, payload, encrypted, response){
-            if(typeof payload === "string"){
-                throw "payload must be object not string";
-            }
-            var encrypted = typeof encrypted === "undefined" ? false : true;
-            var sig = this.sign(payload, encrypted);
-            master.sessions.setCookie(name, sig, encrypted, response);
-            return sig;
-        }
+        // set(name, payload, encrypted, response, encryptionKey){
+        //     if(typeof payload === "string"){
+        //         throw "payload must be object not string";
+        //     }
+        //     var encrypted = typeof encrypted === "undefined" ? false : encrypted;
+        //     var sig = this.sign(payload, encrypted, encryptionKey);
+        //     master.sessions.setCookie(name, sig, encrypted, response);
+        //     return sig;
+        // }
 
-        get(name, request, encrypted){
-            var encrypted = typeof encrypted === "undefined" ? false : true;
-            var cook = master.sessions.getCookie(name, request, encrypted );
-            var valid = "";
-            if(cook !== -1 && cook !== ""){
-                valid = this.verify(cook, encrypted);
-                if(valid !== -1){
-                    return valid;
-                }
-            }else{
-                return -1;
-            }
-        }
+        // get(name, request, encrypted){
+        //     var encrypted = typeof encrypted === "undefined" ? false : true;
+        //     var cook = master.sessions.getCookie(name, request, encrypted );
+        //     var valid = "";
+        //     if(cook !== -1 && cook !== ""){
+        //         valid = this.verify(cook, encrypted);
+        //         if(valid !== -1){
+        //             return valid;
+        //         }
+        //     }else{
+        //         return -1;
+        //     }
+        // }
 }
 
 

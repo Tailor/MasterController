@@ -1,29 +1,21 @@
-// MasterRouter- by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
 
+// version 1.0.19
 var master = require('./MasterControl');
+var tools =  master.tools;
 var Controller = require('./Controller');
 const fs = require("fs");
-master.appendControllerMethodsToClass(Controller);
 const EventEmitter = require("events");
 var _routeList = []; // list of routes being added Array
-
- var firstLetterUppercase = function(string){
-     return string.charAt(0).toUpperCase() + string.slice(1);
- };
-
- var firstLetterlowercase = function(string){
-    return string.charAt(0).toLowerCase() + string.slice(1);
-};
+var routeFound = false;
 
  var appendResponseToController = function(requestObj, controller){
 
-    var controller = controller === undefined ? master.error.log("controller no instantiated", "warn") : controller;
+    var controller = controller === undefined ? master.error.log("controller not instantiated", "warn") : controller;
 
     controller.request = requestObj.request;
     controller.response = requestObj.response;
-    controller.namespace = requestObj.namespace;
-    controller.action = requestObj.action;
+    controller.namespace = requestObj.toController;
+    controller.action = requestObj.toAction;
     controller.root = requestObj.root;
     controller.environment = requestObj.environment;
     controller.pathName = requestObj.pathName;
@@ -32,106 +24,93 @@ var _routeList = []; // list of routes being added Array
     return controller;
  };
 
- var processControllerRoute = function(requestObject, emitter){
+ var normalizePaths = function(requestPath, routePath, requestParams){
+    var obj = {
+        requestPath : "",
+        routhPath : ""
+    }
 
-    // request object needs action, controller, and next functionsS
-    var params = {};
-    var pathList = requestObject.pathName.split("/");
+    var requestPathList = requestPath.split("/");
+    var routePathList = routePath.split("/");
+
+    for(i = 0; i < requestPathList.length; i++){
+        requestItem = requestPathList[i];
+        routeItem = routePathList[i];
+        if(routeItem !== undefined){
+            if(routeItem.indexOf(":") > -1){
+                requestParams[routeItem.replace(":", "")] = requestItem;
+                routePathList[i] = requestItem;
+            }
+        }
+    }
+
+    obj.requestPath = requestPath;
+    obj.routhPath = routePathList.join("/");
+    return obj;
+ }
+
+ var processControllerRoute = function(requestObject, emitter){
+    routeFound = false;
+    // request object needs action, controller, and next functions
+    var currentMasterLocation = requestObject.masterFileLocation;
 
     if(_routeList.length > 0){
         // loop through routes
         for(var item in _routeList){
 
-            var namespace = _routeList[item].toPath[0];
-            var action =  _routeList[item].toPath[1] === undefined ? "index" : _routeList[item].toPath[1];
+            requestObject.toController = _routeList[item].toController;
+            requestObject.toAction = _routeList[item].toAction;
 
-            // set defualt route Action to Index
-           // _routeList[item].toPath[1] =  _routeList[item].toPath[1] === undefined ? "index" : _routeList[item].toPath[1];
-           
-            // if we find the route that matches the request
-            if(_routeList[item].path === requestObject.pathName && _routeList[item].type === requestObject.type){
-                
-                // now we have the controller name and action name
-                requestObject.namespace = namespace;
-                requestObject.action = action;
-                // callConstraint
-                // manage constraint method
-                if(typeof _routeList[item].constraint === "function"){
-                    
-                    // need to build request for
-                    var newObj = new Controller();
-                    var newThis = appendResponseToController(requestObject, newObj);
-                    
-                    newThis.next = function(){
-                        emitter.emit("routeConstraintGood", requestObject);
-                    };
-
-                    _routeList[item].constraint.call(newThis, newThis);
-                    return true;
-                }else{
-                    
-                    emitter.emit("routeConstraintGood", requestObject);
-                    return true;
+            // if component then call component and let the componont hande its own routing
+            if(_routeList[item].isComponent === true){
+                var loadPath = `${master.root}/${_routeList[item].folder}/${_routeList[item].location}`;
+                if(fs.existsSync(loadPath)){
+                    requestObject.masterRoot = requestObject.root;
+                    requestObject.root = loadPath;
+                    requestObject.masterFileLocation = `${__dirname}/MasterControl`;
+                    // load component file
+                    require(loadPath + "/component")(requestObject);
+                    requestObject.root = requestObject.masterRoot;
                 }
-                
-            }else{
-                // check if pathParsed has url path = pages/5ff/edit route path = pages/:id/edit
-                if(_routeList[item].path.indexOf("/:") > -1 && _routeList[item].type === requestObject.type){
-                    var routeArray = _routeList[item].path.split("/");
-                    if(routeArray.length > 0){
-                        for(var l in routeArray){
-                            var routeArrayItem = routeArray[l];
-                            if(routeArrayItem.indexOf(":") > -1){
-                                var routeName = routeArrayItem.replace(/:/g , '');
-                                routeArray[l] = pathList[l];
-                                params[routeName] = pathList[l];
-                            }
-                            var completeRoute = routeArray.join("/");
-                            
-                            if(requestObject.pathName === completeRoute){
 
-                                requestObject.namespace = namespace;
-                                requestObject.action = action;
-                                requestObject.params = mergingObjectLiteral(requestObject.params, params);
-
-                                if(typeof _routeList[item].constraint === "function"){
-                                     // need to build request for 
-                                    
-                                    var newObj = new Controller();
-                                    var newThis = appendResponseToController( requestObject, newObj);
-
-                                    newThis.next = function(){
-                                        emitter.emit("routeConstraintGood", requestObject);
-                                    };
-
-                                    _routeList[item].constraint.call(newThis, newThis);
-                                    return true;
-                                }else{
-
-                                    emitter.emit("routeConstraintGood", requestObject);
-                                    return true;
-                                }
-                            }
+            }
+            else{
+                    var pathObj = normalizePaths(requestObject.pathName, _routeList[item].path, requestObject.params)
+                    // if we find the route that matches the request
+                    if(pathObj.requestPath === pathObj.routhPath && _routeList[item].type === requestObject.type){
+                        if(currentMasterLocation !== undefined){
+                            routeFound = true;
+                            var mod = require(currentMasterLocation);
+                            mod.router._routeFoundInsideComponent();
                         }
-                    }
-                }
-                else{
-                    if( _routeList[item].isComponent === true){
-                        var loadPath = `${master.root}/${_routeList[item].path}/${_routeList[item].toPath}`;
-                        if(fs.existsSync(loadPath)){
-                            requestObject.masterRoot = requestObject.root;
-                            requestObject.root = loadPath;
-                            require(loadPath + "/component")(requestObject);
-                        }
-                    }
 
-                    if((parseInt(item, 10) + 1) === _routeList.length){
-                        master.error.log("Cannot find module", "warn");
-                        master.error.callHttpStatus(404, requestObject.response);
+                        // call Constraint
+                        if(typeof _routeList[item].constraint === "function"){
+                            // need to build request for
+                            var newObj = new Controller();
+                            var newThis = appendResponseToController(requestObject, newObj);
+                            newThis.next = function(){
+                                emitter.emit("routeConstraintGood", requestObject);
+                            };
+                            _routeList[item].constraint.call(newThis, newThis);
+                            return true;
+                        }else{
+                            emitter.emit("routeConstraintGood", requestObject);
+                            return true;
+                        }
+                        
                     }
-                }
+            }
+            // if route is found get out of loop no point of keep looping
+            if(routeFound === true){
+                break;
             }
         };
+        // if route hasnt been found then through some error's
+        if(routeFound === false && currentMasterLocation === undefined){
+            master.error.log(`Cannot find route for path  ${requestObject.pathName}`, "warn");
+            master.error.callHttpStatus(404, requestObject.response);
+        }
     }
     else{
         emitter.emit("routeConstraintBad");
@@ -140,6 +119,9 @@ var _routeList = []; // list of routes being added Array
 };
 
 class MasterRouter {
+    _routeFoundInsideComponent(){
+        routeFound = true;
+    }
 
     mimes(mimeObject){
         var that = this;
@@ -172,11 +154,11 @@ class MasterRouter {
 
     _call(requestObject){
 
-         var Control = require(requestObject.root + "/app/controllers/" + firstLetterlowercase(requestObject.namespace) + "Controller");
+         var Control = require(`${requestObject.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
          master.appendControllerMethodsToClass(Control);
+         Control.prototype.__namespace = Control.name;
          var control = new Control();
          var response = appendResponseToController(requestObject, control);
-
          var _callEmit = new EventEmitter();
          
          _callEmit.on("controller", function(){
@@ -184,7 +166,7 @@ class MasterRouter {
             control.next = function(){
                 control.__callAfterAction(response);
             }
-            control[response.action](response);
+            control[requestObject.toAction](response);
          });
         
          // check if before function is avaliable and wait for it to return
@@ -195,12 +177,16 @@ class MasterRouter {
          }
 
     }
+    
     componentRoute(folder, name){
         var route = {
-            type: "",
-            path: folder,
-            toPath : name,
-            constraint : "",
+            type: null,
+            path: null,
+            controller: null,
+            action: null,
+            constraint : null,
+            folder : folder,
+            location: name,
             isComponent : true
         };
 
@@ -208,69 +194,101 @@ class MasterRouter {
     }
 
     route(path, toPath, type, constraint){ // function to add to list of routes
+        var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
 
-            var route = {
-                type: type.toLowerCase(),
-                path: path.replace(/^\/|\/$/g, ''),
-                toPath : toPath.replace(/^\/|\/$/g, '').split("/"),
-                constraint : constraint,
-                isComponent : false
-            };
+        var route = {
+            type: type.toLowerCase(),
+            path: path.replace(/^\/|\/$/g, ''),
+            toController :pathList[0],
+            toAction: pathList[1],
+            constraint : constraint,
+            folder : null,
+            location: null,
+            isComponent : false
+        };
 
-            _routeList.push(route);     
+        _routeList.push(route);     
 
     }
 
     resources(routeName){ // function to add to list of routes using resources bulk
 
-            var indexRoute = routeName + "/index";
             _routeList.push({
                 type: "get",
                 path: routeName,
-                toPath : indexRoute.split("/")
+                toController :routeName,
+                toAction: "index",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var newRoute = routeName + "/new";
             _routeList.push({
                 type: "get",
-                path: routeName + "/new",
-                toPath : newRoute.split("/")
+                path: routeName,
+                toController :routeName,
+                toAction: "new",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var createRoute = routeName + "/create";
             _routeList.push({
                 type: "post",
                 path: routeName,
-                toPath : createRoute.split("/")
+                toController :routeName,
+                toAction: "create",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var showRoute = routeName + "/show";
             _routeList.push({
                 // pages/3
                 type: "get",
                 path: routeName + "/:id",
-                toPath : showRoute.split("/")
+                toController :routeName,
+                toAction: "show",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var editRoute = routeName + "/edit";
             _routeList.push({
                 type: "get",
                 path: routeName + "/:id/" + "edit",
-                toPath : editRoute.split("/")
+                toController :routeName,
+                toAction: "edit",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var updateRoute = routeName + "/update";
             _routeList.push({
                 type: "put",
                 path: routeName + "/:id",
-                toPath : updateRoute.split("/")
+                toController :routeName,
+                toAction: "update",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });
 
-            var destroyRoute = routeName + "/destroy";
             _routeList.push({
                 type: "delete",
                 path: routeName + "/:id",
-                toPath : destroyRoute.split("/")
+                toController :routeName,
+                toAction: "destroy",
+                constraint : null,
+                folder : null,
+                location: null,
+                isComponent : false
             });   
     }
 
