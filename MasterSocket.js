@@ -1,5 +1,4 @@
 // MasterSocket- by Alexander Batista - Tailor 2018 - MIT Licensed 
-
 var master = require('./MasterControl');
 
 var jsUcfirst = function(string){

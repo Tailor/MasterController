@@ -1,9 +1,8 @@
 // MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
-// version 1.0.0
+// version 1.0.1
 var url = require('url');
 var fileserver = require('fs');
 var busboy = require('busboy');
-var url = require('url');
 
 class MasterControl {
     controllerList = {}

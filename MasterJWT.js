@@ -1,6 +1,5 @@
-// MasterSession - by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
 
+// version 1.0.12 - beta -- node compatiable
 var master = require('./MasterControl');
 var crypto = require('crypto');
 var tools =  master.tools;

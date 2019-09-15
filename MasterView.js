@@ -1,4 +1,4 @@
-// MasterAPI- by Alexander Batista - Tailer 2017 - MIT Licensed 
+
 // version 1.0.13 - beta -- node compatiable
 
 var master = require('./MasterControl');

@@ -1,9 +1,10 @@
-
+// version 1.0.0
 var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
 var fs = require('fs');
 var tools =  master.tools;
+
 // get the ending part of the url
 const getDiff = (string, diffBy) => string.split(diffBy).join('');
 const rootFolder = getDiff(master.root, master.masterRoot);
