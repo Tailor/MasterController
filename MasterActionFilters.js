@@ -1,6 +1,17 @@
+// version 1.3
 var master = require('mastercontroller');
-var _beforeActionList = [];
-var _afterActionList = [];
+var _beforeActionFunc = {
+    namespace :   "",
+    actionList : "",
+    callBack : "",
+    that : ""
+};
+var _afterActionFunc = {
+    namespace :   "",
+    actionList : "",
+    callBack : "",
+    that : ""
+};
 var emit = "";
 
 class MasterActionFilters {
@@ -9,12 +20,12 @@ class MasterActionFilters {
     beforeAction(actionlist, func){
         if (typeof func === 'function') {
             var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
-            _beforeActionList.push({
+            _beforeActionFunc ={
                 namespace :   namespace,
                 actionList : actionlist,
                 callBack : func,
                 that : this
-            });
+            };
         }
         else{
             master.error.log("beforeAction callback not a function", "warn");
@@ -26,12 +37,12 @@ class MasterActionFilters {
     afterAction(actionlist, func){
         if (typeof func === 'function') {
             var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
-            _afterActionList.push({
+            _afterActionFunc = {
                 namespace :   namespace,
                 actionList : actionlist,
                 callBack : func,
                 that : this
-            });
+            };
         }
         else{
             master.error.log("afterAction callback not a function", "warn");
@@ -41,58 +52,41 @@ class MasterActionFilters {
     
     // check to see if that controller has a before Action method.
     __hasBeforeAction(obj){
-        var filterList = _beforeActionList;
-        for (var i = 0; i < filterList.length; i++) { 
-            if(filterList[i].namespace === obj.namespace){
-                for (var a = 0; a < filterList[i].actionList.length; a++) { 
-                    if(filterList[i].actionList[a] === obj.action){
-                        return true;
-                    }
+        var flag = false;
+        if(_beforeActionFunc.namespace === obj.namespace){
+            for (var a = 0; a < _beforeActionFunc.actionList.length; a++) { 
+                if(_beforeActionFunc.actionList[a] === obj.action){
+                    flag = true;
                 }
             }
         }
-        return false;
+        return flag;
     }
 
     __callBeforeAction(obj, emitter) {
-        if(_beforeActionList[0] !== undefined){
-            if(_beforeActionList[0].namespace === obj.namespace){
-                _beforeActionList[0].actionList.forEach(action => {
+            if(_beforeActionFunc.namespace === obj.namespace){
+                _beforeActionFunc.actionList.forEach(action => {
                     if(action === obj.action){
                         emit = emitter;
-                        var arry = _beforeActionList[0];
-                        _beforeActionList.splice(0, 1);
-                        arry.callBack.call(arry.that, obj);
+                        // call function inside controller 
+                        _beforeActionFunc.callBack.call(_beforeActionFunc.that, obj);
                     }
                 });
             };
-        };
      }
 
      __callAfterAction(obj) {
-        if(_afterActionList[0] !== undefined){
-            if(_afterActionList[0].namespace === obj.namespace){
-                    _afterActionList[0].actionList.forEach(action => {
+            if(_afterActionFunc.namespace === obj.namespace){
+                _afterActionFunc.actionList.forEach(action => {
                         if(action === obj.action){
-                            var arry = _afterActionList[0];
-                            arry.that.next = function(){
-                                this.callAfterAction(obj);
-                            }
-                            _afterActionList.splice(0, 1);
-                            arry.callBack.call(arry.that, obj);
+                            _afterActionFunc.callBack.call(_afterActionFunc.that, obj);
                         }
                     });
             };
-        };
      }
 
      next(){
-        if(_beforeActionList.length === 0){
-            emit.emit("controller");
-        }
-        else{
-            this.callBeforeAction(this, emit);
-        }
+        emit.emit("controller");
      }
 }
 

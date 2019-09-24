@@ -4,24 +4,49 @@ var master = require('./MasterControl');
 
 class MasterTools{
     characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+
+    // this will remove everthing from back slash amount
+    removeBackwardSlashSection(string, amount, type){
+        type = type === undefined ? "\\" : type;
+        var stringArray =  string.split("\\");
+        for(var i = 0; i < amount; i++){
+            stringArray.pop();
+        }
+        return stringArray.join(type);
+    }
+
+    // return only the number of back slash amount
+    getBackSlashBySection(string, amount, type){
+        type = type === undefined ? "\\" : type;
+        var stringArray =  string.split("\\");
+        var newStringArray = [];
+        for(var i = 0; i < amount; i++){
+            newStringArray.unshift(stringArray.pop());
+        }
+        return newStringArray.join(type);
+    }
+
+    firstLetterUppercase(string){
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    };
    
-    encrypt(payload, secret, algorithm ){
-        const hash = crypto.createHash("sha1");
-        hash.update(secret);
-        var key = Buffer.from(hash.digest("hex").substring(0, 16), "hex");
-        var algorithm = algorithm === undefined ? 'aes-256-ctr': algorithm;
+    firstLetterlowercase(string){
+       return string.charAt(0).toLowerCase() + string.slice(1);
+    };
+   
+    encrypt(payload, secret){
+        let iv = crypto.randomBytes(16).toString('hex').slice(0, 16);
+        let key = crypto.createHash('sha256').update(String(secret)).digest('base64').substr(0, 32);
+        crypto.createCipheriv('aes-256-cbc', key, iv);
         var cipher = crypto.createCipher(algorithm,  key);
         var crypted = cipher.update(payload,'utf8','hex');
         crypted += cipher.final('hex');
         return crypted;
     }
     
-    decrypt(encryption, secret, algorithm){
-          const hash = crypto.createHash("sha1");
-          hash.update(secret);
-          var key = Buffer.from(hash.digest("hex").substring(0, 16), "hex");
-          var algorithm = algorithm === undefined ? 'aes-256-ctr': algorithm;
-          var decipher = crypto.createDecipher(algorithm, key);
+    decrypt(encryption, secret){
+          var key = crypto.createHash('sha256').update(String(secret)).digest('base64').substr(0, 32);
+          var decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
           var dec = decipher.update(encryption,'hex','utf8');
           dec += decipher.final('utf8');
           return dec;
@@ -120,8 +145,26 @@ class MasterTools{
     };
 
     combineObjects(obj, src) {
-        obj = Object.prototype.toString.call(obj) === "[object Object]" ?  obj : {};
-        Object.keys(src).forEach(function(key) { obj[key] = src[key]; });
+        for(var i in src){
+            obj[i] = src[i];
+        };
+        return obj;
+    };
+
+    makeWordId(length) {
+        var result           = '';
+        var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        var charactersLength = characters.length;
+        for ( var i = 0; i < length; i++ ) {
+           result += characters.charAt(Math.floor(Math.random() * charactersLength));
+        }
+        return result;
+    };
+    
+    combineObjectPrototype(obj, src) {
+        for(var i in src){
+            obj.prototype[i] = src[i];
+        };
         return obj;
     };
 

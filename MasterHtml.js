@@ -1,18 +1,18 @@
-
+// version 1.0.2
 var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
 var fs = require('fs');
 var tools =  master.tools;
 
-class MasterHtml {
+class html {
 	// render partial views
 	render(path, data){
 		data = data === undefined ? {} : data;
 		var params = tools.combineObjandArray(master.view.get(), data);
 
 		var partialViewUrl = "/app/views/" + path;
-		var filepartialView = fileserver.readFileSync(master.root + partialViewUrl, 'utf8');
+		var filepartialView = fileserver.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
 
 		var partialView =  ejs.render(filepartialView, params);
 		return partialView;
@@ -21,10 +21,9 @@ class MasterHtml {
 
 	   // render all your link tags styles given the folder location
 	renderStyles(folderName, typeArray){
-
 		var styles = [];
-		var styleLocation = '/app/assets/stylesheets/';
-		var styleFolder = master.root + '/app/assets/stylesheets/';
+		var styleFolder = master.router.currentRoute.root + '/app/assets/stylesheets/';
+		var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/stylesheets/';
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
 		if(folderName !== undefined && folderName !== ""){
@@ -36,11 +35,11 @@ class MasterHtml {
 
 			var fileExtension = file.replace(/^.*\./, '');
 			if(type.indexOf(fileExtension) >= 0){
-				styles.push('<link rel="stylesheet" type="text/' + type  + '" href="' + styleLocation + file + '">');
+				styles.push('<link rel="stylesheet" type="text' + type  + '" href="/' + styleLocation + file + '">');
 			}
 	   });
 
-		   var partialView =  ejs.render(styles.join(""));
+		var partialView =  ejs.render(styles.join(""));
 		return partialView;
 	}
 
@@ -48,8 +47,9 @@ class MasterHtml {
 	renderScripts(folderName, typeArray){
 
 		var scripts = [];
-		var jsFolder = master.root + '/app/assets/javascripts/';
-		var jsLocation = '/app/assets/javascripts/';
+		var jsFolder = master.router.currentRoute.root + '/app/assets/javascripts/';
+		var jsLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")  + `/app/assets/javascripts/`;
+
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
 		   if(folderName !== undefined && folderName !== ""){
@@ -57,14 +57,14 @@ class MasterHtml {
 			   jsLocation = jsLocation + folderName + "/";
 		}
 
-		 fs.readdirSync(jsFolder).forEach(function(file){
-
-			var fileExtension = file.replace(/^.*\./, '');
-			if(type.indexOf(fileExtension) >= 0){
-				
-				scripts.push('<script src="' + jsLocation +  file + '"></script>');
-			}
-	   });
+		if (fs.existsSync(jsFolder)) {
+			fs.readdirSync(jsFolder).forEach(function(file){
+				var fileExtension = file.replace(/^.*\./, '');
+				if(type.indexOf(fileExtension) >= 0){
+					scripts.push('<script src="/' + jsLocation +  file + '"></script>');
+				}
+		   });
+		}
 
 	   var partialView =  ejs.render(scripts.join(""));
 	   return partialView;
@@ -76,13 +76,13 @@ class MasterHtml {
 			return '';
 		}
 		else{
-			var jsLocation = '/app/assets/javascripts/';
+			var jsLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/javascripts/';
 			if(folder !== undefined && folder !== ""){
 				jsLocation = jsLocation + folder + "/" + name;
 			}else{
 				jsLocation = jsLocation  + name;
 			}
-			return '<script type="text/javascript" src="' + jsLocation + '"></script>';
+			return '<script type="text/javascript" src="/' + jsLocation + '"></script>';
 		}
 	}
 
@@ -92,13 +92,14 @@ class MasterHtml {
 			return "";
 		}
 		else{
-			var styleFolder = '/app/assets/stylesheets/';
+			var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")  + '/app/assets/stylesheets/';
+			
 			if(folder !== undefined && folder !== ""){
-				styleFolder = styleFolder + folder + "/" + name;
+				styleLocation = styleLocation + folder + "/" + name;
 			}else{
-				styleFolder = styleFolder + name;
+				styleLocation = styleLocation + name;
 			}
-			return '<link rel="stylesheet" type="text/css" href="' + styleFolder + '">';
+			return '<link rel="stylesheet" type="text/css" href="/' + styleLocation + '">';
 		}
 	}
 
@@ -109,7 +110,7 @@ class MasterHtml {
 
 	   // return image tag
 	imgTag(alt, location){
-		return '<img src=' + location + ' alt='+ location +'>';
+		return '<img src=' + location + ' alt='+ alt +'>';
 	}
 
 	   // return text are tag
@@ -396,20 +397,8 @@ class MasterHtml {
 			master.view.extend(newObj);
 		}
 	}
-
-	//master.view.helpers.add(name, func);
-	// add to helper to current params for view 
-	// add(name, func){
-	// 	var data = { };
-	// 	data.helpers = {};
-	// 	data.helpers[name] = func;
-	// 	if(name !== "add"){
-	// 		this.addDataToParams(data);
-	// 		MasterView.helpers[name] = func;
-	// 	};
-	// }
 	
 }
 
-master.view.extend(MasterHtml, "html");
+master.extendView(html);
 

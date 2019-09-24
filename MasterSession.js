@@ -28,34 +28,26 @@ class MasterSession{
         this.options = tools.combineObjects(options, defaultOpt);
     }
 
-    setCookie(name, payload, encrypted, response, opt){
-
-        opt = typeof opt === "undefined" ? {} : opt;
-        var options = tools.combineObjects(this.options, opt);
-        var encrypted = encrypted === undefined ? false : true;
-        if(encrypted === true){
-            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, options.secret), options));
+    setCookie(name, payload, response, secret){
+        if(secret !== undefined){
+            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), options));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), options));
+            response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), this.options));
         }
     }
 
-    getCookie (name, request, encrypted){
-        var encrypted = encrypted === undefined ? false : true;
+    getCookie (name, request, secret){
         var cooks = cookie.parse(request.headers.cookie || '');
         if(cooks !== undefined){
-            if(encrypted === false){
+            if(cooks[name] === undefined){
+                return -1;
+            }
+            if(secret === undefined){
                 return cooks[name] === undefined ? -1 : cooks[name];
             }
             else{
-                if(cooks[name] === undefined){
-                    return -1
-                }
-                else{
-                    return tools.decrypt(cooks[name], this.options.secret);
-                }
-               
+                return tools.decrypt(cooks[name], this.options.secret);
             }
         }
         else{

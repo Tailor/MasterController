@@ -1,5 +1,5 @@
 // MasterError- by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
+// version 1.0.14 - beta -- node compatiable
 
 var master = require('./MasterControl');
 var winston = require('winston');
@@ -9,20 +9,19 @@ class MasterError{
     logger = "";
     statuses = [];
     
-    init(statusCodes){
+    init(error, publicfolder){
 
         var that = this;
-        var stat = statusCodes.error;
-        stat.publicfolder = statusCodes.publicfolder;
+        var stat = error;
+        stat.publicfolder = publicfolder;
         this.addStatuses(stat);
-        this.env = master.env.type;
-        this._baseUrl = master.root;
+        this.env = master.environmentType;
 
         this.logger = winston.createLogger({
             format: winston.format.json(),
             transports: [
                   new winston.transports.Console(),
-                  new winston.transports.File({ filename: this._baseUrl + '/log/'+ that.env +'.log' })
+                  new winston.transports.File({ filename: master.root + '/log/'+ that.env +'.log' })
               ]
           });
         
@@ -63,7 +62,7 @@ class MasterError{
                     for (var i = 0; i < status.length; i++) {
                             if(parseInt(status[i].code) === statusCode){
                                 var location = status[i].route.replace(/^\/|\/$/g, '');
-                                var html = fileserver.readFileSync(that._baseUrl + "/" + status[i].folder + "/" + location, 'utf8' );
+                                var html = fileserver.readFileSync(master.root + "/" + status[i].folder + "/" + location, 'utf8' );
                                 if (!res.headersSent) {
                                         res.writeHead(200, {'Content-Type': 'text/html'});
                                         res.write(html, 'utf8');
