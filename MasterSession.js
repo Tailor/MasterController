@@ -1,5 +1,5 @@
-// MasterSession - by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
+ 
+// version 0.0.13
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
@@ -61,6 +61,7 @@ class MasterSession{
         this.options.expires = undefined;
     }
 
+    // delete session and cookie
     delete(name, response){
         var sessionID = sessions[name];
         this.options.expires = new Date(0);
@@ -69,36 +70,34 @@ class MasterSession{
         this.options.expires = undefined;
     }
 
+    // resets all sessions
     reset(){
         this.sessions = {};
     }
 
-    set(name, payload, encrypted, opt, response){
-        opt = typeof opt === "undefined" ? {} : opt;
-        var options = tools.combineObjects(this.options, opt);
-        var encrypted = encrypted === undefined ? false : true;
-
+    // sets session with random id to get cookie
+    set(name, payload, response, secret){
         var sessionID = tools.generateRandomKey('sha256');
         this.sessions[name] = sessionID;
-        if(encrypted === true){
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, options.secret), options));
+        if(secret === undefined){
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), this.options));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), options));
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, secret), this.options));
         }
     }
 
-    get(name, encrypted, request){
-        var encrypted = encrypted === undefined ? false : true;
+    // gets session then gets cookie
+    get(name, request, secret){
         var sessionID = this.sessions[name];
         if(sessionID !== undefined){
             var cooks = cookie.parse(request.headers.cookie || '');
             if(cooks !== undefined){
-                if(encrypted === false){
+                if(secret === undefined){
                     return cooks[sessionID];
                 }
                 else{
-                   return tools.decrypt(cooks[sessionID], this.options.secret);
+                   return tools.decrypt(cooks[sessionID], secret);
                 }
             }
         }

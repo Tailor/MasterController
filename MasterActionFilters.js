@@ -1,4 +1,4 @@
-// version 1.3
+// version 1.4
 var master = require('mastercontroller');
 var _beforeActionFunc = {
     namespace :   "",
@@ -19,9 +19,8 @@ class MasterActionFilters {
     // add function to list
     beforeAction(actionlist, func){
         if (typeof func === 'function') {
-            var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
-            _beforeActionFunc ={
-                namespace :   namespace,
+            _beforeActionFunc = {
+                namespace : this.__namespace,
                 actionList : actionlist,
                 callBack : func,
                 that : this
@@ -36,9 +35,8 @@ class MasterActionFilters {
     // add function to list
     afterAction(actionlist, func){
         if (typeof func === 'function') {
-            var namespace = (this.__namespace.toLowerCase()).replace(/controller/g, "");
             _afterActionFunc = {
-                namespace :   namespace,
+                namespace : this.__namespace,
                 actionList : actionlist,
                 callBack : func,
                 that : this
@@ -51,11 +49,11 @@ class MasterActionFilters {
     }
     
     // check to see if that controller has a before Action method.
-    __hasBeforeAction(obj){
+    __hasBeforeAction(obj, request){
         var flag = false;
-        if(_beforeActionFunc.namespace === obj.namespace){
+        if(_beforeActionFunc.namespace === obj.__namespace){
             for (var a = 0; a < _beforeActionFunc.actionList.length; a++) { 
-                if(_beforeActionFunc.actionList[a] === obj.action){
+                if(_beforeActionFunc.actionList[a] === request.toAction){
                     flag = true;
                 }
             }
@@ -63,23 +61,23 @@ class MasterActionFilters {
         return flag;
     }
 
-    __callBeforeAction(obj, emitter) {
-            if(_beforeActionFunc.namespace === obj.namespace){
+    __callBeforeAction(obj, request, emitter) {
+            if(_beforeActionFunc.namespace === obj.__namespace){
                 _beforeActionFunc.actionList.forEach(action => {
-                    if(action === obj.action){
+                    if(action === request.toAction){
                         emit = emitter;
                         // call function inside controller 
-                        _beforeActionFunc.callBack.call(_beforeActionFunc.that, obj);
+                        _beforeActionFunc.callBack.call(_beforeActionFunc.that, request);
                     }
                 });
             };
      }
 
-     __callAfterAction(obj) {
-            if(_afterActionFunc.namespace === obj.namespace){
+     __callAfterAction(obj, request) {
+            if(_afterActionFunc.namespace === obj.__namespace){
                 _afterActionFunc.actionList.forEach(action => {
-                        if(action === obj.action){
-                            _afterActionFunc.callBack.call(_afterActionFunc.that, obj);
+                        if(action === request.toAction){
+                            _afterActionFunc.callBack.call(_afterActionFunc.that, request);
                         }
                     });
             };
