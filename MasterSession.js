@@ -1,5 +1,5 @@
  
-// version 0.0.15
+// version 0.0.16
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
@@ -9,28 +9,64 @@ var crypto = require('crypto');
 class MasterSession{
 
     sessions = {};
-    
-    init(options){
-        options.secret = this.createSessionID();
+    options = {
+        domain: undefined,
+        encode : undefined,
+        maxAge: 900000,
+        expires : undefined ,
+        secure:false,
+        httpOnly:true,
+        sameSite : true,
+        path : '/',
+        secret : this.createSessionID()
+    };
 
-        var defaultOpt = {
-            domain: undefined,
-            encode : undefined,
-            maxAge: 60 * 60 * 24 * 7 ,
-            expires : undefined ,
-            secure:false,
-            httpOnly:true,
-            sameSite : false,
-        };
-
-        this.options = tools.combineObjects(options, defaultOpt);
+    init(){
         var $that = this;
         return {
-            cookieName : function(name){
-                $that.options.cookieName = name;
-            },
             setPath : function(path){
                 $that.options.path = path === undefined ? '/' : path;
+                return this;
+            },
+            sameSiteTrue : function(){
+                $that.options.sameSite = true;
+                return this;
+            },
+            sameSiteFalse : function(){
+                $that.options.sameSite = false;
+                return this;
+            },
+            httpOnlyTrue : function(){
+                $that.options.httpOnly = true;
+                return this;
+            },
+            httpOnlyFalse : function(){
+                $that.options.httpOnly = false;
+                return this;
+            },
+            secureTrue : function(){
+                $that.options.secure = true;
+                return this;
+            },
+            securefalse : function(){
+                $that.options.secure = false;
+                return this;
+            },
+            expires : function(exp){
+                $that.options.expires = exp === undefined ? undefined : exp;
+                return this;
+            },
+            maxAge : function(num){
+                $that.options.maxAge = num === undefined ? 0 : num;
+                return this;
+            },
+            encode: function(func){
+                $that.options.encode = func;
+                return this;
+            },
+            domain : function(dom){
+                $that.options.domain = dom;
+                return this;
             }
         };
     }
@@ -93,14 +129,15 @@ class MasterSession{
     }
 
     // sets session with random id to get cookie
-    set(name, payload, response, secret){
+    set(name, payload, response, secret, options){
+        var cookieOpt = options === undefined? this.options : options; 
         var sessionID = this.createSessionID();
         this.sessions[name] = sessionID;
         if(secret === undefined){
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), this.options));
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), cookieOpt));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, secret), this.options));
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, secret), cookieOpt));
         }
     }
 
