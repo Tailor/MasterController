@@ -1,19 +1,18 @@
-// MasterSession - by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.12 - beta -- node compatiable
+ 
+// version 0.0.14
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
 var tools = master.tools;
+var crypto = require('crypto');
 
 class MasterSession{
 
     sessions = {};
     
     init(options){
+        options.secret = createSessionID();
 
-        if(options.secret === undefined){
-            throw "sessions must have secret";
-        };
         var defaultOpt = {
             path:'/',
             domain: undefined,
@@ -28,17 +27,31 @@ class MasterSession{
         this.options = tools.combineObjects(options, defaultOpt);
     }
 
-    setCookie(name, payload, response, secret){
+    createSessionID(){
+        return crypto.randomBytes(20).toString('hex');
+    }
+
+    getSessionID(){
+         return this.secret;
+    }
+
+    cookieName(name){
+        this.options.cookieName = name;
+    }
+
+    setCookie(name, payload, response, secret, options){
+        var cookieOpt = options === undefined? this.options : options;
         if(secret !== undefined){
-            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), options));
+            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), cookieOpt));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), this.options));
+            response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), cookieOpt));
         }
     }
 
     getCookie (name, request, secret){
         var cooks = cookie.parse(request.headers.cookie || '');
+
         if(cooks !== undefined){
             if(cooks[name] === undefined){
                 return -1;
@@ -47,7 +60,7 @@ class MasterSession{
                 return cooks[name] === undefined ? -1 : cooks[name];
             }
             else{
-                return tools.decrypt(cooks[name], this.options.secret);
+                return tools.decrypt(cooks[name], secret);
             }
         }
         else{
@@ -61,6 +74,7 @@ class MasterSession{
         this.options.expires = undefined;
     }
 
+    // delete session and cookie
     delete(name, response){
         var sessionID = sessions[name];
         this.options.expires = new Date(0);
@@ -69,36 +83,34 @@ class MasterSession{
         this.options.expires = undefined;
     }
 
+    // resets all sessions
     reset(){
         this.sessions = {};
     }
 
-    set(name, payload, encrypted, opt, response){
-        opt = typeof opt === "undefined" ? {} : opt;
-        var options = tools.combineObjects(this.options, opt);
-        var encrypted = encrypted === undefined ? false : true;
-
-        var sessionID = tools.generateRandomKey('sha256');
+    // sets session with random id to get cookie
+    set(name, payload, response, secret){
+        var sessionID = this.createSessionID();
         this.sessions[name] = sessionID;
-        if(encrypted === true){
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, options.secret), options));
+        if(secret === undefined){
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), this.options));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(sessionID, JSON.stringify(payload), options));
+            response.setHeader('Set-Cookie', cookie.serialize(sessionID, tools.encrypt(payload, secret), this.options));
         }
     }
 
-    get(name, encrypted, request){
-        var encrypted = encrypted === undefined ? false : true;
+    // gets session then gets cookie
+    get(name, request, secret){
         var sessionID = this.sessions[name];
         if(sessionID !== undefined){
             var cooks = cookie.parse(request.headers.cookie || '');
             if(cooks !== undefined){
-                if(encrypted === false){
+                if(secret === undefined){
                     return cooks[sessionID];
                 }
                 else{
-                   return tools.decrypt(cooks[sessionID], this.options.secret);
+                   return tools.decrypt(cooks[sessionID], secret);
                 }
             }
         }

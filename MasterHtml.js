@@ -1,4 +1,4 @@
-// version 1.0.2
+// version 1.0.3
 var master = require('./MasterControl');
 var fileserver = require('fs');
 var ejs = require('ejs');
@@ -35,7 +35,7 @@ class html {
 
 			var fileExtension = file.replace(/^.*\./, '');
 			if(type.indexOf(fileExtension) >= 0){
-				styles.push('<link rel="stylesheet" type="text' + type  + '" href="/' + styleLocation + file + '">');
+				styles.push('<link rel="stylesheet" type="text/' + type  + '" href="/' + styleLocation + file + '">');
 			}
 	   });
 

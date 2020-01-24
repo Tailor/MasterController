@@ -1,52 +1,25 @@
 {
-  "_from": "mastercontroller@^1.1.0",
-  "_id": "mastercontroller@1.1.0",
-  "_inBundle": false,
-  "_integrity": "sha512-HF8IIrzFgRRIDrrph979LZo0vYRwYmLlz2mMn7gx6Y0A2isKllk7CpuIxDfSnoDzrO9SkuR6o1TkRG64b2/TeA==",
-  "_location": "/mastercontroller",
-  "_phantomChildren": {},
-  "_requested": {
-    "type": "range",
-    "registry": true,
-    "raw": "mastercontroller@^1.1.0",
-    "name": "mastercontroller",
-    "escapedName": "mastercontroller",
-    "rawSpec": "^1.1.0",
-    "saveSpec": null,
-    "fetchSpec": "^1.1.0"
-  },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.1.0.tgz",
-  "_shasum": "908e7e43a39de22ecd460ccb255e530edc17ee58",
-  "_spec": "mastercontroller@^1.1.0",
-  "_where": "C:\\Users\\rbatista\\Desktop\\freshmen",
-  "author": {
-    "name": "Alexander Batista",
-    "email": "spidergt1@aol.com"
-  },
+  "name": "mastercontroller",
+  "version": "1.1.2",
+  "author": "Alexander Batista",
+  "main": "./MasterControl.js",
   "bugs": {
     "url": "https://github.com/Tailor/MasterController/issues"
   },
-  "bundleDependencies": [],
   "dependencies": {
     "busboy": "^0.3.1",
     "cookie": "^0.4.0",
     "ejs": "^2.7.1",
     "winston": "^3.2.1"
   },
-  "deprecated": false,
+  "description": "A class library that makes using the Master Framework a breeze",
   "homepage": "https://github.com/Tailor/MasterController#readme",
-  "license": "Apache-2.0",
-  "main": "MasterControl.js",
-  "name": "mastercontroller",
+  "license": "ISC",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Tailor/MasterController.git"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "version": "1.1.0"
+  }
 }

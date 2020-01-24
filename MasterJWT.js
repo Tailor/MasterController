@@ -1,5 +1,5 @@
 
-// version 1.0.12 - beta -- node compatiable
+// version 1.0.13 - beta -- node compatiable
 var master = require('./MasterControl');
 var crypto = require('crypto');
 var tools =  master.tools;
@@ -7,14 +7,21 @@ var tools =  master.tools;
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
 class MasterJWT{
     
-        init(options){
-            this.alg = typeof options.algorithm === "undefined" ? "sha256": options.algorithm;
+        init(){
+            this.alg =  "sha256";
+            this.secret = this.createJWTID();
+        }
+        
+        createJWTID(){
+           return crypto.randomBytes(20).toString('hex');
+        }
 
-            if(options.secret === undefined){
-                throw "jwt must have secret";
-            };
-            
-            this.secret = options.secret;
+        getJWTID(){
+            return  this.secret;
+        }
+
+        usesha256(){
+            this.alg =  "sha256";
         }
 
         create(payload, encrypted, encryptionKey){

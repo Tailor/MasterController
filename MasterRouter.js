@@ -1,5 +1,5 @@
 
-// version 1.0.21
+// version 1.0.22
 var master = require('./MasterControl');
 var tools =  master.tools;
 const EventEmitter = require("events");
@@ -246,14 +246,14 @@ class MasterRouter {
          
          _callEmit.on("controller", function(){
             control.next = function(){
-                control.__callAfterAction(requestObject);
+                control.__callAfterAction(control, requestObject);
             }
             control[requestObject.toAction](requestObject);
          });
         
          // check if before function is avaliable and wait for it to return
-         if(control.__hasBeforeAction(control)){
-             control.__callBeforeAction(control, _callEmit);
+         if(control.__hasBeforeAction(control, requestObject)){
+             control.__callBeforeAction(control, requestObject, _callEmit);
          }else{
             _callEmit.emit("controller");
          }
