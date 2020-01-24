@@ -1,5 +1,5 @@
 // MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
-// version 1.0.3
+// version 1.0.14
 var url = require('url');
 var fileserver = require('fs');
 var busboy = require('busboy');
@@ -112,9 +112,12 @@ class MasterControl {
         }
     }
 
-    register(param, name){
-        var className = name === undefined ? param.constructor.name : name;
-        this.requestList[className] = param;
+    register(name, param){
+        if(name !== undefined && param !== undefined){
+            this.requestList[name] = param;
+        }
+        // var className = name === undefined ? param.constructor.name : name;
+        // this.requestList[className] = param;
     }
 
     get env(){

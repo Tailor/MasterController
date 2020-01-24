@@ -31,7 +31,7 @@ class MasterSocket{
                 data.action = data[0];
                 data.type = "socket";
                 
-                if(bs.callBeforeAction !== undefined){
+                if(bs.callBeforeAction){
                     await bs.callBeforeAction(data);
                 }
 

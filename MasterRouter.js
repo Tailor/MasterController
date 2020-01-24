@@ -1,5 +1,6 @@
 
-// version 1.0.22
+// version 1.0.14
+
 var master = require('./MasterControl');
 var tools =  master.tools;
 const EventEmitter = require("events");
@@ -40,7 +41,7 @@ var _getCallerFile = function(){
     for(i = 0; i < requestPathList.length; i++){
         requestItem = requestPathList[i];
         routeItem = routePathList[i];
-        if(routeItem !== undefined){
+        if(routeItem){
             if(routeItem.indexOf(":") > -1){
                 requestParams[routeItem.replace(":", "")] = requestItem;
                 routePathList[i] = requestItem;
@@ -208,13 +209,13 @@ class MasterRouter {
 
     mimes(mimeObject){
         var that = this;
-        if(mimeObject.mime !== null && mimeObject.mime !== undefined){
-            that.mimeTypes = mimeObject.mime;
+        if(mimeObject){
+            that.mimeTypes = mimeObject;
         }
     }
 
     findMimeType(fileExt){
-        if(fileExt !== null && fileExt !== undefined && fileExt !== ""){
+        if(fileExt){
             var type = undefined;
             var mime = this.mimeTypes;
             for(var i in mime) {

@@ -1,5 +1,6 @@
 
-// version 1.0.13 - beta -- node compatiable
+// version 1.0.14
+
 var master = require('./MasterControl');
 var crypto = require('crypto');
 var tools =  master.tools;
@@ -8,8 +9,14 @@ var tools =  master.tools;
 class MasterJWT{
     
         init(){
-            this.alg =  "sha256";
+            this.alg = "sha256";
             this.secret = this.createJWTID();
+            var $that = this;
+            return {
+                sha256 : function(){
+                    $that.alg = "sha256"
+                }
+            };
         }
         
         createJWTID(){
@@ -17,11 +24,7 @@ class MasterJWT{
         }
 
         getJWTID(){
-            return  this.secret;
-        }
-
-        usesha256(){
-            this.alg =  "sha256";
+            return this.secret;
         }
 
         create(payload, encrypted, encryptionKey){
@@ -50,7 +53,7 @@ class MasterJWT{
             
             if(encrypted === true){
                 header["encrypt"] = 'aes-256-ctr';
-                if(encryptionKey ===  undefined){
+                if(encryptionKey === undefined){
                     encodePayload =  tools.base64().encode(tools.encrypt(JSON.stringify(body), this.secret));
                 }else{
                     encodePayload =  tools.base64().encode(tools.encrypt(JSON.stringify(body), encryptionKey));
@@ -61,7 +64,7 @@ class MasterJWT{
             }
 
             
-            if(encryptionKey ===  undefined){
+            if(encryptionKey === undefined){
                 hmac = crypto.createHmac(this.alg, this.secret);
             }else{
                 hmac = crypto.createHmac(this.alg, encryptionKey);
@@ -99,31 +102,6 @@ class MasterJWT{
                 return -1;
             }
         }
-
-        // creates and sends to cookie
-        // set(name, payload, encrypted, response, encryptionKey){
-        //     if(typeof payload === "string"){
-        //         throw "payload must be object not string";
-        //     }
-        //     var encrypted = typeof encrypted === "undefined" ? false : encrypted;
-        //     var sig = this.sign(payload, encrypted, encryptionKey);
-        //     master.sessions.setCookie(name, sig, encrypted, response);
-        //     return sig;
-        // }
-
-        // get(name, request, encrypted){
-        //     var encrypted = typeof encrypted === "undefined" ? false : true;
-        //     var cook = master.sessions.getCookie(name, request, encrypted );
-        //     var valid = "";
-        //     if(cook !== -1 && cook !== ""){
-        //         valid = this.verify(cook, encrypted);
-        //         if(valid !== -1){
-        //             return valid;
-        //         }
-        //     }else{
-        //         return -1;
-        //     }
-        // }
 }
 
 

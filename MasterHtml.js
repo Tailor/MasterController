@@ -26,7 +26,7 @@ class html {
 		var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/stylesheets/';
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
-		if(folderName !== undefined && folderName !== ""){
+		if(folderName){
 			styleFolder = styleFolder + folderName + "/";
 			styleLocation = styleLocation + folderName+ "/";
 		 }
@@ -52,7 +52,7 @@ class html {
 
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
-		   if(folderName !== undefined && folderName !== ""){
+		   if(folderName){
 			   jsFolder = jsFolder + folderName + "/";
 			   jsLocation = jsLocation + folderName + "/";
 		}
@@ -77,7 +77,7 @@ class html {
 		}
 		else{
 			var jsLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/javascripts/';
-			if(folder !== undefined && folder !== ""){
+			if(folder){
 				jsLocation = jsLocation + folder + "/" + name;
 			}else{
 				jsLocation = jsLocation  + name;
@@ -94,7 +94,7 @@ class html {
 		else{
 			var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")  + '/app/assets/stylesheets/';
 			
-			if(folder !== undefined && folder !== ""){
+			if(folder){
 				styleLocation = styleLocation + folder + "/" + name;
 			}else{
 				styleLocation = styleLocation + name;
@@ -391,7 +391,7 @@ class html {
 	addDataToParams(data){
 
 		//loop through data and add it to new oobjects prototype
-		if(data != null){
+		if(data){
 			var newObj = Object.create(data);
 			newObj.prototype = newObj.__proto__;
 			master.view.extend(newObj);

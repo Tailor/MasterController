@@ -1,5 +1,5 @@
  
-// version 0.0.14
+// version 0.0.15
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
@@ -11,10 +11,9 @@ class MasterSession{
     sessions = {};
     
     init(options){
-        options.secret = createSessionID();
+        options.secret = this.createSessionID();
 
         var defaultOpt = {
-            path:'/',
             domain: undefined,
             encode : undefined,
             maxAge: 60 * 60 * 24 * 7 ,
@@ -25,6 +24,15 @@ class MasterSession{
         };
 
         this.options = tools.combineObjects(options, defaultOpt);
+        var $that = this;
+        return {
+            cookieName : function(name){
+                $that.options.cookieName = name;
+            },
+            setPath : function(path){
+                $that.options.path = path === undefined ? '/' : path;
+            }
+        };
     }
 
     createSessionID(){
@@ -35,13 +43,9 @@ class MasterSession{
          return this.secret;
     }
 
-    cookieName(name){
-        this.options.cookieName = name;
-    }
-
     setCookie(name, payload, response, secret, options){
         var cookieOpt = options === undefined? this.options : options;
-        if(secret !== undefined){
+        if(secret){
             response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), cookieOpt));
         }
         else{
@@ -52,7 +56,7 @@ class MasterSession{
     getCookie (name, request, secret){
         var cooks = cookie.parse(request.headers.cookie || '');
 
-        if(cooks !== undefined){
+        if(cooks){
             if(cooks[name] === undefined){
                 return -1;
             }
@@ -103,9 +107,9 @@ class MasterSession{
     // gets session then gets cookie
     get(name, request, secret){
         var sessionID = this.sessions[name];
-        if(sessionID !== undefined){
+        if(sessionID){
             var cooks = cookie.parse(request.headers.cookie || '');
-            if(cooks !== undefined){
+            if(cooks){
                 if(secret === undefined){
                     return cooks[sessionID];
                 }

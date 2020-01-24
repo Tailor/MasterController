@@ -118,7 +118,7 @@ class MasterTools{
 
     combineObjandArray(data, objParams){
 
-        if(Array.isArray(data)=== false){
+        if(Array.isArray(data) === false){
             // if data is object
             for (var key in data) {
                 if (data.hasOwnProperty(key)) {
