@@ -3,7 +3,7 @@
 
 var master = require('./MasterControl');
 var crypto = require('crypto');
-var tools =  master.tools;
+var tools =  require('./MasterTools');
 
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
 class MasterJWT{

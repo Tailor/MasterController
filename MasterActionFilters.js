@@ -88,5 +88,5 @@ class MasterActionFilters {
      }
 }
 
-master.extendController(MasterActionFilters);
+master.extendController(new MasterActionFilters());
 //module.exports = MasterActionFilters;

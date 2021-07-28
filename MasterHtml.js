@@ -1,20 +1,34 @@
 // version 1.0.3
 var master = require('./MasterControl');
 var fileserver = require('fs');
-var ejs = require('ejs');
+var  temp =  require('./MasterTemplate');
 var fs = require('fs');
-var tools =  master.tools;
+var tools =  require('./MasterTools');
 
 class html {
+
+	javaScriptSerializer(name, obj){
+		return `<script data-eer type="text/javascript">
+			${name} = ${JSON.stringify(obj)}
+		</script>`;
+	}
+
 	// render partial views
 	render(path, data){
 		data = data === undefined ? {} : data;
 		var params = tools.combineObjandArray(master.view.get(), data);
 
-		var partialViewUrl = "/app/views/" + path;
+		var partialViewUrl = `/app/views/${path}`;
 		var filepartialView = fileserver.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
 
-		var partialView =  ejs.render(filepartialView, params);
+		var partialView = null;
+		if(typeof(master.action.templateFunc) === "function"){
+			partialView = master.action.templateFunc(filepartialView, params);
+		}
+		else{
+			partialView =  temp.htmlBuilder(filepartialView, params);	
+		}
+
 		return partialView;
 
 	}
@@ -22,24 +36,32 @@ class html {
 	   // render all your link tags styles given the folder location
 	renderStyles(folderName, typeArray){
 		var styles = [];
-		var styleFolder = master.router.currentRoute.root + '/app/assets/stylesheets/';
-		var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/stylesheets/';
+		var styleFolder = `${master.router.currentRoute.root}/app/assets/stylesheets/`;
+		var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") }/app/assets/stylesheets/`;
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
 		if(folderName){
 			styleFolder = styleFolder + folderName + "/";
 			styleLocation = styleLocation + folderName+ "/";
 		 }
-		 
-		fs.readdirSync(styleFolder).forEach(function(file){
+		 if (fs.existsSync(styleFolder)) {
+				fs.readdirSync(styleFolder).forEach(function(file){
 
-			var fileExtension = file.replace(/^.*\./, '');
-			if(type.indexOf(fileExtension) >= 0){
-				styles.push('<link rel="stylesheet" type="text/' + type  + '" href="/' + styleLocation + file + '">');
-			}
-	   });
+					var fileExtension = file.replace(/^.*\./, '');
+					if(type.indexOf(fileExtension) >= 0){
+						styles.push(`<link rel="stylesheet" type="text/${type}" href="/${styleLocation}${file}">`);
+					}
+			});
+		}
+	   	var partialView = null;
+		
+		if(typeof(master.action.templateFunc) === "function"){
+			partialView = master.action.templateFunc(styles.join(""), {});
+		}
+		else{
+			partialView =  temp.htmlBuilder(styles.join(""),{});	
+		}
 
-		var partialView =  ejs.render(styles.join(""));
 		return partialView;
 	}
 
@@ -47,8 +69,8 @@ class html {
 	renderScripts(folderName, typeArray){
 
 		var scripts = [];
-		var jsFolder = master.router.currentRoute.root + '/app/assets/javascripts/';
-		var jsLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")  + `/app/assets/javascripts/`;
+		var jsFolder =`${master.router.currentRoute.root}/app/assets/javascripts/`;
+		var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/javascripts/`;
 
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
@@ -61,12 +83,20 @@ class html {
 			fs.readdirSync(jsFolder).forEach(function(file){
 				var fileExtension = file.replace(/^.*\./, '');
 				if(type.indexOf(fileExtension) >= 0){
-					scripts.push('<script src="/' + jsLocation +  file + '"></script>');
+					scripts.push(`<script src="/${jsLocation}${file}"></script>`);
 				}
 		   });
 		}
 
-	   var partialView =  ejs.render(scripts.join(""));
+		var partialView = null;
+
+		if(typeof(master.action.templateFunc) === "function"){
+			partialView = master.action.templateFunc(scripts.join(""), {});
+		}
+		else{
+			partialView =  temp.htmlBuilder(scripts.join(""),{});	
+		}
+
 	   return partialView;
 	}
 
@@ -76,13 +106,13 @@ class html {
 			return '';
 		}
 		else{
-			var jsLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") + '/app/assets/javascripts/';
+			var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/javascripts/`;
 			if(folder){
 				jsLocation = jsLocation + folder + "/" + name;
 			}else{
 				jsLocation = jsLocation  + name;
 			}
-			return '<script type="text/javascript" src="/' + jsLocation + '"></script>';
+			return `<script type="text/javascript" src="/${jsLocation}"></script>`;
 		}
 	}
 
@@ -92,14 +122,14 @@ class html {
 			return "";
 		}
 		else{
-			var styleLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")  + '/app/assets/stylesheets/';
+			var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/stylesheets/`;
 			
 			if(folder){
 				styleLocation = styleLocation + folder + "/" + name;
 			}else{
 				styleLocation = styleLocation + name;
 			}
-			return '<link rel="stylesheet" type="text/css" href="/' + styleLocation + '">';
+			return `<link rel="stylesheet" type="text/css" href="/${styleLocation}">`;
 		}
 	}
 
@@ -400,5 +430,5 @@ class html {
 	
 }
 
-master.extendView(html);
+master.extendView("html", new html());
 

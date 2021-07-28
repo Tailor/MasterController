@@ -1,14 +1,29 @@
-
 var crypto = require('crypto');
-var master = require('./MasterControl');
 
 class MasterTools{
     characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
+    isObjLiteral(_obj) {
+        var _test  = _obj;
+        return (  typeof _obj !== 'object' || _obj === null ?
+                    false :  
+                    (
+                      (function () {
+                        while (!false) {
+                          if (  Object.getPrototypeOf( _test = Object.getPrototypeOf(_test)  ) === null) {
+                            break;
+                          }      
+                        }
+                        return Object.getPrototypeOf(_obj) === _test;
+                      })()
+                    )
+                );
+    }
+
     // this will remove everthing from back slash amount
     removeBackwardSlashSection(string, amount, type){
         type = type === undefined ? "\\" : type;
-        var stringArray =  string.split("\\");
+        var stringArray =  string.split(type);
         for(var i = 0; i < amount; i++){
             stringArray.pop();
         }
@@ -18,7 +33,7 @@ class MasterTools{
     // return only the number of back slash amount
     getBackSlashBySection(string, amount, type){
         type = type === undefined ? "\\" : type;
-        var stringArray =  string.split("\\");
+        var stringArray =  string.split(type);
         var newStringArray = [];
         for(var i = 0; i < amount; i++){
             newStringArray.unshift(stringArray.pop());
@@ -169,6 +184,7 @@ class MasterTools{
     };
 
     convertArrayToObject(obj, keyPath, value) {
+        var key = null;
        var lastKeyIndex = keyPath.length-1;
         for (var i = 0; i < lastKeyIndex; ++ i) {
           key = keyPath[i];
@@ -182,4 +198,4 @@ class MasterTools{
     
 }
 
-master.extend({tools: new MasterTools()});
+module.exports = new MasterTools();

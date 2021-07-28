@@ -1,8 +1,8 @@
 
-// version 1.0.14
+// version 1.0.15
 
 var master = require('./MasterControl');
-var tools =  master.tools;
+var tools =  require('./MasterTools');
 const EventEmitter = require("events");
 var currentRoute = {};
 
@@ -69,7 +69,7 @@ var _getCallerFile = function(){
                 if(typeof routeList[item].constraint === "function"){
                     
                     var newObj = {};
-                    tools.combineObjects(newObj, master.controllerList);
+                    //tools.combineObjects(newObj, master.controllerList);
                     newObj.next = function(){
                         currentRoute.root = root;
                         currentRoute.pathName = requestObject.pathName;
@@ -104,17 +104,34 @@ var _getCallerFile = function(){
 class MasterRouter {
     currentRouteName = null
     _routes = {}
-    
-    loadRoutes(){
+    _platform = process.platform
+    loadRoutes(mimeList){
+        this.init(mimeList);
+    }
+
+    init(mimeList){
+        this.addMimeList(mimeList);
         var rootFileName = _getCallerFile();
-        var rootLocation = master.tools.removeBackwardSlashSection(rootFileName, 2);
+        var rootLocation = "";
+        if(this._platform === "win32"){
+            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2);
+        }
+        if(this._platform === "darwin"){
+            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2, "/");
+        }
         require(rootLocation + "/routes");
     }
 
     start(){
         var $that = this;
         var rootFileName = _getCallerFile();
-        var rootLocation = master.tools.removeBackwardSlashSection(rootFileName, 2);
+        var rootLocation = "";
+        if(this._platform === "win32"){
+            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2);
+        }
+        if(this._platform === "darwin"){
+            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2, "/");
+        }
         this.currentRouteName = tools.makeWordId(4);
         
         if(this._routes[this.currentRouteName] === undefined){
@@ -125,13 +142,13 @@ class MasterRouter {
         }
         return {
             route : function(path, toPath, type, constraint){ // function to add to list of routes
-        
+                
                 var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
-        
+                
                 var route = {
                     type: type.toLowerCase(),
                     path: path.replace(/^\/|\/$/g, ''),
-                    toController :pathList[0],
+                    toController :pathList[0].replace(/^\/|\/$/g, ''),
                     toAction: pathList[1],
                     constraint : constraint
                 };
@@ -207,7 +224,7 @@ class MasterRouter {
         return currentRoute;
     }
 
-    mimes(mimeObject){
+    addMimeList(mimeObject){
         var that = this;
         if(mimeObject){
             that.mimeTypes = mimeObject;
@@ -238,7 +255,7 @@ class MasterRouter {
 
     _call(requestObject){
 
-         tools.combineObjects(requestObject, master.requestList)
+         tools.combineObjects(requestObject, master.requestList);
          var Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
          tools.combineObjectPrototype(Control, master.controllerList);
          Control.prototype.__namespace = Control.name;

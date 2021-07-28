@@ -1,60 +1,9 @@
 // MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
-// version 1.0.14
+// version 1.0.15
+// TODO: CONTROL MaxRequestLength IN SETTINGS SO THAT WE CAN CHECK AND RETURN
+
 var url = require('url');
 var fileserver = require('fs');
-var busboy = require('busboy');
-
-// gets and converts data and puts it into the params object
-var _getRequestParam = function(request, type){
-
-    try {
-            // routing get data sent through request
-            if(type === "get"){
-                var parsedURL = url.parse(request.requrl, true);
-                return parsedURL.query;
-            }
-
-            // routing Post data sent through request
-            if (type === "post" || type === "put") {
-
-                var body = {};
-                body.files = [];
-
-                var form = new busboy({ headers: request.headers });
-
-                form.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
-                    var dotNotation = fieldname.replace(/[\[\]']+/g,',').replace(/,\s*$/, "").split(",");
-                    master.tools.convertArrayToObject(body, dotNotation, val);
-
-                });
-
-                form.on('file', function(fieldname, file, filename, encoding, mimetype) {
-
-                    if(body.files){
-                        body.files.push({
-                            fieldname : fieldname,
-                            file : file,
-                            filename : filename,
-                            mimetype :  mimetype
-                        });
-                    }
-
-                });
-
-                request.pipe(form);
-
-                return new Promise(function (resolve, reject) {
-                    request.on('end', function () {
-                        //var query = qs.parse(body);
-                        return resolve(body);
-                    });
-                });
-            }
-        }
-        catch (ex) {
-            throw ex;
-        }
-};
 
 class MasterControl {
     controllerList = {}
@@ -77,47 +26,38 @@ class MasterControl {
         return MasterControl;
     }
 
+    // extends class methods to be used inside of the view class using the THIS keyword
+    extendView( name, element){
+        var $that = this;
+        var propertyNames = Object.getOwnPropertyNames( element.__proto__);
+        this.viewList[name] = {};
+        for(var i in propertyNames){
+            if(propertyNames !== "constructor"){
+                if (propertyNames.hasOwnProperty(i)) {
+                    $that.viewList[name][propertyNames[i]] = element[propertyNames[i]];
+                }
+            }
+        };
+    }
 
     // extends class methods to be used inside of the controller class using the THIS keyword
     extendController(element){
-        if(element.prototype === undefined) {
-            throw "cannot extend controller using an instantiated class";
-        }
-        else{
-            var propertyNames = Object.getOwnPropertyNames(element.prototype);
-            var elementInstance = new element();
-            for(var i in propertyNames){
+        
+        var $that = this;
+        var propertyNames = Object.getOwnPropertyNames( element.__proto__);
+        for(var i in propertyNames){
+            if(propertyNames !== "constructor"){
                 if (propertyNames.hasOwnProperty(i)) {
-                    this.controllerList[propertyNames[i]] = elementInstance[propertyNames[i]];
-				}
-            };
-        }
+                    $that.controllerList[propertyNames[i]] = element[propertyNames[i]];
+                }
+            }
+        };
     }
-
-    // extends class methods to be used inside of the view class using the THIS keyword
-    extendView(element, name){
-        if(element.prototype === undefined) {
-            throw "cannot extend view using an instantiated class";
-        }
-        else{
-            var propertyNames = Object.getOwnPropertyNames(element.prototype);
-            var elementInstance = new element();
-            var name = elementInstance.constructor.name;
-            this.viewList[name] = {};
-            for(var i in propertyNames){
-                if (propertyNames.hasOwnProperty(i)) {
-                    this.viewList[name][propertyNames[i]] = elementInstance[propertyNames[i]];
-				}
-            };
-        }
-    }
-
+    
     register(name, param){
-        if(name !== undefined && param !== undefined){
+        if(name && param){
             this.requestList[name] = param;
         }
-        // var className = name === undefined ? param.constructor.name : name;
-        // this.requestList[className] = param;
     }
 
     get env(){
@@ -147,14 +87,22 @@ class MasterControl {
     }
 
     setupServer(http, httpPort, requestTimeout){
-        this.server.timeout = requestTimeout;
-        this.server.listen(httpPort, http);
+        if(http || httpPort || requestTimeout){
+            this.server.timeout = requestTimeout;
+            this.server.listen(httpPort, http);          
+        }
+        else{
+            throw "HTTP, HTTPPORT and REQUEST TIMEOUT MISSING";
+        }
+
     }
 
     // builds and calls all the required tools to have master running completely
-    start(server){
+    start(server, requiredList){
         this.server = server;
-        var requiredList = ["MasterError", "MasterTools", "MasterRouter", "MasterHtml", "MasterTemp" , "MasterAction", "MasterActionFilters", "MasterSocket", "MasterJWT", "MasterSession"]
+        if(!requiredList){
+            requiredList =  ["MasterError", "MasterRouter", "MasterHtml", "MasterTemp" , "MasterAction", "MasterActionFilters", "MasterSocket", "MasterJWT", "MasterSession", "MasterRequest"];
+        }
         for(var i = 0; i < requiredList.length; i++){
             require('./' + requiredList[i]);
         }
@@ -163,7 +111,7 @@ class MasterControl {
     // will take the repsonse and request objetc and add to it
     async middleware(request, response){
         request.requrl = url.parse(request.url, true);
-
+        // check if its css
         if (/.(css)$/.test(request.requrl)) {
 
             response.writeHead(200, {
@@ -180,7 +128,7 @@ class MasterControl {
             return -1;
         }
         else{
-            var params = await _getRequestParam(request, request.method.toLowerCase());
+            var params = await this.request.getRequestParam(request, response);
             return {
                 request : request,
                 response : response,
@@ -194,5 +142,3 @@ class MasterControl {
 };
 
 module.exports = new MasterControl();
-
-var master = require('./MasterControl');

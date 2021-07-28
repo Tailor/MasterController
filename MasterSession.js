@@ -3,7 +3,7 @@
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
-var tools = master.tools;
+var tools =  require('./MasterTools');
 var crypto = require('crypto');
 
 class MasterSession{
@@ -85,7 +85,7 @@ class MasterSession{
             response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), cookieOpt));
         }
         else{
-            response.setHeader('Set-Cookie', cookie.serialize(name, JSON.stringify(payload), cookieOpt));
+            response.setHeader('Set-Cookie', cookie.serialize(name, payload, cookieOpt));
         }
     }
 
@@ -97,7 +97,13 @@ class MasterSession{
                 return -1;
             }
             if(secret === undefined){
-                return cooks[name] === undefined ? -1 : cooks[name];
+                if(cooks[name]){
+                    return cooks[name];
+                }
+                else{
+                    return  -1;
+                }
+                //return cooks[name]? -1 : cooks[name];
             }
             else{
                 return tools.decrypt(cooks[name], secret);

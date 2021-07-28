@@ -1,9 +1,10 @@
 
-// version 1.0.15 
+// version 1.0.16
 
-var master = require('./MasterControl');
+var master = require('mastercontroller');
 var winston = require('winston');
 var fileserver = require('fs');
+const { request } = require('http');
 
 class MasterError{
     logger = "";
@@ -22,10 +23,20 @@ class MasterError{
               ]
           });
         
-        // will catch all promise exceptions
+        process.on('uncaughtException', function (reason, promise) {
+            that.log(reason, "error");
+            //master.request.clear(500, reason.message);
+        });
+        
+                // will catch all promise exceptions
         process.on('unhandledRejection', function (reason, promise) {
             that.log(reason, "warn");
         });
+
+        process.on('rejectionHandled', function (reason, promise) {
+            that.log(reason, "warn");
+        });
+        
     }
 
     clearStatuses(){
@@ -50,7 +61,7 @@ class MasterError{
     // call error status by status code
     callHttpStatus(statusCode, response){
         try{
-            var that = this;
+
             var status = this.statuses;
             var res = response;
             if(status.length !== 0){
@@ -78,7 +89,6 @@ class MasterError{
             }
         }
         catch(err){
-            this.log(err, "error");
             throw err;
         }
     }

@@ -1,12 +1,18 @@
-// MasterAPI- by Alexander Batista - Tailer 2017 - MIT Licensed 
-// version 1.0.13 - beta -- node compatiable
+
+// version 1.0.15 - beta -- node compatiable
 
 var master = require('./MasterControl');
 var fileserver = require('fs');
-var ejs = require('ejs');
-var tools =  master.tools;
+var tools =  require('./MasterTools');
+var temp =  require('./MasterTemplate');
+var templateFunc = null;
 
 class MasterAction{
+
+	init(opts){
+		templateFunc = opts.templateFunc === undefined ? null : opts.templateFunc;
+	}
+
 	
 	returnJson(data){
 		var json = JSON.stringify(data);
@@ -20,7 +26,12 @@ class MasterAction{
 	returnPartialView(location, data){
 		var actionUrl = master.router.currentRoute.root + "/app/views/" + location;
 		var getAction = fileserver.readFileSync(actionUrl, 'utf8');
-		return ejs.render(getAction, data);
+		if(typeof(templateFunc) === "function"){
+			return templateFunc(getAction, data);
+		}
+		else{
+			return temp.htmlBuilder(getAction, data);	
+		}
 	}
 
 	redirectBack(fallback){
@@ -81,12 +92,18 @@ class MasterAction{
 	
 	// this will allow static pages without master view
 	returnViewWithoutMaster(location, data){
+		var masterView = null;
 		this.params = tools.combineObjects(data, this.params);
 		var func = master.viewList;
         this.params = tools.combineObjects(this.params, func);
 		var actionUrl = (location === undefined) ? master.router.currentRoute.root + "/app/views/" +  master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html" : master.router.currentRoute.root + location;
 		var actionView = fileserver.readFileSync(actionUrl, 'utf8');
-		var masterView = ejs.render(actionView, data);
+		if(typeof(templateFunc) === "function"){
+			masterView = templateFunc(actionView, data);
+		}
+		else{
+			masterView = temp.htmlBuilder(actionView, data);	
+		}
 		if (!master.router.currentRoute.response.headersSent) {
 			master.router.currentRoute.response.writeHead(200, {'Content-Type': 'text/html'});
 			master.router.currentRoute.response.end(masterView);
@@ -103,6 +120,8 @@ class MasterAction{
 	}
 
 	returnView(data, location){
+		var childView = null;
+		var masterView = null;
 		data = data === undefined ? {} : data;
 		this.params = this.params === undefined ? {} : this.params;
         this.params = tools.combineObjects(data, this.params);
@@ -110,10 +129,22 @@ class MasterAction{
         this.params = tools.combineObjects(this.params, func);
 		var viewUrl = (location === undefined || location === "" || location === null) ? master.router.currentRoute.root + "/app/views/" + master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html": master.router.currentRoute.root + "/app/" + location;
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
-		var childView = ejs.render(viewFile, this.params);
+		if(typeof(templateFunc) === "function"){
+			childView = templateFunc(viewFile, this.params);
+		}
+		else{
+			childView = temp.htmlBuilder(viewFile, this.params);
+		}
+
 		this.params.yield = childView;
 		var masterFile = fileserver.readFileSync(master.router.currentRoute.root + "/app/views/layouts/master.html", 'utf8');
-		var masterView = ejs.render(masterFile, this.params);
+		if(typeof(templateFunc) === "function"){
+			masterView = templateFunc(masterFile, this.params);
+		}
+		else{
+			masterView = temp.htmlBuilder(masterFile, this.params);
+		}
+		
 
 		if (!master.router.currentRoute.response.headersSent) {
 			master.router.currentRoute.response.writeHead(200, {'Content-Type': 'text/html'});
@@ -122,9 +153,22 @@ class MasterAction{
 		
 	}
 
+	close(response, code, content, end){
+		response.writeHead(code, content.type);
+		response.end(end);
+	}
+
 
 }
 
 // IMPORTANT
 // you dont instatiate application controller extention methods because it will get done on build
-master.extendController(MasterAction);
+var masterAction = new MasterAction();
+// give option to change the template engine. Skips default template engine and calls templateFunc function. Inside this function you can return your own parsed TEXT or HTML.
+master.extend({action: {
+	init : masterAction.init,
+	close: masterAction.close,
+	templateFunc : templateFunc
+} });
+// you need to have access to functions inside the controller
+master.extendController(masterAction);
