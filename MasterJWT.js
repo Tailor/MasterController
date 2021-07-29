@@ -8,10 +8,13 @@ var tools =  require('./MasterTools');
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
 class MasterJWT{
     
-        init(){
+        init(TID){
             this.alg = "sha256";
-            this.secret = this.createJWTID();
             var $that = this;
+            this.secret = this.createJWTID();
+            if(TID){
+                this.secret = TID;
+            }
             return {
                 sha256 : function(){
                     $that.alg = "sha256"

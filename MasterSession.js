@@ -21,8 +21,12 @@ class MasterSession{
         secret : this.createSessionID()
     };
 
-    init(){
+    init(TID){
         var $that = this;
+        if(TID){
+            $that.options.secret = TID;
+        }
+
         return {
             setPath : function(path){
                 $that.options.path = path === undefined ? '/' : path;
