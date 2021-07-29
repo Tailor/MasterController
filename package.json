@@ -21,7 +21,7 @@
   ],
   "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.1.6.tgz",
   "_shasum": "30bdeec92ece92441caca1659fe238ea78991e7c",
-  "_spec": "mastercontroller@1.1.4",
+  "_spec": "mastercontroller@1.1.6",
   "_where": "C:\\Users\\rbatista\\Downloads\\kollege\\freshmen",
   "author": {
     "name": "Alexander Rich"
@@ -54,5 +54,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.1.5"
+  "version": "1.1.6"
 }
