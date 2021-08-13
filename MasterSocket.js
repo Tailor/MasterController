@@ -1,4 +1,4 @@
-// MasterSocket- by Alexander Batista - Tailor 2018 - MIT Licensed 
+// version 0.0.1
 var master = require('./MasterControl');
 
 var jsUcfirst = function(string){

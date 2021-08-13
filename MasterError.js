@@ -1,7 +1,6 @@
 
-// version 1.0.16
-
-var master = require('mastercontroller');
+// version 1.0.17
+var master = require('./MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
 const { request } = require('http');

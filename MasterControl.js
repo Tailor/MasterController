@@ -1,5 +1,5 @@
-// MasterControl - by Alexander Batista - Tailor 2017 - MIT Licensed
-// version 1.0.15
+// MasterControl - by Alexander rich - Mayor - MIT Licensed
+// version 1.0.16
 // TODO: CONTROL MaxRequestLength IN SETTINGS SO THAT WE CAN CHECK AND RETURN
 
 var url = require('url');
@@ -97,14 +97,17 @@ class MasterControl {
 
     }
 
-    // builds and calls all the required tools to have master running completely
-    start(server, requiredList){
+    start(server){
         this.server = server;
-        if(!requiredList){
-            requiredList =  ["MasterError", "MasterRouter", "MasterHtml", "MasterTemp" , "MasterAction", "MasterActionFilters", "MasterSocket", "MasterJWT", "MasterSession", "MasterRequest"];
-        }
-        for(var i = 0; i < requiredList.length; i++){
-            require('./' + requiredList[i]);
+    }
+
+    
+    // builds and calls all the required tools to have master running completely
+    addInternalTools(requiredList){
+        if(requiredList.constructor === Array){
+            for(var i = 0; i < requiredList.length; i++){
+                require('./' + requiredList[i]);
+            }
         }
     }
 

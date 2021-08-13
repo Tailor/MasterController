@@ -1,6 +1,5 @@
-// version 1.0.3
+// version 1.0.5
 var master = require('./MasterControl');
-var fileserver = require('fs');
 var  temp =  require('./MasterTemplate');
 var fs = require('fs');
 var tools =  require('./MasterTools');
@@ -19,7 +18,7 @@ class html {
 		var params = tools.combineObjandArray(master.view.get(), data);
 
 		var partialViewUrl = `/app/views/${path}`;
-		var filepartialView = fileserver.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
+		var filepartialView = fs.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
 
 		var partialView = null;
 		if(typeof(master.action.templateFunc) === "function"){

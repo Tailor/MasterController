@@ -1,5 +1,5 @@
 
-// version 1.0.14
+// version 1.0.15
 
 var master = require('./MasterControl');
 var crypto = require('crypto');

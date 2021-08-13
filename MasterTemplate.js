@@ -1,4 +1,4 @@
-
+// version 0.0.1
 // https://github.com/WebReflection/backtick-template
 // https://stackoverflow.com/questions/29182244/convert-a-string-to-a-template-string
 var replace = ''.replace;

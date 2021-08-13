@@ -1,5 +1,6 @@
-// version 1.4
-var master = require('mastercontroller');
+// version 1.5	
+var master = require('./MasterControl');
+
 var _beforeActionFunc = {
     namespace :   "",
     actionList : "",
