@@ -1,9 +1,14 @@
 // MasterControl - by Alexander rich - Mayor - MIT Licensed
-// version 1.0.16
+// version 1.0.17
 // TODO: CONTROL MaxRequestLength IN SETTINGS SO THAT WE CAN CHECK AND RETURN
 
 var url = require('url');
 var fileserver = require('fs');
+var http = require('http');
+var https = require('https');
+var fs = require('fs');
+var url = require('url');
+var path = require('path');
 
 class MasterControl {
     controllerList = {}
@@ -11,6 +16,44 @@ class MasterControl {
     requestList = {}
     _root = null
     _environmentType = null
+    _serverProtocol = null
+
+    get env(){
+        return require(`${this.root}/config/environments/env.${this.environmentType}.json`);
+    }
+
+    /**
+     * @param {string} type
+     */
+    set serverProtocol(type){
+        this._serverProtocol = type ===  undefined ? "http": type;
+    }
+
+    get serverProtocol(){
+        return this._serverProtocol;
+    }
+
+    /**
+     * @param {any} root
+     */
+    set root(root){
+        this._root = root ===  undefined ? global.__basedir : root;
+    }
+
+    get root(){
+        return this._root;
+    }
+
+    /**
+     * @param {any} env
+     */
+    set environmentType(env){
+        this._environmentType = env === undefined ? "development" : env;
+    }
+
+    get environmentType(){
+        return this._environmentType;
+    }
 
     // this extends master framework - adds your class to main master class object
     extend(){
@@ -54,53 +97,101 @@ class MasterControl {
         };
     }
     
+    // adds your class to the --------- todo
     register(name, param){
         if(name && param){
             this.requestList[name] = param;
         }
     }
 
-    get env(){
-        return require(`${this.root}/config/environments/env.${this.environmentType}.json`);
-    }
-
-    /**
-     * @param {any} root
-     */
-    set root(root){
-        this._root = root ===  undefined ? global.__basedir : root;
-    }
-
-    get root(){
-        return this._root;
-    }
-
-    /**
-     * @param {any} env
-     */
-    set environmentType(env){
-        this._environmentType = env === undefined ? "development" : env;
-    }
-
-    get environmentType(){
-        return this._environmentType;
-    }
-
-    setupServer(http, httpPort, requestTimeout){
+    // adds all the server settings needed
+    serverSettings(http, httpPort, requestTimeout){
         if(http || httpPort || requestTimeout){
             this.server.timeout = requestTimeout;
             this.server.listen(httpPort, http);          
         }
         else{
-            throw "HTTP, HTTPPORT and REQUEST TIMEOUT MISSING";
+            throw "HTTP, HTTPS, HTTPPORT and REQUEST TIMEOUT MISSING";
         }
 
     }
 
+    // sets up https or http server protocals
+    setupServer(type, credentials ){
+        var $that = this;
+        if(type === "http"){
+            $that.serverProtocol = "http";
+            return http.createServer(async function(req, res) {
+                $that.serverRun(req, res);
+            });
+        }
+        if(type === "https"){
+            $that.serverProtocol = "https";
+            if(credentials){
+                return https.createServer(credentials, async function(req, res) {
+                    $that.serverRun(req, res);
+                  });
+            }else{
+                throw "Credentials needed to setup https"
+            }
+        }
+    }
+
+    async serverRun(req, res){
+        var $that = this;
+        console.log("path", `${req.method} ${req.url}`);
+        // parse URL
+        const parsedUrl = url.parse(req.url);
+        // extract URL path
+        let pathname = `.${parsedUrl.pathname}`;
+      
+        // based on the URL path, extract the file extension. e.g. .js, .doc, ...
+        const ext = path.parse(pathname).ext;
+      
+        // if extension exist then its a file.
+        if(ext === ""){
+          var requestObject = await this.middleware(req, res);
+          if(requestObject !== -1){
+            require(`${this.root}/config/load`)(requestObject);
+          }
+        }
+        else{
+      
+            fs.exists(pathname, function (exist) {
+      
+                if(!exist) {
+                  // if the file is not found, return 404
+                  res.statusCode = 404;
+                  res.end(`File ${pathname} not found!`);
+                  return;
+                }
+      
+                // if is a directory search for index file matching the extension
+                if (fs.statSync(pathname).isDirectory()) pathname += '/index' + ext;
+      
+                // read file from file system
+                fs.readFile(pathname, function(err, data){
+                  if(err){
+                    res.statusCode = 500;
+                    res.end(`Error getting the file: ${err}.`);
+                  } else {
+                    const mimeType = $that.router.findMimeType(ext);
+                    
+                    // if the file is found, set Content-type and send data
+                    res.setHeader('Content-type', mimeType || 'text/plain' );
+                    res.end(data);
+                  }
+                });
+      
+            });
+        }
+     
+    } // end server()
+
     start(server){
         this.server = server;
     }
-
+    
     
     // builds and calls all the required tools to have master running completely
     addInternalTools(requiredList){

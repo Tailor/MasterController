@@ -1,29 +1,31 @@
-// version 1.1
+// version 1.3
 var master = require('./MasterControl');
-
+	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
 
-		constructor(options, res, req){
-			// todo - res.setHeader('Access-Control-Request-Method', '*');
-		  this.response = res;
-		  this.request = req
+	init(options){
 		if(options){
-			this.options = {};
-			this.options.disableFormidableMultipartFormData = options.disableFormidableMultipartFormData === null? false : options.disableFormidableMultipartFormData;
-			this.options.formidable = options.formidable === null? {}: options.formidable;
-		 }
-		 else{
-			master.error.log("beforeAction callback not a function", "warn");
-		 }
+			this.options = options;
+		}
+		else{
+			master.error.log("cors options missing", "warn");
+		}
 	}
 
-	init(){
-		this.configureOrigin();
-		this.configureMethods()
-		this.configureAllowedHeaders();
-		this.configureExposeHeaders();
-		this.configureCredentials();
-		this.configureMaxAge();
+	load(params){
+		if(params){
+			this.response = params.response;
+			this.request = params. request;
+			this.configureOrigin();
+			this.configureMethods()
+			this.configureAllowedHeaders();
+			this.configureExposeHeaders();
+			this.configureCredentials();
+			this.configureMaxAge();
+		}
+		else{
+			master.error.log("cors response and requests missing", "warn");
+		}
 	}
 
 	configureOrigin(){

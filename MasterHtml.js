@@ -430,4 +430,3 @@ class html {
 }
 
 master.extendView("html", new html());
-
