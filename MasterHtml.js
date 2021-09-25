@@ -1,4 +1,6 @@
-// version 1.0.5
+
+// version 1.0.16
+
 var master = require('./MasterControl');
 var  temp =  require('./MasterTemplate');
 var fs = require('fs');
@@ -35,8 +37,12 @@ class html {
 	   // render all your link tags styles given the folder location
 	renderStyles(folderName, typeArray){
 		var styles = [];
-		var styleFolder = `${master.router.currentRoute.root}/app/assets/stylesheets/`;
-		var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/") }/app/assets/stylesheets/`;
+		var styleFolder = `${master.router.currentRoute.root}app/assets/stylesheets/`;
+		var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/") }app/assets/stylesheets/`;
+
+		if(master.router.currentRoute.isComponent === false){
+			styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 1, "/") }app/assets/stylesheets/`;
+		}
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
 		if(folderName){
@@ -68,8 +74,11 @@ class html {
 	renderScripts(folderName, typeArray){
 
 		var scripts = [];
-		var jsFolder =`${master.router.currentRoute.root}/app/assets/javascripts/`;
-		var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/javascripts/`;
+		var jsFolder =`${master.router.currentRoute.root}app/assets/javascripts/`;
+		var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/javascripts/`;
+		if(master.router.currentRoute.isComponent === false){
+			jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 1, "/")}app/assets/javascripts/`;
+		}
 
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
@@ -105,7 +114,7 @@ class html {
 			return '';
 		}
 		else{
-			var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/javascripts/`;
+			var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/javascripts/`;
 			if(folder){
 				jsLocation = jsLocation + folder + "/" + name;
 			}else{
@@ -121,7 +130,7 @@ class html {
 			return "";
 		}
 		else{
-			var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/")}/app/assets/stylesheets/`;
+			var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/stylesheets/`;
 			
 			if(folder){
 				styleLocation = styleLocation + folder + "/" + name;
@@ -430,3 +439,4 @@ class html {
 }
 
 master.extendView("html", new html());
+

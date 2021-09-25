@@ -1,33 +1,12 @@
 
-// version 1.0.15
+
+// version 1.0.16
 
 var master = require('./MasterControl');
 var tools =  require('./MasterTools');
 const EventEmitter = require("events");
 var currentRoute = {};
-
-var _getCallerFile = function(){
-    var originalFunc = Error.prepareStackTrace;
-    var callerfile;
-    try {
-        var err = new Error();
-        var currentfile;
-
-        Error.prepareStackTrace = function (err, stack) { return stack; };
-
-        currentfile = err.stack.shift().getFileName();
-
-        while (err.stack.length) {
-            callerfile = err.stack.shift().getFileName();
-
-            if(currentfile !== callerfile) break;
-        }
-    } catch (e) {}
-
-    Error.prepareStackTrace = originalFunc; 
-
-    return callerfile;
-};
+const path = require('path')
 
  var normalizePaths = function(requestPath, routePath, requestParams){
     var obj = {
@@ -54,7 +33,11 @@ var _getCallerFile = function(){
     return obj;
  }
 
- var processRoutes = function(requestObject, emitter, routeList, root){
+ var processRoutes = function(requestObject, emitter, routeObject){
+    var routeList = routeObject.routes;
+    var root = routeObject.root;
+    var isComponent = routeObject.isComponent;
+
     if(routeList.length > 0){
         // loop through routes
         for(var item in routeList){
@@ -76,6 +59,7 @@ var _getCallerFile = function(){
                         currentRoute.toAction = requestObject.toAction;
                         currentRoute.toController = requestObject.toController;
                         currentRoute.response = requestObject.response;
+                        currentRoute.isComponent = isComponent;
                         emitter.emit("routeConstraintGood", requestObject);
                     };
                     routeList[item].constraint.call(newObj, requestObject);
@@ -87,6 +71,7 @@ var _getCallerFile = function(){
                     currentRoute.toAction = requestObject.toAction;
                     currentRoute.toController = requestObject.toController;
                     currentRoute.response = requestObject.response;
+                    currentRoute.isComponent = isComponent;
                     emitter.emit("routeConstraintGood", requestObject);
                     return true;
                 }
@@ -104,39 +89,35 @@ var _getCallerFile = function(){
 class MasterRouter {
     currentRouteName = null
     _routes = {}
-    _platform = process.platform
+    __rootLocation = "";
+
     loadRoutes(mimeList){
         this.init(mimeList);
     }
 
-    init(mimeList){
-        this.addMimeList(mimeList);
-        var rootFileName = _getCallerFile();
-        var rootLocation = "";
-        if(this._platform === "win32"){
-            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2);
-        }
-        if(this._platform === "darwin"){
-            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2, "/");
-        }
-        require(rootLocation + "/routes");
+    addMimeList(mimeList){
+        this._addMimeList(mimeList);
+    }
+
+    init(root){
+        var rootPath = path.join(root, '../');
+        this.__rootLocation = rootPath;
+        require( rootPath + "/routes");
     }
 
     start(){
         var $that = this;
-        var rootFileName = _getCallerFile();
-        var rootLocation = "";
-        if(this._platform === "win32"){
-            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2);
-        }
-        if(this._platform === "darwin"){
-            rootLocation = tools.removeBackwardSlashSection(rootFileName, 2, "/");
+        var rootLocation = path.join(this.__rootLocation, '../');
+        var componentExist = false;
+        if(rootLocation.includes("components")){
+            componentExist = true;
         }
         this.currentRouteName = tools.makeWordId(4);
         
         if(this._routes[this.currentRouteName] === undefined){
             this._routes[this.currentRouteName] = {
                 root : rootLocation,
+                isComponent : componentExist,
                 routes : []
             };
         }
@@ -224,7 +205,7 @@ class MasterRouter {
         return currentRoute;
     }
 
-    addMimeList(mimeObject){
+    _addMimeList(mimeObject){
         var that = this;
         if(mimeObject){
             that.mimeTypes = mimeObject;
@@ -292,7 +273,7 @@ class MasterRouter {
             var routeFound = false;
             const routes = Object.keys(this._routes);
             for (const route of routes) {
-               var result = processRoutes(requestObject, _loadEmit, this._routes[route].routes, this._routes[route].root);
+               var result = processRoutes(requestObject, _loadEmit, this._routes[route] );
                if(result === true){
                     routeFound = true;
                     break;
