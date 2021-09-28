@@ -1,6 +1,5 @@
-// MasterControl - by Alexander rich - Mayor - MIT Licensed
-// version 1.0.17
-// TODO: CONTROL MaxRequestLength IN SETTINGS SO THAT WE CAN CHECK AND RETURN
+// MasterControl - by Alexander rich
+// version 1.0.18
 
 var url = require('url');
 var fileserver = require('fs');
@@ -105,10 +104,15 @@ class MasterControl {
     }
 
     // adds all the server settings needed
-    serverSettings(http, httpPort, requestTimeout){
-        if(http || httpPort || requestTimeout){
-            this.server.timeout = requestTimeout;
-            this.server.listen(httpPort, http);          
+    serverSettings(settings){
+
+        if(settings.httpPort || settings.requestTimeout){
+            this.server.timeout = settings.requestTimeout;
+            if(settings.http){
+                this.server.listen(settings.httpPort, settings.http);   
+            }else{
+                this.server.listen(settings.httpPort);   
+            }       
         }
         else{
             throw "HTTP, HTTPS, HTTPPORT and REQUEST TIMEOUT MISSING";
