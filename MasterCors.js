@@ -1,4 +1,4 @@
-// version 1.3
+// version 1.1.5
 var master = require('./MasterControl');
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
@@ -69,26 +69,27 @@ class MasterCors{
 	}
 
 	configureAllowedHeaders(){
-		var requestheader = this.request.headers["access-control-request-headers"];
+		var requestheader = this.request.headers["Access-Control-Request-Headers"];
+		var $that = this;
 		if(this.options.allowedHeaders){
-			var allowedBool = JSON.parse(this.options.allowedHeaders);
+			var allowedBool = JSON.parse($that.options.allowedHeaders);
 			if(allowedBool === true){
 				// get Access-Control-Request-Headers 
-				this.request.setHeader('Access-Control-Allow-Headers', requestheader);
+				$that.request.headers['Access-Control-Allow-Headers'] = requestheader;
 			}
 
 			// remove all headers
 			if(allowedBool === false){
-				this.request.removeHeader('Access-Control-Allow-Headers');
+				delete $that.request.headers['Access-Control-Allow-Headers'];
 			}
 
-			if(this.options.allowedHeaders === 'string'){
-				this.request.setHeader('Access-Control-Allow-Headers', this.options.allowedHeaders);
+			if($that.options.allowedHeaders === 'string'){
+				$that.request.headers['Access-Control-Allow-Headers'] = $that.options.allowedHeaders;
 			}
 				
-			if(this.options.allowedHeaders.constructor === Array){
-				var elements = this.options.allowedHeaders.join(", ");
-				this.request.setHeader('Access-Control-Allow-Headers', elements);
+			if($that.options.allowedHeaders.constructor === Array){
+				var elements = $that.options.allowedHeaders.join(", ");
+				$that.request.headers['Access-Control-Allow-Headers'] = elements;
 			}
 
 		}

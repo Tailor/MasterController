@@ -1,6 +1,6 @@
 {
-  "_from": "mastercontroller@1.1.10",
-  "_id": "mastercontroller@1.1.10",
+  "_from": "mastercontroller@1.1.11",
+  "_id": "mastercontroller@1.1.11",
   "_inBundle": false,
   "_integrity": "sha512-dqqGXFn65iMzgGFKut8M5AuZ36Nm9UgJkqkuc8kr+/ESWKLAyMjEp0BOYhyupMplJ+8iSDmQ7BlIHyL4gaGr1A==",
   "_location": "/mastercontroller",
@@ -8,20 +8,20 @@
   "_requested": {
     "type": "version",
     "registry": true,
-    "raw": "mastercontroller@1.1.10",
+    "raw": "mastercontroller@1.1.11",
     "name": "mastercontroller",
     "escapedName": "mastercontroller",
-    "rawSpec": "1.1.10",
+    "rawSpec": "1.1.11",
     "saveSpec": null,
-    "fetchSpec": "1.1.10"
+    "fetchSpec": "1.1.11"
   },
   "_requiredBy": [
     "#USER",
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.1.10.tgz",
+  "_resolved": "https://registry.npmjs.org/mastercontroller/-/mastercontroller-1.1.11.tgz",
   "_shasum": "30bdeec92ece92441caca1659fe238ea78991e7c",
-  "_spec": "mastercontroller@1.1.10",
+  "_spec": "mastercontroller@1.1.11",
   "_where": "C:\\Users\\rbatista\\Downloads\\kollege\\freshmen",
   "author": {
     "name": "Alexander Rich"
@@ -49,5 +49,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.1.10"
+  "version": "1.1.11"
 }
