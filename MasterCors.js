@@ -1,4 +1,4 @@
-// version 1.1.6
+// version 1.1.7
 var master = require('./MasterControl');
 var tools =  require('./MasterTools');
 
@@ -41,27 +41,23 @@ class MasterCors{
 	configureOrigin(){
 		// this will set the origin based on the the options value
 		if(this.options.origin){
-			var originBool = JSON.parse(this.options.origin);
-			if(originBool === true){
+			
+			if(typeof this.options.origin === 'string'){
+				this.setHeader('access-control-allow-origin', this.options.origin);
+			}
+
+			if(this.options.origin === true){
 				this.setHeader('access-control-allow-origin', '*');
 			}
 
 			// remove all origins
-			if(originBool === false){
+			if(this.options.origin === false){
 				this.removeHeader('access-control-allow-origin');
 			}
-
-			if(typeof this.options.origin === 'string'){
-				this.setHeader('access-control-allow-arigin', this.options.origin);
-			}
 				
-			if(this.options.origin.constructor === Array){
-				// loop through list of array and set the once thatis found from the request because you can only setone at a time			
-				var requestURL = this.request.url;
+			if(this.options.origin.constructor === Array){		
 				for (const element of this.options.origin) {
-					if(element === requestURL){
-						this.setHeader('access-control-allow-arigin', element);
-					}
+					this.setHeader('access-control-allow-origin', element);
 				}
 			
 			}
@@ -82,21 +78,20 @@ class MasterCors{
 		var requestheader = this.request.headers["access-control-request-headers"];
 		var $that = this;
 		if(this.options.allowedHeaders){
-			var allowedBool = JSON.parse($that.options.allowedHeaders);
-			if(allowedBool === true){
-				// get Access-Control-Request-Headers
 
+			if($that.options.allowedHeaders === true){
+				// get Access-Control-Request-Headers
 				$that.request.headers['access-control-allow-headers'] = requestheader;
 				this.setHeader("access-control-allow-headers", "*");
 			}
 
 			// remove all headers
-			if(allowedBool === false){
+			if($that.options.allowedHeaders === false){
 				delete $that.request.headers['access-control-allow-headers'];
 				this.removeHeader("access-control-allow-headers", "*");
 			}
 
-			if($that.options.allowedHeaders === 'string'){
+			if(typeof $that.options.allowedHeaders === 'string'){
 				$that.request.headers['access-control-allow-headers'] = $that.options.allowedHeaders;
 				this.setHeader("access-control-allow-headers", $that.options.allowedHeaders);
 			}
@@ -114,13 +109,13 @@ class MasterCors{
 		//exposeHeaders
 		//Access-Control-Expose-Headers
 		if(this.options.exposeHeaders){
-			var allowedBool = JSON.parse(this.options.exposeHeaders);
+
 			// remove all headers
-			if(allowedBool === false){
+			if(this.options.exposeHeaders === false){
 				this.removeHeader('access-control-expose-headers');
 			}
 
-			if(this.options.exposeHeaders === 'string'){
+			if(typeof this.options.exposeHeaders === 'string'){
 				this.setHeader('access-control-expose-headers', this.options.exposeHeaders);
 			}
 				
@@ -134,18 +129,16 @@ class MasterCors{
 
 	configureCredentials(){
 		if(this.options.credentials){
-			var credentialsBool = JSON.parse(this.options.credentials);
-			if(typeof credentialsBool === "boolean"){
-				this.setHeader('access-control-allow-credentials', credentialsBool);
+			if(typeof this.options.credentials === "boolean"){
+				this.setHeader('access-control-allow-credentials', this.options.credentials);
 			}
 		}
 	}
 
 	configureMaxAge(){
 		if(this.options.maxAge){
-			var maxAgeNumber = parseInt(this.options.maxAge);
-			if(typeof maxAgeNumber === "number"){
-				this.setHeader('access-control-allow-max-age', maxAgeNumber);
+			if(typeof this.options.maxAge === "number"){
+				this.setHeader('access-control-allow-max-age', this.options.maxAge);
 			}
 		}
 	}
