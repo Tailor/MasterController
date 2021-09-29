@@ -1,5 +1,5 @@
 
-// version 1.0.15 - beta -- node compatiable
+// version 1.0.16
 
 var master = require('./MasterControl');
 var url = require('url');
@@ -87,13 +87,14 @@ class MasterRequest{
                             $that.textStream(request, function(data){
                                 $that.parsedURL.formData = {};
                                 $that.parsedURL.formData.textField = data;
-                                resolve(newbody);
+                                resolve($that.parsedURL);
                             });  
 
                         break
                         default:
-                            resolve(newbody);
-                            console.log(`Cannot parse - We currently support text/html, application/json, multipart/form-data, and application/x-www-form-urlencoded - your sending us = ${formType[0]}`);
+                            var errorMessage = `Cannot parse - We currently support text/html, application/json, multipart/form-data, and application/x-www-form-urlencoded - your sending us = ${contentType.type}`;
+                            resolve(errorMessage);
+                            console.log(errorMessage);
                       }
 
                 }

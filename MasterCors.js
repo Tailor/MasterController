@@ -1,5 +1,7 @@
-// version 1.1.5
+// version 1.1.6
 var master = require('./MasterControl');
+var tools =  require('./MasterTools');
+
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
 
@@ -28,21 +30,29 @@ class MasterCors{
 		}
 	}
 
+	setHeader(header, value){
+		this.response.setHeader(header, value);
+	}
+
+	removeHeader(header){
+		this.response.removeHeader(header);
+	}
+
 	configureOrigin(){
 		// this will set the origin based on the the options value
 		if(this.options.origin){
 			var originBool = JSON.parse(this.options.origin);
 			if(originBool === true){
-				this.response.setHeader('Access-Control-Allow-Origin', '*');
+				this.setHeader('access-control-allow-origin', '*');
 			}
 
 			// remove all origins
 			if(originBool === false){
-				this.response.removeHeader('Access-Control-Allow-Origin');
+				this.removeHeader('access-control-allow-origin');
 			}
 
 			if(typeof this.options.origin === 'string'){
-				this.response.setHeader('Access-Control-Allow-Origin', this.options.origin);
+				this.setHeader('access-control-allow-arigin', this.options.origin);
 			}
 				
 			if(this.options.origin.constructor === Array){
@@ -50,7 +60,7 @@ class MasterCors{
 				var requestURL = this.request.url;
 				for (const element of this.options.origin) {
 					if(element === requestURL){
-						this.response.setHeader('Access-Control-Allow-Origin', element);
+						this.setHeader('access-control-allow-arigin', element);
 					}
 				}
 			
@@ -63,33 +73,38 @@ class MasterCors{
 		if(this.options.methods){
 			if(this.options.methods.constructor === Array){
 				var elements = this.options.methods.join(", ");
-				this.response.setHeader('Access-Control-Allow-Methods', elements);
+				this.setHeader('access-control-allow-methods', elements);
 			}
 		}
 	}
 
 	configureAllowedHeaders(){
-		var requestheader = this.request.headers["Access-Control-Request-Headers"];
+		var requestheader = this.request.headers["access-control-request-headers"];
 		var $that = this;
 		if(this.options.allowedHeaders){
 			var allowedBool = JSON.parse($that.options.allowedHeaders);
 			if(allowedBool === true){
-				// get Access-Control-Request-Headers 
-				$that.request.headers['Access-Control-Allow-Headers'] = requestheader;
+				// get Access-Control-Request-Headers
+
+				$that.request.headers['access-control-allow-headers'] = requestheader;
+				this.setHeader("access-control-allow-headers", "*");
 			}
 
 			// remove all headers
 			if(allowedBool === false){
-				delete $that.request.headers['Access-Control-Allow-Headers'];
+				delete $that.request.headers['access-control-allow-headers'];
+				this.removeHeader("access-control-allow-headers", "*");
 			}
 
 			if($that.options.allowedHeaders === 'string'){
-				$that.request.headers['Access-Control-Allow-Headers'] = $that.options.allowedHeaders;
+				$that.request.headers['access-control-allow-headers'] = $that.options.allowedHeaders;
+				this.setHeader("access-control-allow-headers", $that.options.allowedHeaders);
 			}
 				
 			if($that.options.allowedHeaders.constructor === Array){
 				var elements = $that.options.allowedHeaders.join(", ");
-				$that.request.headers['Access-Control-Allow-Headers'] = elements;
+				$that.request.headers['access-control-allow-headers'] = elements;
+				this.setHeader("access-control-allow-headers", elements);
 			}
 
 		}
@@ -102,16 +117,16 @@ class MasterCors{
 			var allowedBool = JSON.parse(this.options.exposeHeaders);
 			// remove all headers
 			if(allowedBool === false){
-				this.response.removeHeader('Access-Control-Expose-Headers');
+				this.removeHeader('access-control-expose-headers');
 			}
 
 			if(this.options.exposeHeaders === 'string'){
-				this.response.setHeader('Access-Control-Expose-Headers', this.options.exposeHeaders);
+				this.setHeader('access-control-expose-headers', this.options.exposeHeaders);
 			}
 				
 			if(this.options.exposeHeaders.constructor === Array){
 				var elements = this.options.exposeHeaders.join(", ");
-				this.response.setHeader('Access-Control-Expose-Headers', elements);
+				this.setHeader('access-control-expose-headers', elements);
 			}
 
 		}
@@ -121,7 +136,7 @@ class MasterCors{
 		if(this.options.credentials){
 			var credentialsBool = JSON.parse(this.options.credentials);
 			if(typeof credentialsBool === "boolean"){
-				this.response.setHeader('Access-Control-Allow-Credentials', credentialsBool);
+				this.setHeader('access-control-allow-credentials', credentialsBool);
 			}
 		}
 	}
@@ -130,7 +145,7 @@ class MasterCors{
 		if(this.options.maxAge){
 			var maxAgeNumber = parseInt(this.options.maxAge);
 			if(typeof maxAgeNumber === "number"){
-				this.response.setHeader('Access-Control-Allow-Max-Age', maxAgeNumber);
+				this.setHeader('access-control-allow-max-age', maxAgeNumber);
 			}
 		}
 	}
