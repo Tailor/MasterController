@@ -1,6 +1,6 @@
 
 
-// version 1.0.16
+// version 1.0.17
 
 var master = require('./MasterControl');
 var tools =  require('./MasterTools');
@@ -128,7 +128,7 @@ class MasterRouter {
                 
                 var route = {
                     type: type.toLowerCase(),
-                    path: path.replace(/^\/|\/$/g, ''),
+                    path: path.replace(/^\/|\/$/g, '').toLowerCase(),
                     toController :pathList[0].replace(/^\/|\/$/g, ''),
                     toAction: pathList[1],
                     constraint : constraint
@@ -140,10 +140,10 @@ class MasterRouter {
         
             resources: function(routeName){ // function to add to list of routes using resources bulk
         
-                    
+
                 $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName,
+                        path: routeName.toLowerCase(),
                         toController :routeName,
                         toAction: "index",
                         constraint : null
@@ -151,7 +151,7 @@ class MasterRouter {
         
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName,
+                        path: routeName.toLowerCase(),
                         toController :routeName,
                         toAction: "new",
                         constraint : null
@@ -159,7 +159,7 @@ class MasterRouter {
         
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "post",
-                        path: routeName,
+                        path: routeName.toLowerCase(),
                         toController :routeName,
                         toAction: "create",
                         constraint : null
@@ -168,7 +168,7 @@ class MasterRouter {
                     $that._routes[$that.currentRouteName].routes.push({
                         // pages/3
                         type: "get",
-                        path: routeName + "/:id",
+                        path: routeName.toLowerCase() + "/:id",
                         toController :routeName,
                         toAction: "show",
                         constraint : null
@@ -176,7 +176,7 @@ class MasterRouter {
         
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName + "/:id/" + "edit",
+                        path: routeName.toLowerCase() + "/:id/" + "edit",
                         toController :routeName,
                         toAction: "edit",
                         constraint : null    
@@ -184,7 +184,7 @@ class MasterRouter {
         
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "put",
-                        path: routeName + "/:id",
+                        path: routeName.toLowerCase() + "/:id",
                         toController :routeName,
                         toAction: "update",
                         constraint : null
@@ -192,7 +192,7 @@ class MasterRouter {
         
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "delete",
-                        path: routeName + "/:id",
+                        path: routeName.toLowerCase() + "/:id",
                         toController :routeName,
                         toAction: "destroy",
                         constraint : null
@@ -238,6 +238,9 @@ class MasterRouter {
 
          tools.combineObjects(requestObject, master.requestList);
          var Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
+         if(Control === null){
+            Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterUppercase(requestObject.toController)}Controller`);
+         }
          tools.combineObjectPrototype(Control, master.controllerList);
          Control.prototype.__namespace = Control.name;
          var control = new Control(requestObject);
@@ -262,7 +265,7 @@ class MasterRouter {
     load(rr){ // load the the router
             var $that = this;
             var requestObject = Object.create(rr);
-            requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '');
+            requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '').toLowerCase();
         
             var _loadEmit = new EventEmitter();
             
