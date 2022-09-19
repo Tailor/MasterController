@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.18
+// version 1.0.19
 
 var url = require('url');
 var fileserver = require('fs');
@@ -9,6 +9,7 @@ var fs = require('fs');
 var url = require('url');
 var path = require('path');
 
+
 class MasterControl {
     controllerList = {}
     viewList = {}
@@ -16,6 +17,15 @@ class MasterControl {
     _root = null
     _environmentType = null
     _serverProtocol = null
+    _scopedList = []
+
+    #loadTransientListClasses(name, params){
+        Object.defineProperty(this.requestList, name, {
+            get: function() { 
+              return  new params();
+            }
+          });
+    }
 
     get env(){
         return require(`${this.root}/config/environments/env.${this.environmentType}.json`);
@@ -96,12 +106,47 @@ class MasterControl {
         };
     }
     
-    // adds your class to the --------- todo
-    register(name, param){
-        if(name && param){
-            this.requestList[name] = param;
+    /*
+    Services are created each time they are requested. 
+    It gets a new instance of the injected object, on each request of this object. 
+    For each time you inject this object is injected in the class, it will create a new instance.
+    */
+    addTransient(name, params){
+        if(name && params){
+            this.#loadTransientListClasses(name, params);
+        }
+       
+    }
+
+        /*
+        Services are created on each request (once per request). This is most recommended for WEB applications. 
+        So for example, if during a request you use the same dependency injection, 
+        in many places, you will use the same instance of that object, 
+        it will make reference to the same memory allocation
+        */
+    addScoped(name, params){
+        if(name && params){
+         this._scopedList[name] =  params;
         }
     }
+
+    /*
+    Services are created once for the lifetime of the application. It uses the same instance for the whole application.
+    */
+    addSingleton(name, params){
+        if(name && params){
+            this.requestList[name] = new params();
+        }
+    }
+
+    // adds your class instance to the request object.
+    register(name, params){
+        if(name && params){
+            this.requestList[name] = params;
+        }
+    }
+
+
 
     // adds all the server settings needed
     serverSettings(settings){

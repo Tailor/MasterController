@@ -1,6 +1,4 @@
-
-
-// version 1.0.17
+// version 1.0.18
 
 var master = require('./MasterControl');
 var tools =  require('./MasterTools');
@@ -85,6 +83,14 @@ const path = require('path')
         return -1;
     }
 };
+
+var loadScopedListClasses = function(){
+    for (var key in master._scopedList) {
+        var className =  master._scopedList[key];
+        master.requestList[key] = new className();
+    };
+};
+
 
 class MasterRouter {
     currentRouteName = null
@@ -236,7 +242,8 @@ class MasterRouter {
 
     _call(requestObject){
 
-         tools.combineObjects(requestObject, master.requestList);
+         tools.combineObjects(master.requestList, requestObject);
+         requestObject = master.requestList;
          var Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
          if(Control === null){
             Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterUppercase(requestObject.toController)}Controller`);
@@ -263,6 +270,8 @@ class MasterRouter {
     }
     
     load(rr){ // load the the router
+
+            loadScopedListClasses();
             var $that = this;
             var requestObject = Object.create(rr);
             requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '').toLowerCase();
