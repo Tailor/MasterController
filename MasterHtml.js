@@ -1,5 +1,5 @@
 
-// version 1.0.16
+// version 1.0.17
 
 var master = require('./MasterControl');
 var  temp =  require('./MasterTemplate');
@@ -37,24 +37,24 @@ class html {
 	   // render all your link tags styles given the folder location
 	renderStyles(folderName, typeArray){
 		var styles = [];
-		var styleFolder = `${master.router.currentRoute.root}app/assets/stylesheets/`;
-		var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/") }app/assets/stylesheets/`;
-
-		if(master.router.currentRoute.isComponent === false){
-			styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 1, "/") }app/assets/stylesheets/`;
+		var styleFolder = `/app/assets/stylesheets/`;
+		var rootLocation = master.router.currentRoute.root;
+		if(master.router.currentRoute.isComponent === true){
+			rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+			styleFolder =  `${rootLocation}${styleFolder}`;
 		}
 		var type = typeArray === undefined ? ["css"] : typeArray;
 
 		if(folderName){
-			styleFolder = styleFolder + folderName + "/";
-			styleLocation = styleLocation + folderName+ "/";
+			styleFolder = `${styleFolder}${folderName}/`;
 		 }
 		 if (fs.existsSync(styleFolder)) {
-				fs.readdirSync(styleFolder).forEach(function(file){
+			fs.readdirSync(styleFolder).forEach(function(file){
 
 					var fileExtension = file.replace(/^.*\./, '');
 					if(type.indexOf(fileExtension) >= 0){
-						styles.push(`<link rel="stylesheet" type="text/${type}" href="/${styleLocation}${file}">`);
+						var fileLocatoon = `${styleFolder}${file}`
+						styles.push(`<link rel="stylesheet" type="text/${type}" href="/${fileLocatoon}">`);
 					}
 			});
 		}
@@ -74,24 +74,25 @@ class html {
 	renderScripts(folderName, typeArray){
 
 		var scripts = [];
-		var jsFolder =`${master.router.currentRoute.root}app/assets/javascripts/`;
-		var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/javascripts/`;
-		if(master.router.currentRoute.isComponent === false){
-			jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 1, "/")}app/assets/javascripts/`;
+		var jsFolder =`/app/assets/javascripts/`;
+		var rootLocation = master.router.currentRoute.root;
+		if(master.router.currentRoute.isComponent === true){
+			rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+			jsFolder = `${rootLocation}${jsFolder}`;
 		}
 
 		var type = typeArray === undefined ? ["js"] : typeArray;
 
-		   if(folderName){
-			   jsFolder = jsFolder + folderName + "/";
-			   jsLocation = jsLocation + folderName + "/";
+		if(folderName){
+			jsFolder = `${jsFolder}${folderName}/`;
 		}
 
 		if (fs.existsSync(jsFolder)) {
 			fs.readdirSync(jsFolder).forEach(function(file){
 				var fileExtension = file.replace(/^.*\./, '');
 				if(type.indexOf(fileExtension) >= 0){
-					scripts.push(`<script src="/${jsLocation}${file}"></script>`);
+					var fileLocatoon = `${jsFolder}${file}`
+					scripts.push(`<script src="/${fileLocatoon}"></script>`);
 				}
 		   });
 		}
@@ -109,35 +110,41 @@ class html {
 	}
 
 	// renders js using location
-	renderJS(name, folder){
-		if(name === ""){
-			return '';
+	renderJS(folderName, name){
+		if(folderName === undefined && name === undefined){
+			return "";
 		}
 		else{
-			var jsLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/javascripts/`;
-			if(folder){
-				jsLocation = jsLocation + folder + "/" + name;
-			}else{
-				jsLocation = jsLocation  + name;
+			var rootLocation = master.router.currentRoute.root;
+			var jsFolder = `/app/assets/javascripts/`;
+			if(master.router.currentRoute.isComponent === true){
+				rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+				jsFolder = `${rootLocation}${jsFolder}`;
 			}
-			return `<script type="text/javascript" src="/${jsLocation}"></script>`;
+			if(folderName){
+				jsFolder = `${jsFolder}${folderName}/${name}`;
+			}
+			return `<script type="text/javascript" src="/${jsFolder}"></script>`;
 		}
 	}
 
 	// render css directly on the page suing location name
-	renderCss(name, folder){
-		if(name === ""){
+	renderCss(folderName, name){
+		if(folderName === undefined && name === undefined){
 			return "";
 		}
 		else{
-			var styleLocation = `${tools.getBackSlashBySection(master.router.currentRoute.root, 3, "/")}app/assets/stylesheets/`;
-			
-			if(folder){
-				styleLocation = styleLocation + folder + "/" + name;
-			}else{
-				styleLocation = styleLocation + name;
+			var styleFolder = `/app/assets/stylesheets/`;
+			var rootLocation = master.router.currentRoute.root;
+			if(master.router.currentRoute.isComponent === true){
+				rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+				styleFolder =  `${rootLocation}${styleFolder}`;
 			}
-			return `<link rel="stylesheet" type="text/css" href="/${styleLocation}">`;
+			
+			if(folderName){
+				styleFolder = `${styleFolder}${folderName}/${name}`;
+			}
+			return `<link rel="stylesheet" type="text/css" href="/${styleFolder}">`;
 		}
 	}
 
