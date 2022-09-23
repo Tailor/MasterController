@@ -1,5 +1,4 @@
-
-// version 1.0.17
+// version 1.0.18
 
 var master = require('./MasterControl');
 var  temp =  require('./MasterTemplate');
