@@ -1,10 +1,11 @@
-// version 1.0.18
+// version 1.0.20
 
 var master = require('./MasterControl');
 var tools =  require('./MasterTools');
 const EventEmitter = require("events");
 var currentRoute = {};
-const path = require('path')
+const path = require('path');
+const { root } = require('./MasterControl');
 
  var normalizePaths = function(requestPath, routePath, requestParams){
     var obj = {
@@ -95,38 +96,9 @@ var loadScopedListClasses = function(){
 class MasterRouter {
     currentRouteName = null
     _routes = {}
-    __rootLocation = "";
-
-    loadRoutes(mimeList){
-        this.init(mimeList);
-    }
-
-    addMimeList(mimeList){
-        this._addMimeList(mimeList);
-    }
-
-    init(root){
-        var rootPath = path.join(root, '../');
-        this.__rootLocation = rootPath;
-        require( rootPath + "/routes");
-    }
-
+    
     start(){
         var $that = this;
-        var rootLocation = path.join(this.__rootLocation, '../');
-        var componentExist = false;
-        if(rootLocation.includes("components")){
-            componentExist = true;
-        }
-        this.currentRouteName = tools.makeWordId(4);
-        
-        if(this._routes[this.currentRouteName] === undefined){
-            this._routes[this.currentRouteName] = {
-                root : rootLocation,
-                isComponent : componentExist,
-                routes : []
-            };
-        }
         return {
             route : function(path, toPath, type, constraint){ // function to add to list of routes
                 
@@ -204,6 +176,26 @@ class MasterRouter {
                         constraint : null
                     });   
             }
+        }
+    }
+
+    loadRoutes(mimeList){
+        this.init(mimeList);
+    }
+
+    addMimeList(mimeList){
+        this._addMimeList(mimeList);
+    }
+
+    setup(route){
+        this.currentRouteName = tools.makeWordId(4);
+        
+        if(this._routes[this.currentRouteName] === undefined){
+            this._routes[this.currentRouteName] = {
+                root : route.root,
+                isComponent : route.isComponent,
+                routes : []
+            };
         }
     }
 

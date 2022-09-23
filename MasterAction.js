@@ -1,5 +1,5 @@
 
-// version 1.0.16
+// version 1.0.17
 
 var master = require('./MasterControl');
 var fileserver = require('fs');
@@ -24,7 +24,7 @@ class MasterAction{
 
 	// location starts from the view folder. Ex: partialViews/fileName.html
 	returnPartialView(location, data){
-		var actionUrl = master.router.currentRoute.root + "app/views/" + location;
+		var actionUrl = master.router.currentRoute.root + "/app/views/" + location;
 		var getAction = fileserver.readFileSync(actionUrl, 'utf8');
 		if(typeof(templateFunc) === "function"){
 			return templateFunc(getAction, data);
@@ -96,7 +96,7 @@ class MasterAction{
 		this.params = tools.combineObjects(data, this.params);
 		var func = master.viewList;
         this.params = tools.combineObjects(this.params, func);
-		var actionUrl = (location === undefined) ? master.router.currentRoute.root + "app/views/" +  master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html" : master.router.currentRoute.root + location;
+		var actionUrl = (location === undefined) ? master.router.currentRoute.root + "/app/views/" +  master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html" : master.router.currentRoute.root + location;
 		var actionView = fileserver.readFileSync(actionUrl, 'utf8');
 		if(typeof(templateFunc) === "function"){
 			masterView = templateFunc(actionView, data);
@@ -127,7 +127,7 @@ class MasterAction{
         this.params = tools.combineObjects(data, this.params);
         var func = master.viewList;
         this.params = tools.combineObjects(this.params, func);
-		var viewUrl = (location === undefined || location === "" || location === null) ? master.router.currentRoute.root + "app/views/" + master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html": master.router.currentRoute.root + "app/" + location;
+		var viewUrl = (location === undefined || location === "" || location === null) ? master.router.currentRoute.root + "/app/views/" + master.router.currentRoute.toController + "/" +  master.router.currentRoute.toAction + ".html": master.router.currentRoute.root + "/app/" + location;
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
 		if(typeof(templateFunc) === "function"){
 			childView = templateFunc(viewFile, this.params);
@@ -137,7 +137,7 @@ class MasterAction{
 		}
 
 		this.params.yield = childView;
-		var masterFile = fileserver.readFileSync(master.router.currentRoute.root + "app/views/layouts/master.html", 'utf8');
+		var masterFile = fileserver.readFileSync(master.router.currentRoute.root + "/app/views/layouts/master.html", 'utf8');
 		if(typeof(templateFunc) === "function"){
 			masterView = templateFunc(masterFile, this.params);
 		}

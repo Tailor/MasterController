@@ -8,6 +8,7 @@ var https = require('https');
 var fs = require('fs');
 var url = require('url');
 var path = require('path');
+var globSearch = require("glob");
 
 
 class MasterControl {
@@ -146,6 +147,22 @@ class MasterControl {
         }
     }
 
+    component(folderLocation, innerFolder){
+
+        var rootFolderLocation = `${this.root}/${folderLocation}/${innerFolder}`;
+        var search = `${rootFolderLocation}/**/*config.js`;
+        var files = globSearch.sync(search, rootFolderLocation);
+        require(files[0]);
+        var searchRoutes = `${rootFolderLocation}/**/*routes.js`;
+        var routeFiles = globSearch.sync(searchRoutes, rootFolderLocation);
+        var route = routeFiles[0];
+        var routeObject = {
+            isComponent : true, 
+            root : rootFolderLocation
+        }
+        this.router.setup(routeObject);
+        require(route);
+    }
 
 
     // adds all the server settings needed
@@ -239,6 +256,18 @@ class MasterControl {
 
     start(server){
         this.server = server;
+    }
+
+    startMVC(foldername){
+        var rootFolderLocation = `${this.root}/${foldername}`;
+        var search = `${rootFolderLocation}/**/*routes.js`;
+        var files = globSearch.sync(search, rootFolderLocation);
+        var route = {
+            isComponent : false, 
+            root : `${this.root}`
+        }
+        this.router.setup(route);
+        require(files[0]);
     }
     
     

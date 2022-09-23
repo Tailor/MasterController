@@ -3,7 +3,8 @@
     "qs" : "^6.11.0",
     "formidable": "^2.0.1",
     "cookie": "^0.5.0",
-    "winston": "^3.8.2"
+    "winston": "^3.8.2",
+    "glob" :"^8.0.3"
   },
   "description": "A class library that makes using the Master Framework a breeze",
   "homepage": "https://github.com/Tailor/MasterController#readme",
@@ -17,5 +18,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.1.16"
+  "version": "1.1.17"
 }
