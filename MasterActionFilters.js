@@ -1,4 +1,4 @@
-// version 1.5	
+// version 1.6	
 var master = require('./MasterControl');
 
 var _beforeActionFunc = {
@@ -89,5 +89,4 @@ class MasterActionFilters {
      }
 }
 
-master.extendController(new MasterActionFilters());
-//module.exports = MasterActionFilters;
+master.extendController( MasterActionFilters);

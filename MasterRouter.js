@@ -1,11 +1,10 @@
-// version 1.0.20
+// version 0.0.24
 
 var master = require('./MasterControl');
-var tools =  require('./MasterTools');
+var toolClass =  require('./MasterTools');
 const EventEmitter = require("events");
 var currentRoute = {};
-const path = require('path');
-const { root } = require('./MasterControl');
+var tools = new toolClass();
 
  var normalizePaths = function(requestPath, routePath, requestParams){
     var obj = {
@@ -203,6 +202,10 @@ class MasterRouter {
         return currentRoute;
     }
 
+    set currentRoute(data){
+        currentRoute = data;
+    }
+
     _addMimeList(mimeObject){
         var that = this;
         if(mimeObject){
@@ -239,9 +242,16 @@ class MasterRouter {
          var Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
          if(Control === null){
             Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterUppercase(requestObject.toController)}Controller`);
+            if(Control === null){
+                console.log(`Cannot find controller name - ${requestObject.toController}`);
+            }
          }
          tools.combineObjectPrototype(Control, master.controllerList);
          Control.prototype.__namespace = Control.name;
+         Control.prototype.__requestObject = requestObject;
+         Control.prototype.__currentRoute = currentRoute;
+         Control.prototype.__response = requestObject.response;
+         Control.prototype.__request = requestObject.request;
          var control = new Control(requestObject);
          var _callEmit = new EventEmitter();
          
@@ -249,6 +259,7 @@ class MasterRouter {
             control.next = function(){
                 control.__callAfterAction(control, requestObject);
             }
+            // 
             control[requestObject.toAction](requestObject);
          });
         
@@ -293,4 +304,4 @@ class MasterRouter {
     
 }
 
-master.extend({router :  new MasterRouter()});
+master.extend("router", MasterRouter);

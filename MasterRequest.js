@@ -1,5 +1,5 @@
 
-// version 1.0.16
+// version 0.0.1
 
 var master = require('./MasterControl');
 var url = require('url');
@@ -54,7 +54,8 @@ class MasterRequest{
                                 });
 
                                 $that.form.on('file', function(field, file) {
-                                    file.extension = path.extname(file.name);
+                                    file.extension = file.name === undefined ? path.extname(file.originalFilename) : path.extname(file.name);
+
                                     if(Array.isArray($that.parsedURL.formData.files[field])){
                                         $that.parsedURL.formData.files[field].push(file);
                                     }
@@ -170,4 +171,4 @@ class MasterRequest{
     }
 }
 
-master.extend({request: new MasterRequest()});
+master.extend("request", MasterRequest);

@@ -1,4 +1,4 @@
-// version 0.0.1
+// version 0.0.3
 var master = require('./MasterControl');
 
 class MasterTemp{
@@ -27,4 +27,4 @@ class MasterTemp{
 
 }
 
-master.extend({tempdata: new MasterTemp()});
+master.extend("tempdata", MasterTemp);

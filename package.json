@@ -1,10 +1,10 @@
 {
   "dependencies": {
-    "qs" : "^6.11.0",
-    "formidable": "^2.0.1",
+    "qs" : "^6.11.2",
+    "formidable": "^3.5.1",
     "cookie": "^0.5.0",
-    "winston": "^3.8.2",
-    "glob" :"^8.0.3"
+    "winston": "^3.10.0",
+    "glob" :"^10.3.4"
   },
   "description": "A class library that makes using the Master Framework a breeze",
   "homepage": "https://github.com/Tailor/MasterController#readme",
@@ -18,5 +18,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.1.19"
+  "version": "1.1.21"
 }

@@ -1,4 +1,4 @@
-// version 0.0.1
+// version 0.0.2
 var crypto = require('crypto');
 
 class MasterTools{
@@ -161,10 +161,16 @@ class MasterTools{
     };
 
     combineObjects(obj, src) {
-        for(var i in src){
-            obj[i] = src[i];
-        };
-        return obj;
+        if(obj){
+            for(var i in src){
+                obj[i] = src[i];
+            };
+            return obj;
+        }
+        else{
+            return {}
+        }
+
     };
 
     makeWordId(length) {
@@ -199,4 +205,4 @@ class MasterTools{
     
 }
 
-module.exports = new MasterTools();
+module.exports = MasterTools;

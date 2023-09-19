@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.19
+// version 1.0.21
 
 var url = require('url');
 var fileserver = require('fs');
@@ -66,26 +66,18 @@ class MasterControl {
     }
 
     // this extends master framework - adds your class to main master class object
-    extend(){
-        var i = arguments.length;
-
-        while (i--) {
-
-            for (var m in arguments[i]) {
-                this[m] = arguments[i][m];
-            }
-        }
-
-        return MasterControl;
+    extend(name, element){
+        this[name] = new element()
     }
 
     // extends class methods to be used inside of the view class using the THIS keyword
     extendView( name, element){
+        element = new element();
         var $that = this;
         var propertyNames = Object.getOwnPropertyNames( element.__proto__);
         this.viewList[name] = {};
         for(var i in propertyNames){
-            if(propertyNames !== "constructor"){
+            if(propertyNames[i] !== "constructor"){
                 if (propertyNames.hasOwnProperty(i)) {
                     $that.viewList[name][propertyNames[i]] = element[propertyNames[i]];
                 }
@@ -95,11 +87,11 @@ class MasterControl {
 
     // extends class methods to be used inside of the controller class using the THIS keyword
     extendController(element){
-        
+        element = new element();
         var $that = this;
         var propertyNames = Object.getOwnPropertyNames( element.__proto__);
         for(var i in propertyNames){
-            if(propertyNames !== "constructor"){
+            if(propertyNames[i] !== "constructor"){
                 if (propertyNames.hasOwnProperty(i)) {
                     $that.controllerList[propertyNames[i]] = element[propertyNames[i]];
                 }

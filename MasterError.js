@@ -1,5 +1,5 @@
 
-// version 1.0.17
+// version 1.0.19
 var master = require('./MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
@@ -113,7 +113,7 @@ class MasterError{
     }
 }
 
-master.extend({error: new MasterError()});
+master.extend("error", MasterError);
 
 // ================ CODES YOU CAN USE ================ //
 // ACCEPTED    202 Accepted

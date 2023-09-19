@@ -1,4 +1,4 @@
-// version 0.0.1
+// version 0.0.3
 var master = require('./MasterControl');
 
 var jsUcfirst = function(string){
@@ -45,4 +45,4 @@ class MasterSocket{
     }
 }
 
-master.extend({socket: new MasterSocket()});
+master.extend("socket", MasterSocket);

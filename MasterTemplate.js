@@ -1,4 +1,4 @@
-// version 0.0.1
+// version 0.0.3
 // https://github.com/WebReflection/backtick-template
 // https://stackoverflow.com/questions/29182244/convert-a-string-to-a-template-string
 var replace = ''.replace;
@@ -33,44 +33,52 @@ class MasterTemplate{
 
 
   /*! (C) 2017-2018 Andrea Giammarchi - MIT Style License */
-  htmlBuilder( fn, $str, $object) {'use strict';
-// reset cache every 32M
-if (33554432 < this.$) {
-  this._ = {};
-  this.$ = 0;
-}
-var
-  hasTransformer = typeof fn === 'function',
-  str = hasTransformer ? $str : fn,
-  object = hasTransformer ? $object : $str,
-  _ = this._,
-  known = _.hasOwnProperty(str),
-  parsed = known ? _[str] : (_[str] = this.parse(str)),
-  chunks = parsed.chunks,
-  values = parsed.values,
-  strings
-;
-// add str length only if not known
-if (!known)
-  this.$ += str.length;
-if (hasTransformer) {
-  str = 'function' + (Math.random() * 1e5 | 0);
-  strings = [
-    str,
-    'with(this)return ' + str + '([' + chunks + ']' + (
-      values.length ? (',' + values.join(',')) : ''
-    ) + ')'
-  ];
-} else {
-  strings = chunks.slice(0, 1);
-  for (var i = 1, length = chunks.length; i < length; i++)
-    strings.push(values[i - 1], chunks[i]);
-  strings = ['with(this)return ' + strings.join('+')];
-}
-return Function.apply(null, strings).apply(
-  object,
-  hasTransformer ? [fn] : []
-);
+  htmlBuilder( fn, $str, $object) {
+    'use strict';
+
+    try{
+        // reset cache every 32M
+        if (33554432 < this.$) {
+          this._ = {};
+          this.$ = 0;
+        }
+        var
+          hasTransformer = typeof fn === 'function',
+          str = hasTransformer ? $str : fn,
+          object = hasTransformer ? $object : $str,
+          _ = this._,
+          known = _.hasOwnProperty(str),
+          parsed = known ? _[str] : (_[str] = this.parse(str)),
+          chunks = parsed.chunks,
+          values = parsed.values,
+          strings
+        ;
+        // add str length only if not known
+        if (!known)
+          this.$ += str.length;
+        if (hasTransformer) {
+          str = 'function' + (Math.random() * 1e5 | 0);
+          strings = [
+            str,
+            'with(this)return ' + str + '([' + chunks + ']' + (
+              values.length ? (',' + values.join(',')) : ''
+            ) + ')'
+          ];
+        } else {
+          strings = chunks.slice(0, 1);
+          for (var i = 1, length = chunks.length; i < length; i++)
+            strings.push(values[i - 1], chunks[i]);
+          strings = ['with(this)return ' + strings.join('+')];
+        }
+
+        return Function.apply(null, strings).apply(
+          object,
+          hasTransformer ? [fn] : []
+        );
+    }
+    catch(err){
+      console.log("error", err);
+    }
 }
 
 parse(str) {
@@ -126,4 +134,4 @@ return {chunks: chunks, values: values};
     }
 }
 
-module.exports = new MasterTemplate();
+module.exports = MasterTemplate;

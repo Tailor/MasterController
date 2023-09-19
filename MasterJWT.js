@@ -1,13 +1,14 @@
 
-// version 1.0.15
+// version 0.0.17
 
-var master = require('./MasterControl');
-var crypto = require('crypto');
-var tools =  require('./MasterTools');
+var master = require('./MasterControl');	
+var crypto = require('crypto');	
+var toolClass =  require('./MasterTools');
+var tools = new toolClass();
 
  //https://www.youtube.com/watch?v=67mezK3NzpU&t=2492s
 class MasterJWT{
-    
+
         init(TID){
             this.alg = "sha256";
             var $that = this;
@@ -108,4 +109,4 @@ class MasterJWT{
 }
 
 
-master.extend({jwt: new MasterJWT() });
+master.extend("jwt", MasterJWT);

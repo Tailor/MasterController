@@ -1,6 +1,5 @@
-// version 1.1.7
+// version 1.1.10
 var master = require('./MasterControl');
-var tools =  require('./MasterTools');
 
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
@@ -144,4 +143,4 @@ class MasterCors{
 	}
 }
 
-master.extend({cors: new MasterCors() });
+master.extend("cors", MasterCors);

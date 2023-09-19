@@ -1,13 +1,14 @@
  
-// version 0.0.17
+// version 0.0.19
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
-var tools =  require('./MasterTools');
+var toolClass =  require('./MasterTools');
 var crypto = require('crypto');
+var tools = new toolClass();
 
 class MasterSession{
-
+ 
     sessions = {};
     options = {
         domain: undefined,
@@ -171,4 +172,4 @@ class MasterSession{
     }
 }
 
-master.extend({sessions: new MasterSession() });
+master.extend("sessions", MasterSession);
