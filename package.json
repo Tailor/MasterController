@@ -9,7 +9,7 @@
   "description": "A class library that makes using the Master Framework a breeze",
   "homepage": "https://github.com/Tailor/MasterController#readme",
   "license": "ISC",
-  "main": "./MasterControl.js",
+  "main": "MasterControl.js",
   "name": "mastercontroller",
   "repository": {
     "type": "git",
@@ -18,5 +18,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "version": "1.1.21"
+  "version": "1.1.22"
 }
