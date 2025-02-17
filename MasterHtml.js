@@ -1,4 +1,4 @@
-// version 0.0.21
+// version 0.0.23
 
 var master = require('./MasterControl');
 var fs = require('fs');
@@ -16,19 +16,18 @@ class html {
 	}
 
 	// render partial views
-	render(path, data){
-		data = data === undefined ? {} : data;
-		var params = tools.combineObjandArray(master.view.get(), data);
+	renderPartial(path, data){
+		
 
 		var partialViewUrl = `/app/views/${path}`;
 		var filepartialView = fs.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
 
 		var partialView = null;
 		if(master.overwrite.isTemplate){
-			partialView = master.overwrite.templateRender(params, "renderPartialView");
+			partialView = master.overwrite.templateRender(data, "renderPartialView");
 		}
 		else{
-			partialView =  temp.htmlBuilder(filepartialView, params);	
+			partialView =  temp.htmlBuilder(filepartialView, data);	
 		}
 
 		return partialView;
@@ -62,7 +61,7 @@ class html {
 							styles.push(`<link rel="stylesheet" type="text/${type}" href="/${extention}${fileLocatoon}">`);
 						}
 						else{
-							styles.push(`<link rel="stylesheet" type="text/${type}" href="/${fileLocatoon}">`);
+							styles.push(`<link rel="stylesheet" type="text/${type}" href="${fileLocatoon}">`);
 						}
 					}
 			});
