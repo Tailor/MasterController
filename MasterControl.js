@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.21
+// version 1.0.22
 
 var url = require('url');
 var fileserver = require('fs');
@@ -19,6 +19,7 @@ class MasterControl {
     _environmentType = null
     _serverProtocol = null
     _scopedList = []
+    _loadedFunc = null
 
     #loadTransientListClasses(name, params){
         Object.defineProperty(this.requestList, name, {
@@ -68,6 +69,12 @@ class MasterControl {
     // this extends master framework - adds your class to main master class object
     extend(name, element){
         this[name] = new element()
+    }
+
+    loaded(func){
+        if (typeof func === 'function') {
+           this._loadedFunc = func;
+        }
     }
 
     // extends class methods to be used inside of the view class using the THIS keyword
@@ -174,6 +181,14 @@ class MasterControl {
 
     }
 
+    useHTTPServer(port, func){
+        if (typeof func === 'function') {
+            http.createServer(function (req, res) {
+                func(req, res);
+            }).listen(port);
+        }
+    }
+
     // sets up https or http server protocals
     setupServer(type, credentials ){
         var $that = this;
@@ -210,7 +225,15 @@ class MasterControl {
         if(ext === ""){
           var requestObject = await this.middleware(req, res);
           if(requestObject !== -1){
-            require(`${this.root}/config/load`)(requestObject);
+            var loadedDone = false;
+            if (typeof $that._loadedFunc === 'function') {
+               loadedDone = $that._loadedFunc(requestObject);
+               
+            }
+            if (loadedDone){
+                require(`${this.root}/config/load`)(requestObject);
+            }
+          
           }
         }
         else{
