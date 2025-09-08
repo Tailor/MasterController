@@ -1,5 +1,5 @@
  
-// version 0.0.20
+// version 0.0.22
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
@@ -22,10 +22,17 @@ class MasterSession{
         secret : this.createSessionID()
     };
 
-    init(TID){
+    init(options){
         var $that = this;
-        if(TID){
-            $that.options.secret = TID;
+
+        // Combine the rest of the options carefully
+        this.options = {
+            ...this.options,
+            ...options
+        };
+
+        if(this.options.TID){
+            this.options.secret = TID;
         }
 
         return {
@@ -89,6 +96,10 @@ class MasterSession{
         if(typeof options === "object"){
             if(options.secret){
                 response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, cookieOpt.secret), cookieOpt));
+            }else{
+
+                response.setHeader('Set-Cookie', cookie.serialize(name, payload, cookieOpt));
+       
             }
 
         }
@@ -122,10 +133,10 @@ class MasterSession{
         }
     }
 
-    deleteCookie (name, response){
-        this.options.expires = new Date(0);
-        response.setHeader('Set-Cookie', cookie.serialize(name, "", this.options));
-        this.options.expires = undefined;
+    deleteCookie (name, response, options){
+        var cookieOpt = options === undefined? this.options : options;
+        response.setHeader('Set-Cookie', cookie.serialize(name, "", cookieOpt));
+        cookieOpt.expires = undefined;
     }
 
     // delete session and cookie

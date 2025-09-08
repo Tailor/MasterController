@@ -1,4 +1,4 @@
-// version 1.1.10
+// version 1.1.11
 var master = require('./MasterControl');
 
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
@@ -16,7 +16,7 @@ class MasterCors{
 	load(params){
 		if(params){
 			this.response = params.response;
-			this.request = params. request;
+			this.request = params.request;
 			this.configureOrigin();
 			this.configureMethods()
 			this.configureAllowedHeaders();
@@ -54,11 +54,15 @@ class MasterCors{
 				this.removeHeader('access-control-allow-origin');
 			}
 				
-			if(this.options.origin.constructor === Array){		
-				for (const element of this.options.origin) {
-					this.setHeader('access-control-allow-origin', element);
+			if(this.options.origin.constructor === Array){
+				// Get the origin from the incoming request
+				var requestOrigin = this.request.headers.origin;
+				
+				// Check if the request origin is in our allowed list
+				if(requestOrigin && this.options.origin.includes(requestOrigin)){
+					this.setHeader('access-control-allow-origin', requestOrigin);
 				}
-			
+				// If no specific origin matches, don't set the header
 			}
 
 		}

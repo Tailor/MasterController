@@ -1,4 +1,4 @@
-// version 1.6	
+// version 1.7
 var master = require('./MasterControl');
 
 var _beforeActionFunc = {
@@ -54,7 +54,9 @@ class MasterActionFilters {
         var flag = false;
         if(_beforeActionFunc.namespace === obj.__namespace){
             for (var a = 0; a < _beforeActionFunc.actionList.length; a++) { 
-                if(_beforeActionFunc.actionList[a] === request.toAction){
+                var action = request.toAction.replace(/\s/g, '');
+                var incomingAction = _beforeActionFunc.actionList[a].replace(/\s/g, '');
+                if(incomingAction === action){
                     flag = true;
                 }
             }
@@ -65,7 +67,9 @@ class MasterActionFilters {
     __callBeforeAction(obj, request, emitter) {
             if(_beforeActionFunc.namespace === obj.__namespace){
                 _beforeActionFunc.actionList.forEach(action => {
-                    if(action === request.toAction){
+                    var action = action.replace(/\s/g, '');
+                    var reqAction = request.toAction.replace(/\s/g, '');
+                    if(action === reqAction){
                         emit = emitter;
                         // call function inside controller 
                         _beforeActionFunc.callBack.call(_beforeActionFunc.that, request);
@@ -77,7 +81,9 @@ class MasterActionFilters {
      __callAfterAction(obj, request) {
             if(_afterActionFunc.namespace === obj.__namespace){
                 _afterActionFunc.actionList.forEach(action => {
-                        if(action === request.toAction){
+                        var action = action.replace(/\s/g, '');
+                        var reqAction = request.toAction.replace(/\s/g, '');
+                        if(action === reqAction){
                             _afterActionFunc.callBack.call(_afterActionFunc.that, request);
                         }
                     });

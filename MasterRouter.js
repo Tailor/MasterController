@@ -1,4 +1,4 @@
-// version 0.0.25
+// version 0.0.247
 
 var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
@@ -35,53 +35,65 @@ var tools = new toolClass();
     var routeList = routeObject.routes;
     var root = routeObject.root;
     var isComponent = routeObject.isComponent;
+    try{
+            if(routeList.length > 0){
+                // loop through routes
+                for(var item in routeList){
 
-    if(routeList.length > 0){
-        // loop through routes
-        for(var item in routeList){
+                    requestObject.toController = routeList[item].toController;
+                    requestObject.toAction = routeList[item].toAction;
+                    var pathObj = normalizePaths(requestObject.pathName, routeList[item].path, requestObject.params);
+                    // if we find the route that matches the request
+                    if(pathObj.requestPath === pathObj.routePath && routeList[item].type === requestObject.type){
 
-            requestObject.toController = routeList[item].toController;
-            requestObject.toAction = routeList[item].toAction;
-            var pathObj = normalizePaths(requestObject.pathName, routeList[item].path, requestObject.params)
-            // if we find the route that matches the request
-            if(pathObj.requestPath === pathObj.routePath && routeList[item].type === requestObject.type){
+                        // call Constraint
+                        if(typeof routeList[item].constraint === "function"){
+                            
+                            var newObj = {};
+                            //tools.combineObjects(newObj, master.controllerList);
+                            newObj.next = function(){
+                                currentRoute.root = root;
+                                currentRoute.pathName = requestObject.pathName;
+                                currentRoute.toAction = requestObject.toAction;
+                                currentRoute.toController = requestObject.toController;
+                                currentRoute.response = requestObject.response;
+                                currentRoute.isComponent = isComponent;
+                                emitter.emit("routeConstraintGood", requestObject);
+                            };
+                            routeList[item].constraint.call(newObj, requestObject);
+                            return true;
+                        }else{
 
-                // call Constraint
-                if(typeof routeList[item].constraint === "function"){
-                    
-                    var newObj = {};
-                    //tools.combineObjects(newObj, master.controllerList);
-                    newObj.next = function(){
-                        currentRoute.root = root;
-                        currentRoute.pathName = requestObject.pathName;
-                        currentRoute.toAction = requestObject.toAction;
-                        currentRoute.toController = requestObject.toController;
-                        currentRoute.response = requestObject.response;
-                        currentRoute.isComponent = isComponent;
-                        emitter.emit("routeConstraintGood", requestObject);
-                    };
-                    routeList[item].constraint.call(newObj, requestObject);
-                    return true;
-                }else{
+                            currentRoute.root = root;
+                            currentRoute.pathName = requestObject.pathName;
+                            currentRoute.toAction = requestObject.toAction;
+                            currentRoute.toController = requestObject.toController;
+                            currentRoute.response = requestObject.response;
+                            currentRoute.isComponent = isComponent;
+                            emitter.emit("routeConstraintGood", requestObject);
+                            return true;
+                        }
+                        
+                    }
 
-                    currentRoute.root = root;
-                    currentRoute.pathName = requestObject.pathName;
-                    currentRoute.toAction = requestObject.toAction;
-                    currentRoute.toController = requestObject.toController;
-                    currentRoute.response = requestObject.response;
-                    currentRoute.isComponent = isComponent;
-                    emitter.emit("routeConstraintGood", requestObject);
-                    return true;
-                }
-                
+                    if(pathObj.requestPath === pathObj.routePath && "options" ===requestObject.type.toLowerCase()){
+                        // this means that the request is correct but its an options request means its the browser checking to see if the request is allowed
+                        requestObject.response.writeHead(200, {'Content-Type': 'application/json'});
+			            requestObject.response.end(JSON.stringify({"done": "true"}));
+                        return true;
+                    }
+                   
+                };
+                return -1;
             }
-        };
-        return -1;
-    }
-    else{
-        master.error.log(`route list is not an array`, "Error");
-        return -1;
-    }
+            else{
+                master.error.log(`route list is not an array`, "Error");
+                return -1;
+            }
+        }
+        catch(e){
+            throw new Error("Error processing routes: " + e.stack); 
+        }
 };
 
 var loadScopedListClasses = function(){
@@ -100,26 +112,18 @@ class MasterRouter {
         var $that = this;
         return {
             route : function(path, toPath, type, constraint){ // function to add to list of routes
-                try{
-                    var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
                 
-                    if(type === undefined){
-                        throw "Missing Type. For example: GET, POST";
-                    }
-                    var route = {
-                        type: type.toLowerCase(),
-                        path: path.replace(/^\/|\/$/g, '').toLowerCase(),
-                        toController :pathList[0].replace(/^\/|\/$/g, ''),
-                        toAction: pathList[1],
-                        constraint : constraint
-                    };
-            
-                    $that._routes[$that.currentRouteName].routes.push(route); 
-                }
-                catch(error){
-                    console.log("Error Message", error );
-                }
-  
+                var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
+                
+                var route = {
+                    type: type.toLowerCase(),
+                    path: path.replace(/^\/|\/$/g, '').toLowerCase(),
+                    toController :pathList[0].replace(/^\/|\/$/g, ''),
+                    toAction: pathList[1],
+                    constraint : constraint
+                };
+        
+                $that._routes[$that.currentRouteName].routes.push(route);   
         
             },
         

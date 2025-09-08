@@ -133,6 +133,18 @@ class MasterAction{
 		}
 	}
 
+	returnReact(data, location){
+		
+			var masterView = null;
+			data = data === undefined ? {} : data;
+			this.params = this.params === undefined ? {} : this.params;
+			this.params = tools.combineObjects(data, this.params);
+			var func = master.viewList;
+			this.params = tools.combineObjects(this.params, func);
+			var html = master.reactView.compile(this.__currentRoute.toController, this.__currentRoute.toAction, this.__currentRoute.root);
+		
+	}
+
 	returnView(data, location){
 		
 		var masterView = null;
@@ -163,6 +175,31 @@ class MasterAction{
 	close(response, code, content, end){
 		response.writeHead(code, content.type);
 		response.end(end);
+	}
+
+	// Utility method to check if response is ready for writing
+	// Returns true if safe to continue, false if response already sent
+	waitUntilReady(){
+		// Check the primary response object first (matches existing returnJson pattern)
+		if (this.__response) {
+			return !this.__response._headerSent;
+		}
+		// Check request object response as fallback (matches existing redirectTo pattern)
+		if (this.__requestObject && this.__requestObject.response) {
+			return !this.__requestObject.response._headerSent;
+		}
+		// If neither exists, assume it's safe to continue (early in request lifecycle)
+		return true;
+	}
+
+	// Enhanced returnJson that checks readiness first
+	safeReturnJson(data){
+		if (this.waitUntilReady()) {
+			this.returnJson(data);
+			return true;
+		}
+		console.warn('Attempted to send JSON response but headers already sent');
+		return false;
 	}
 
 

@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.23
+// version 1.0.245
 
 var url = require('url');
 var fileserver = require('fs');
@@ -219,6 +219,43 @@ class MasterControl {
     async serverRun(req, res){
         var $that = this;
         console.log("path", `${req.method} ${req.url}`);
+
+          // Handle CORS preflight (OPTIONS) requests early and positively
+        if (req.method === 'OPTIONS') {
+            try {
+                if (this.cors && typeof this.cors.load === 'function') {
+                    if (!this.cors.options) {
+                        this.cors.init({
+                            origin: true,
+                            methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+                            allowedHeaders: true,
+                            credentials: false,
+                            maxAge: 86400
+                        });
+                    }
+                    this.cors.load({ request: req, response: res });
+                } else {
+                    res.setHeader('access-control-allow-origin', '*');
+                    res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+                    if (req.headers['access-control-request-headers']) {
+                        res.setHeader('access-control-allow-headers', req.headers['access-control-request-headers']);
+                    }
+                    res.setHeader('access-control-max-age', '86400');
+                }
+            } catch (e) {
+                res.setHeader('access-control-allow-origin', '*');
+                res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+                if (req.headers['access-control-request-headers']) {
+                    res.setHeader('access-control-allow-headers', req.headers['access-control-request-headers']);
+                }
+                res.setHeader('access-control-max-age', '86400');
+            }
+            res.statusCode = 204;
+            res.setHeader('content-length', '0');
+            res.end();
+            return;
+        }
+
         // parse URL
         const parsedUrl = url.parse(req.url);
         // extract URL path
@@ -227,6 +264,9 @@ class MasterControl {
         // based on the URL path, extract the file extension. e.g. .js, .doc, ...
         const ext = path.parse(pathname).ext;
       
+        // handle simple preflight configuration - might need a complex approch for all scenarios
+    
+
         // if extension exist then its a file.
         if(ext === ""){
           var requestObject = await this.middleware(req, res);
@@ -234,11 +274,14 @@ class MasterControl {
             var loadedDone = false;
             if (typeof $that._loadedFunc === 'function') {
                loadedDone = $that._loadedFunc(requestObject);
-               
+                if (loadedDone){
+                    require(`${this.root}/config/load`)(requestObject);
+                } 
             }
-            if (loadedDone){
+            else{
                 require(`${this.root}/config/load`)(requestObject);
             }
+           
           
           }
         }
@@ -321,6 +364,7 @@ class MasterControl {
             return -1;
         }
         else{
+            
             var params = await this.request.getRequestParam(request, response);
             return {
                 request : request,
