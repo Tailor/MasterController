@@ -1,5 +1,5 @@
 
-// version 0.0.1
+// version 0.0.2
 
 var master = require('./MasterControl');
 var url = require('url');
@@ -92,8 +92,16 @@ class MasterRequest{
                             });  
 
                         break
+                        case "text/plain" : 
+                        $that.fetchData(request, function(data){
+                            $that.parsedURL.formData = data;
+                            resolve($that.parsedURL);
+
+                        });
+
+                        break
                         default:
-                            var errorMessage = `Cannot parse - We currently support text/html, application/json, multipart/form-data, and application/x-www-form-urlencoded - your sending us = ${contentType.type}`;
+                            var errorMessage = `Cannot parse - We currently support text/plain, text/html, application/json, multipart/form-data, and application/x-www-form-urlencoded - your sending us = ${contentType.type}`;
                             resolve(errorMessage);
                             console.log(errorMessage);
                       }
@@ -109,6 +117,47 @@ class MasterRequest{
           throw ex;
       }
   };
+
+
+  fetchData(request, func) {
+
+    let body = '';
+    let receivedBytes = 0;
+    const maxBytes = 1 * 1024 * 1024; // 1MB limit
+  
+ 
+    try {
+
+        request.on('data', (chunk) => {
+            receivedBytes += chunk.length;
+      
+            // Prevent memory overload
+            if (receivedBytes > maxBytes) {
+              req.destroy(); // Close the connection
+              return;
+            }
+            
+            // Append chunk to body
+            body += chunk.toString('utf8');
+        });
+  
+        request.on('end', () => {
+            try {
+                // Process the plain text data here
+                const responseData = body;
+                func(responseData );
+              } catch (err) {
+
+                console.error('Processing error handling text/plain:', err);
+                throw err;
+              }
+
+        });
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+      throw error;
+    }
+  }
 
   deleteFileBuffer(filePath){
     fs.unlink(filePath, function (err) {
@@ -134,6 +183,10 @@ class MasterRequest{
       });
 
   }
+
+  stringToJson(request, func){
+
+  }
   
   jsonStream(request, func){
       //request.pipe(decoder);
@@ -143,8 +196,13 @@ class MasterRequest{
       });
 
       request.on('end', () => {
-          var buff = qs.parse(buffer);
-          func(buff);
+            try {
+                var buff = JSON.parse(buffer);
+                func(buff);
+            } catch (e) {
+                var buff = qs.parse(buffer);
+                func(buff);
+            }
       });
 
   }

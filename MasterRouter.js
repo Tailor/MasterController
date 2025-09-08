@@ -1,4 +1,4 @@
-// version 0.0.24
+// version 0.0.25
 
 var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
@@ -100,18 +100,26 @@ class MasterRouter {
         var $that = this;
         return {
             route : function(path, toPath, type, constraint){ // function to add to list of routes
+                try{
+                    var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
                 
-                var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
-                
-                var route = {
-                    type: type.toLowerCase(),
-                    path: path.replace(/^\/|\/$/g, '').toLowerCase(),
-                    toController :pathList[0].replace(/^\/|\/$/g, ''),
-                    toAction: pathList[1],
-                    constraint : constraint
-                };
-        
-                $that._routes[$that.currentRouteName].routes.push(route);   
+                    if(type === undefined){
+                        throw "Missing Type. For example: GET, POST";
+                    }
+                    var route = {
+                        type: type.toLowerCase(),
+                        path: path.replace(/^\/|\/$/g, '').toLowerCase(),
+                        toController :pathList[0].replace(/^\/|\/$/g, ''),
+                        toAction: pathList[1],
+                        constraint : constraint
+                    };
+            
+                    $that._routes[$that.currentRouteName].routes.push(route); 
+                }
+                catch(error){
+                    console.log("Error Message", error );
+                }
+  
         
             },
         

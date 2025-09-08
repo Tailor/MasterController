@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.22
+// version 1.0.23
 
 var url = require('url');
 var fileserver = require('fs');
@@ -191,22 +191,28 @@ class MasterControl {
 
     // sets up https or http server protocals
     setupServer(type, credentials ){
-        var $that = this;
-        if(type === "http"){
-            $that.serverProtocol = "http";
-            return http.createServer(async function(req, res) {
-                $that.serverRun(req, res);
-            });
-        }
-        if(type === "https"){
-            $that.serverProtocol = "https";
-            if(credentials){
-                return https.createServer(credentials, async function(req, res) {
+        try {
+            var $that = this;
+            if(type === "http"){
+                $that.serverProtocol = "http";
+                return http.createServer(async function(req, res) {
                     $that.serverRun(req, res);
-                  });
-            }else{
-                throw "Credentials needed to setup https"
+                });
             }
+            if(type === "https"){
+                $that.serverProtocol = "https";
+                if(credentials){
+                    return https.createServer(credentials, async function(req, res) {
+                        $that.serverRun(req, res);
+                    });
+                }else{
+                    throw "Credentials needed to setup https"
+                }
+            }
+        }
+        catch(error){
+            console.error("Failed to setup server:", error);
+            throw error;
         }
     }
 

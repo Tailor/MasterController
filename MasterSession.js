@@ -1,5 +1,5 @@
  
-// version 0.0.19
+// version 0.0.20
 
 var master = require('./MasterControl');
 var cookie = require('cookie');
@@ -84,10 +84,13 @@ class MasterSession{
          return this.secret;
     }
 
-    setCookie(name, payload, response, secret, options){
+    setCookie(name, payload, response, options){
         var cookieOpt = options === undefined? this.options : options;
-        if(secret){
-            response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, secret), cookieOpt));
+        if(typeof options === "object"){
+            if(options.secret){
+                response.setHeader('Set-Cookie', cookie.serialize(name, tools.encrypt(payload, cookieOpt.secret), cookieOpt));
+            }
+
         }
         else{
             response.setHeader('Set-Cookie', cookie.serialize(name, payload, cookieOpt));
