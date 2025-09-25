@@ -1,4 +1,4 @@
-// version 1.1.11
+// version 0.0.3 - robust origin handling (all envs), creds-safe reflection, function origins, extended Vary
 var master = require('./MasterControl');
 
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
@@ -17,6 +17,8 @@ class MasterCors{
 		if(params){
 			this.response = params.response;
 			this.request = params.request;
+			// Always signal that response may vary by Origin and requested headers/method
+			try { this.response.setHeader('Vary', 'Origin, Access-Control-Request-Headers, Access-Control-Request-Method'); } catch(_) {}
 			this.configureOrigin();
 			this.configureMethods()
 			this.configureAllowedHeaders();
@@ -46,7 +48,13 @@ class MasterCors{
 			}
 
 			if(this.options.origin === true){
-				this.setHeader('access-control-allow-origin', '*');
+				// If credentials are enabled, reflect request origin per spec
+				var requestOrigin = this.request.headers.origin;
+				if (this.options.credentials === true && requestOrigin) {
+					this.setHeader('access-control-allow-origin', requestOrigin);
+				} else {
+					this.setHeader('access-control-allow-origin', '*');
+				}
 			}
 
 			// remove all origins
@@ -63,6 +71,20 @@ class MasterCors{
 					this.setHeader('access-control-allow-origin', requestOrigin);
 				}
 				// If no specific origin matches, don't set the header
+			}
+
+			// Function predicate support: (origin, req) => boolean|string
+			if (typeof this.options.origin === 'function'){
+				try {
+					var requestOrigin = this.request.headers.origin;
+					var res = this.options.origin(requestOrigin, this.request);
+					if (res === true && requestOrigin){
+						this.setHeader('access-control-allow-origin', requestOrigin);
+					}
+					else if (typeof res === 'string' && res){
+						this.setHeader('access-control-allow-origin', res);
+					}
+				} catch(_) {}
 			}
 
 		}

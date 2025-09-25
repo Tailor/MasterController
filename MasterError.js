@@ -1,5 +1,5 @@
 
-// version 1.0.19
+// version 1.0.20 - improved console/error logging with syntax error code frames
 var master = require('./MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
@@ -22,19 +22,23 @@ class MasterError{
               ]
           });
         
-        process.on('uncaughtException', function (reason, promise) {
-            that.log(reason, "error");
-            //master.request.clear(500, reason.message);
-        });
-        
-                // will catch all promise exceptions
-        process.on('unhandledRejection', function (reason, promise) {
-            that.log(reason, "warn");
-        });
+		// Global error handlers with better diagnostics (stack and code frame)
+		process.on('uncaughtException', function (err) {
+			that._reportError(err, 'uncaughtException');
+		});
 
-        process.on('rejectionHandled', function (reason, promise) {
-            that.log(reason, "warn");
-        });
+		// will catch all promise exceptions
+		process.on('unhandledRejection', function (reason, promise) {
+			that._reportError(reason instanceof Error ? reason : new Error(String(reason)), 'unhandledRejection');
+		});
+
+		process.on('rejectionHandled', function (reason, promise) {
+			that._reportError(reason instanceof Error ? reason : new Error(String(reason)), 'rejectionHandled');
+		});
+
+		process.on('warning', function (warning) {
+			that._reportError(warning instanceof Error ? warning : new Error(String(warning)), 'warning');
+		});
         
     }
 
@@ -111,6 +115,63 @@ class MasterError{
             stack : msg.stack
         });
     }
+
+	// Enhanced error reporter: logs formatted stack and nearby source code
+	_reportError(err, tag){
+		try{
+			const name = err && err.name ? err.name : 'Error';
+			const message = err && err.message ? err.message : String(err);
+			const stack = err && err.stack ? String(err.stack) : '';
+			const header = `[${tag}] ${name}: ${message}`;
+			console.error('\u001b[31m' + header + '\u001b[0m');
+			if (stack) {
+				console.error(stack);
+				const loc = this._extractTopFrame(stack);
+				if (loc && loc.file && loc.line) {
+					const frame = this._buildCodeFrame(loc.file, loc.line, loc.column);
+					if (frame) {
+						console.error('\n\u001b[33mCode frame:\u001b[0m');
+						console.error(frame);
+					}
+				}
+			}
+			this.log(err, 'error');
+		} catch(e){
+			try { console.error('Error while reporting error:', e); } catch(_) {}
+		}
+	}
+
+	_extractTopFrame(stack){
+		try{
+			const lines = stack.split('\n');
+			for (let i = 0; i < lines.length; i++) {
+				const m = lines[i].match(/\((.*):(\d+):(\d+)\)/) || lines[i].match(/at ([^\s]+):(\d+):(\d+)/);
+				if (m) {
+					return { file: m[1], line: parseInt(m[2]), column: parseInt(m[3]||'0') };
+				}
+			}
+			return null;
+		} catch(_) { return null; }
+	}
+
+	_buildCodeFrame(file, line, column){
+		try{
+			if (!fileserver.existsSync(file)) return null;
+			const src = fileserver.readFileSync(file, 'utf8').split(/\r?\n/);
+			const start = Math.max(1, line - 3);
+			const end = Math.min(src.length, line + 3);
+			const digits = String(end).length;
+			let out = '';
+			for (let i = start; i <= end; i++) {
+				const prefix = (i === line ? '>' : ' ') + String(i).padStart(digits, ' ') + ' | ';
+				out += prefix + src[i - 1] + '\n';
+				if (i === line && column && column > 0) {
+					out += ' '.repeat(prefix.length + column - 1) + '^\n';
+				}
+			}
+			return out;
+		} catch(_) { return null; }
+	}
 }
 
 master.extend("error", MasterError);
