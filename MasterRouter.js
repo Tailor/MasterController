@@ -1,4 +1,4 @@
-// version 0.0.247
+// version 0.0.248
 
 var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
@@ -87,7 +87,7 @@ var tools = new toolClass();
                 return -1;
             }
             else{
-                master.error.log(`route list is not an array`, "Error");
+                master.error.log(`route list is not an array`, "error");
                 return -1;
             }
         }
