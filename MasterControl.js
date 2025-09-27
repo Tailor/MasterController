@@ -1,10 +1,11 @@
 // MasterControl - by Alexander rich
-// version 1.0.245
+// version 1.0.246
 
 var url = require('url');
 var fileserver = require('fs');
 var http = require('http');
 var https = require('https');
+var tls = require('tls');
 var fs = require('fs');
 var url = require('url');
 var path = require('path');
@@ -20,6 +21,8 @@ class MasterControl {
     _serverProtocol = null
     _scopedList = []
     _loadedFunc = null
+    _tlsOptions = null
+    _hstsEnabled = false
 
     #loadTransientListClasses(name, params){
         Object.defineProperty(this.requestList, name, {
@@ -169,11 +172,12 @@ class MasterControl {
 
         if(settings.httpPort || settings.requestTimeout){
             this.server.timeout = settings.requestTimeout;
-            if(settings.http){
-                this.server.listen(settings.httpPort, settings.http);   
+            var host = settings.hostname || settings.host || settings.http;
+            if(host){
+                this.server.listen(settings.httpPort, host);
             }else{
-                this.server.listen(settings.httpPort);   
-            }       
+                this.server.listen(settings.httpPort);
+            }
         }
         else{
             throw "HTTP, HTTPS, HTTPPORT and REQUEST TIMEOUT MISSING";
@@ -201,7 +205,16 @@ class MasterControl {
             }
             if(type === "https"){
                 $that.serverProtocol = "https";
+                // Initialize TLS from env if no credentials passed
+                if(!credentials){
+                    $that._initializeTlsFromEnv();
+                    credentials = $that._tlsOptions;
+                }
+                // Apply secure defaults if missing
                 if(credentials){
+                    if(!credentials.minVersion){ credentials.minVersion = 'TLSv1.2'; }
+                    if(credentials.honorCipherOrder === undefined){ credentials.honorCipherOrder = true; }
+                    if(!credentials.ALPNProtocols){ credentials.ALPNProtocols = ['h2', 'http/1.1']; }
                     return https.createServer(credentials, async function(req, res) {
                         $that.serverRun(req, res);
                     });
@@ -214,6 +227,130 @@ class MasterControl {
             console.error("Failed to setup server:", error);
             throw error;
         }
+    }
+
+    // Creates an HTTP server that 301-redirects to HTTPS counterpart
+    startHttpToHttpsRedirect(redirectPort, bindHost){
+        var $that = this;
+        return http.createServer(function (req, res) {
+            try{
+                var host = req.headers['host'] || '';
+                // Force original host, just change scheme
+                var location = 'https://' + host + req.url;
+                res.statusCode = 301;
+                res.setHeader('Location', location);
+                res.end();
+            }catch(e){
+                res.statusCode = 500;
+                res.end();
+            }
+        }).listen(redirectPort, bindHost);
+    }
+
+    // Load TLS configuration from env and build SNI contexts with live reload
+    _initializeTlsFromEnv(){
+        try{
+            var cfg = this.env;
+            if(!cfg || !cfg.server || !cfg.server.tls){
+                return;
+            }
+            var tlsCfg = cfg.server.tls;
+
+            var defaultCreds = this._buildSecureContextFromPaths(tlsCfg.default);
+            var defaultContext = defaultCreds ? tls.createSecureContext(defaultCreds) : null;
+
+            var sniMap = {};
+            if(tlsCfg.sni && typeof tlsCfg.sni === 'object'){
+                for (var domain in tlsCfg.sni){
+                    if (Object.prototype.hasOwnProperty.call(tlsCfg.sni, domain)){
+                        var domCreds = this._buildSecureContextFromPaths(tlsCfg.sni[domain]);
+                        if(domCreds){
+                            sniMap[domain] = tls.createSecureContext(domCreds);
+                            // watch domain certs for reload
+                            this._watchTlsFilesAndReload(tlsCfg.sni[domain], function(){
+                                try{
+                                    var updated = tls.createSecureContext(
+                                        this._buildSecureContextFromPaths(tlsCfg.sni[domain])
+                                    );
+                                    sniMap[domain] = updated;
+                                }catch(e){
+                                    console.error('Failed to reload TLS context for domain', domain, e);
+                                }
+                            }.bind(this));
+                        }
+                    }
+                }
+            }
+
+            var options = defaultCreds ? Object.assign({}, defaultCreds) : {};
+            options.SNICallback = function(servername, cb){
+                var ctx = sniMap[servername];
+                if(!ctx && defaultContext){ ctx = defaultContext; }
+                if(cb){ return cb(null, ctx); }
+                return ctx;
+            };
+
+            // Apply top-level TLS defaults/hardening from env if provided
+            if(tlsCfg.minVersion){ options.minVersion = tlsCfg.minVersion; }
+            if(tlsCfg.honorCipherOrder !== undefined){ options.honorCipherOrder = tlsCfg.honorCipherOrder; }
+            if(tlsCfg.ciphers){ options.ciphers = tlsCfg.ciphers; }
+            if(tlsCfg.alpnProtocols){ options.ALPNProtocols = tlsCfg.alpnProtocols; }
+
+            // HSTS
+            this._hstsEnabled = !!tlsCfg.hsts;
+            this._hstsMaxAge = tlsCfg.hstsMaxAge || 15552000; // 180 days by default
+
+            // Watch default certs for reload
+            if(tlsCfg.default){
+                this._watchTlsFilesAndReload(tlsCfg.default, function(){
+                    try{
+                        var updatedCreds = this._buildSecureContextFromPaths(tlsCfg.default);
+                        defaultContext = tls.createSecureContext(updatedCreds);
+                        // keep key/cert on options for non-SNI connections
+                        Object.assign(options, updatedCreds);
+                    }catch(e){
+                        console.error('Failed to reload default TLS context', e);
+                    }
+                }.bind(this));
+            }
+
+            this._tlsOptions = options;
+        }catch(e){
+            console.error('Failed to initialize TLS from env', e);
+        }
+    }
+
+    _buildSecureContextFromPaths(desc){
+        if(!desc){ return null; }
+        var opts = {};
+        try{
+            if(desc.keyPath){ opts.key = fs.readFileSync(desc.keyPath); }
+            if(desc.certPath){ opts.cert = fs.readFileSync(desc.certPath); }
+            if(desc.caPath){ opts.ca = fs.readFileSync(desc.caPath); }
+            if(desc.pfxPath){ opts.pfx = fs.readFileSync(desc.pfxPath); }
+            if(desc.passphrase){ opts.passphrase = desc.passphrase; }
+            return opts;
+        }catch(e){
+            console.error('Failed to read TLS files', e);
+            return null;
+        }
+    }
+
+    _watchTlsFilesAndReload(desc, onChange){
+        var paths = [];
+        if(desc.keyPath){ paths.push(desc.keyPath); }
+        if(desc.certPath){ paths.push(desc.certPath); }
+        if(desc.caPath){ paths.push(desc.caPath); }
+        if(desc.pfxPath){ paths.push(desc.pfxPath); }
+        paths.forEach(function(p){
+            try{
+                fs.watchFile(p, { interval: 5000 }, function(){
+                    onChange();
+                });
+            }catch(e){
+                console.error('Failed to watch TLS file', p, e);
+            }
+        });
     }
 
     async serverRun(req, res){
@@ -271,6 +408,10 @@ class MasterControl {
         if(ext === ""){
           var requestObject = await this.middleware(req, res);
           if(requestObject !== -1){
+            // HSTS header if enabled
+            if(this.serverProtocol === 'https' && this._hstsEnabled){
+                res.setHeader('strict-transport-security', `max-age=${this._hstsMaxAge}; includeSubDomains`);
+            }
             var loadedDone = false;
             if (typeof $that._loadedFunc === 'function') {
                loadedDone = $that._loadedFunc(requestObject);
