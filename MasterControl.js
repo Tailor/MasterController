@@ -151,19 +151,25 @@ class MasterControl {
 
     component(folderLocation, innerFolder){
 
-        var rootFolderLocation = `${this.root}/${folderLocation}/${innerFolder}`;
-        var search = `${rootFolderLocation}/**/*config.js`;
-        var files = globSearch.sync(search, rootFolderLocation);
-        require(files[0]);
-        var searchRoutes = `${rootFolderLocation}/**/*routes.js`;
-        var routeFiles = globSearch.sync(searchRoutes, rootFolderLocation);
-        var route = routeFiles[0];
+        var rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
+        var files = globSearch.sync("**/*config.js", { cwd: rootFolderLocation, absolute: true });
+        if(files && files.length > 0){
+            require(files[0]);
+        }else{
+            master.error.log(`Cannot find config file under ${rootFolderLocation}`, "error");
+        }
+        var routeFiles = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
+        var route = routeFiles && routeFiles.length > 0 ? routeFiles[0] : null;
         var routeObject = {
             isComponent : true, 
             root : rootFolderLocation
         }
         this.router.setup(routeObject);
-        require(route);
+        if(route){
+            require(route);
+        }else{
+            master.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+        }
     }
 
 
@@ -464,15 +470,18 @@ class MasterControl {
     }
 
     startMVC(foldername){
-        var rootFolderLocation = `${this.root}/${foldername}`;
-        var search = `${rootFolderLocation}/**/*routes.js`;
-        var files = globSearch.sync(search, rootFolderLocation);
+        var rootFolderLocation = path.join(this.root, foldername);
+        var files = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
         var route = {
             isComponent : false, 
             root : `${this.root}`
         }
         this.router.setup(route);
-        require(files[0]);
+        if(files && files.length > 0){
+            require(files[0]);
+        }else{
+            master.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+        }
     }
     
     
