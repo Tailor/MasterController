@@ -54,5 +54,5 @@ Use `setupServer('https', credentials)` or configure via environment TLS; see do
 - If keeping TLS in Node, harden TLS and manage cert rotation.
 
 ### License
-ISC
+MIT
 

@@ -3,6 +3,7 @@
 var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
 const EventEmitter = require("events");
+var path = require('path');
 var currentRoute = {};
 var tools = new toolClass();
 
@@ -36,6 +37,17 @@ var tools = new toolClass();
     var root = routeObject.root;
     var isComponent = routeObject.isComponent;
     try{
+            // Ensure routes is an array
+            if(!Array.isArray(routeList)){
+                master.error.log(`route list is not an array`, "error");
+                return -1;
+            }
+
+            // No routes registered for this scope; skip silently
+            if(routeList.length === 0){
+                return -1;
+            }
+
             if(routeList.length > 0){
                 // loop through routes
                 for(var item in routeList){
@@ -84,10 +96,6 @@ var tools = new toolClass();
                     }
                    
                 };
-                return -1;
-            }
-            else{
-                master.error.log(`route list is not an array`, "error");
                 return -1;
             }
         }
@@ -251,12 +259,15 @@ class MasterRouter {
 
          tools.combineObjects(master.requestList, requestObject);
          requestObject = master.requestList;
-         var Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterlowercase(requestObject.toController)}Controller`);
-         if(Control === null){
-            Control = require(`${currentRoute.root}/app/controllers/${tools.firstLetterUppercase(requestObject.toController)}Controller`);
-            if(Control === null){
-                console.log(`Cannot find controller name - ${requestObject.toController}`);
-            }
+         var Control = null;
+         try{
+             Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterlowercase(requestObject.toController)}Controller`));
+         }catch(e){
+             try{
+                 Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterUppercase(requestObject.toController)}Controller`));
+             }catch(e2){
+                 console.log(`Cannot find controller name - ${requestObject.toController}`);
+             }
          }
          tools.combineObjectPrototype(Control, master.controllerList);
          Control.prototype.__namespace = Control.name;
