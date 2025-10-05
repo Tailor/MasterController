@@ -1,4 +1,4 @@
-// version 0.1.1
+// version 0.1.2
 
 var master = require('./MasterControl');
 const { Server } = require('socket.io');
@@ -93,9 +93,20 @@ class MasterSocket{
         var controller = jsUcfirst(socket.handshake.query.socket);
         if(controller){
             try{
+                // Try case-sensitive first (PascalCase), then fallback to camelCase for cross-platform compatibility
                 var moduleName = this._baseurl + "/app/sockets/" + controller + "Socket";
-                //delete require.cache[require.resolve(moduleName)];
-                var BoardSocket = require(moduleName);
+                var BoardSocket;
+                try {
+                    BoardSocket = require(moduleName);
+                } catch (e) {
+                    // If PascalCase fails (Linux case-sensitive), try camelCase
+                    if (e.code === 'MODULE_NOT_FOUND') {
+                        var camelCaseModuleName = this._baseurl + "/app/sockets/" + controller.charAt(0).toLowerCase() + controller.slice(1) + "Socket";
+                        BoardSocket = require(camelCaseModuleName);
+                    } else {
+                        throw e;
+                    }
+                }
                 var bs = new BoardSocket();
                 bs.request = socket.request;
                 bs.response = socket.response;
