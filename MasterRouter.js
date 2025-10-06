@@ -131,7 +131,7 @@ class MasterRouter {
                     constraint : constraint
                 };
         
-                $that._routes[$that.currentRouteName].routes.push(route);   
+                $that._routes[$that.currentRouteName].routes.push(route);
         
             },
         
