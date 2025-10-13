@@ -1,5 +1,5 @@
 
-// version 0.0.21
+// version 0.0.22
 
 var master = require('./MasterControl');
 var fileserver = require('fs');
@@ -131,18 +131,6 @@ class MasterAction{
 			this.__requestObject.response.writeHead(200, {'Content-Type': 'text/html'});
 			this.__requestObject.response.end(masterView);
 		}
-	}
-
-	returnReact(data, location){
-		
-			var masterView = null;
-			data = data === undefined ? {} : data;
-			this.params = this.params === undefined ? {} : this.params;
-			this.params = tools.combineObjects(data, this.params);
-			var func = master.viewList;
-			this.params = tools.combineObjects(this.params, func);
-			var html = master.reactView.compile(this.__currentRoute.toController, this.__currentRoute.toAction, this.__currentRoute.root);
-		
 	}
 
 	returnView(data, location){
