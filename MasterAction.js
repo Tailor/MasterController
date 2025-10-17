@@ -190,6 +190,74 @@ class MasterAction{
 		return false;
 	}
 
+	// Serves binary files with proper headers and MIME types
+	// options: {
+	//   contentType: string (auto-detected if not provided),
+	//   disposition: 'inline' | 'attachment' (default: 'attachment'),
+	//   filename: string (defaults to original filename)
+	// }
+	returnFile(filePath, options){
+		options = options || {};
+
+		// Default options
+		var disposition = options.disposition || 'attachment';
+		var filename = options.filename || filePath.split('/').pop();
+		var contentType = options.contentType;
+
+		// Auto-detect content type if not provided
+		if (!contentType) {
+			var ext = filePath.split('.').pop().toLowerCase();
+			var mimeTypes = {
+				'pdf': 'application/pdf',
+				'jpg': 'image/jpeg',
+				'jpeg': 'image/jpeg',
+				'png': 'image/png',
+				'gif': 'image/gif',
+				'svg': 'image/svg+xml',
+				'zip': 'application/zip',
+				'csv': 'text/csv',
+				'txt': 'text/plain',
+				'xml': 'application/xml',
+				'json': 'application/json',
+				'mp4': 'video/mp4',
+				'mp3': 'audio/mpeg',
+				'wav': 'audio/wav',
+				'doc': 'application/msword',
+				'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+				'xls': 'application/vnd.ms-excel',
+				'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'ppt': 'application/vnd.ms-powerpoint',
+				'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+			};
+			contentType = mimeTypes[ext] || 'application/octet-stream';
+		}
+
+		try {
+			// Read file as binary
+			var fileBuffer = fileserver.readFileSync(filePath);
+
+			// Build headers
+			var headers = {
+				'Content-Type': contentType,
+				'Content-Length': fileBuffer.length,
+				'Content-Disposition': disposition + '; filename="' + filename + '"'
+			};
+
+			// Send response
+			if (!this.__response._headerSent) {
+				this.__response.writeHead(200, headers);
+				this.__response.end(fileBuffer);
+			}
+		} catch(error) {
+			// Handle file not found or read errors
+			if (!this.__response._headerSent) {
+				this.__response.writeHead(404, {'Content-Type': 'text/plain'});
+				this.__response.end('File not found: ' + filePath);
+			}
+			console.error('Error serving file:', error);
+		}
+	}
+
 
 }
 
