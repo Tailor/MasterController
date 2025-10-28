@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.246
+// version 1.0.247
 
 var url = require('url');
 var fileserver = require('fs');
@@ -156,19 +156,19 @@ class MasterControl {
         if(files && files.length > 0){
             require(files[0]);
         }else{
-            master.error.log(`Cannot find config file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find config file under ${rootFolderLocation}`, "error");
         }
         var routeFiles = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
         var route = routeFiles && routeFiles.length > 0 ? routeFiles[0] : null;
         var routeObject = {
-            isComponent : true, 
+            isComponent : true,
             root : rootFolderLocation
         }
         this.router.setup(routeObject);
         if(route){
             require(route);
         }else{
-            master.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
         }
     }
 
