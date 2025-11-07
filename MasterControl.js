@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.247
+// version 1.0.248
 
 var url = require('url');
 var fileserver = require('fs');
@@ -10,6 +10,47 @@ var fs = require('fs');
 var url = require('url');
 var path = require('path');
 var globSearch = require("glob");
+
+// Enhanced error handling - setup global handlers
+const { setupGlobalErrorHandlers } = require('./MasterErrorMiddleware');
+const { logger } = require('./MasterErrorLogger');
+
+// Security - Initialize security features
+const { security, securityHeaders } = require('./SecurityMiddleware');
+const { csp } = require('./CSPConfig');
+const { session } = require('./SessionSecurity');
+
+// Initialize global error handling
+setupGlobalErrorHandlers();
+
+// Log framework start
+logger.info({
+    code: 'MC_INFO_FRAMEWORK_START',
+    message: 'MasterController framework initializing',
+    context: {
+        version: '1.0.247',
+        nodeVersion: process.version,
+        platform: process.platform,
+        env: process.env.NODE_ENV || 'development'
+    }
+});
+
+// Log security status
+const isProduction = process.env.NODE_ENV === 'production';
+logger.info({
+    code: 'MC_INFO_SECURITY_INITIALIZED',
+    message: 'Security features initialized',
+    context: {
+        environment: isProduction ? 'production' : 'development',
+        features: {
+            securityHeaders: true,
+            csp: csp.enabled,
+            csrf: security.csrfEnabled,
+            rateLimit: security.rateLimitEnabled,
+            sessionSecurity: true
+        }
+    }
+});
 
 
 class MasterControl {
@@ -161,7 +202,7 @@ class MasterControl {
         var routeFiles = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
         var route = routeFiles && routeFiles.length > 0 ? routeFiles[0] : null;
         var routeObject = {
-            isComponent : true,
+            isComponent : true, 
             root : rootFolderLocation
         }
         this.router.setup(routeObject);
@@ -203,6 +244,26 @@ class MasterControl {
     setupServer(type, credentials ){
         try {
             var $that = this;
+            // Auto-load internal master tools so services (request, error, router, etc.) are available
+            // before user config initializes them.
+            try {
+                $that.addInternalTools([
+                    'MasterAction',
+                    'MasterActionFilters',
+                    'MasterRouter',
+                    'MasterRequest',
+                    'MasterError',
+                    'MasterCors',
+                    'MasterSession',
+                    'MasterSocket',
+                    'MasterHtml',
+                    'MasterTemplate',
+                    'MasterTools',
+                    'TemplateOverwrite'
+                ]);
+            } catch (e) {
+                console.error('[MasterControl] Failed to load internal tools:', e && e.message);
+            }
             if(type === "http"){
                 $that.serverProtocol = "http";
                 return http.createServer(async function(req, res) {
@@ -399,16 +460,25 @@ class MasterControl {
             return;
         }
 
+        // Apply CORS headers to ALL non-OPTIONS requests
+        try {
+            if (this.cors && typeof this.cors.load === 'function') {
+                this.cors.load({ request: req, response: res });
+            }
+        } catch (e) {
+            console.warn('CORS load failed for non-OPTIONS request:', e.message);
+        }
+
         // parse URL
         const parsedUrl = url.parse(req.url);
         // extract URL path
         let pathname = `.${parsedUrl.pathname}`;
-      
+
         // based on the URL path, extract the file extension. e.g. .js, .doc, ...
         const ext = path.parse(pathname).ext;
-      
+
         // handle simple preflight configuration - might need a complex approch for all scenarios
-    
+
 
         // if extension exist then its a file.
         if(ext === ""){
@@ -480,7 +550,7 @@ class MasterControl {
         if(files && files.length > 0){
             require(files[0]);
         }else{
-            master.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
         }
     }
     

@@ -1,6 +1,11 @@
-// version 0.0.3
+// version 0.0.4
 // https://github.com/WebReflection/backtick-template
 // https://stackoverflow.com/questions/29182244/convert-a-string-to-a-template-string
+
+// Security - Template injection prevention
+const { escapeHTML } = require('./MasterSanitizer');
+const { logger } = require('./MasterErrorLogger');
+
 var replace = ''.replace;
 
 var ca = /[&<>'"]/g;
@@ -47,8 +52,14 @@ class MasterTemplate{
           str = hasTransformer ? $str : fn,
           object = hasTransformer ? $object : $str,
           _ = this._,
-          known = _.hasOwnProperty(str),
-          parsed = known ? _[str] : (_[str] = this.parse(str)),
+          known = _.hasOwnProperty(str);
+
+        // Security: Validate template for dangerous patterns
+        if (!known) {
+          this.validateTemplate(str);
+        }
+
+        var parsed = known ? _[str] : (_[str] = this.parse(str)),
           chunks = parsed.chunks,
           values = parsed.values,
           strings
@@ -131,6 +142,88 @@ return {chunks: chunks, values: values};
 
     cape(m) {
     return unes[m];
+    }
+
+    // ==================== Security Methods ====================
+
+    /**
+     * Validate template for dangerous patterns
+     * Prevents template injection attacks
+     */
+    validateTemplate(template) {
+        if (!template || typeof template !== 'string') {
+            return;
+        }
+
+        const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
+
+        // Dangerous patterns in templates
+        const dangerousPatterns = [
+            { pattern: /\$\{.*__proto__/gi, name: 'Prototype pollution' },
+            { pattern: /\$\{.*constructor.*\(/gi, name: 'Constructor access' },
+            { pattern: /\$\{.*\beval\s*\(/gi, name: 'eval() usage' },
+            { pattern: /\$\{.*Function\s*\(/gi, name: 'Function constructor' },
+            { pattern: /\$\{.*require\s*\(/gi, name: 'require() usage' },
+            { pattern: /\$\{.*import\s*\(/gi, name: 'import() usage' },
+            { pattern: /\$\{.*process\./gi, name: 'Process access' },
+            { pattern: /\$\{.*global\./gi, name: 'Global object access' },
+            { pattern: /\$\{.*\bfs\./gi, name: 'File system access' },
+            { pattern: /\$\{.*child_process/gi, name: 'Child process access' }
+        ];
+
+        for (const { pattern, name } of dangerousPatterns) {
+            if (pattern.test(template)) {
+                logger.error({
+                    code: 'MC_SECURITY_TEMPLATE_INJECTION',
+                    message: `Dangerous template pattern detected: ${name}`,
+                    pattern: pattern.toString(),
+                    template: template.substring(0, 200) // Log first 200 chars only
+                });
+
+                if (isDevelopment) {
+                    throw new Error(`[MasterController Security] Template injection attempt detected: ${name}\nPattern: ${pattern}`);
+                }
+
+                // In production, sanitize by removing the dangerous expression
+                template = template.replace(pattern, '${/* REMOVED: Security risk */}');
+            }
+        }
+
+        return template;
+    }
+
+    /**
+     * Sanitize template variables before rendering
+     * Call this on user-provided data
+     */
+    sanitizeVariable(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (typeof value === 'string') {
+            return escapeHTML(value);
+        }
+
+        if (typeof value === 'object') {
+            // Prevent prototype pollution
+            if (value.__proto__ || value.constructor) {
+                logger.warn({
+                    code: 'MC_SECURITY_OBJECT_POLLUTION',
+                    message: 'Attempted to pass object with prototype/constructor to template'
+                });
+                return '[Object]';
+            }
+
+            // Safely stringify
+            try {
+                return JSON.stringify(value);
+            } catch (e) {
+                return '[Object]';
+            }
+        }
+
+        return String(value);
     }
 }
 

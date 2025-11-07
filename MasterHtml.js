@@ -1,4 +1,4 @@
-// version 0.0.23
+// version 0.0.24
 
 var master = require('./MasterControl');
 var fs = require('fs');
@@ -6,6 +6,14 @@ var tempClass =  require('./MasterTemplate');
 var toolClass =  require('./MasterTools');
 var temp = new tempClass();
 var tools = new toolClass();
+
+// Enhanced error handling
+const { handleTemplateError } = require('./MasterBackendErrorHandler');
+const { safeReadFile, safeFileExists } = require('./MasterErrorMiddleware');
+const { logger } = require('./MasterErrorLogger');
+
+// Security - Sanitization
+const { sanitizeTemplateHTML, sanitizeUserHTML, escapeHTML } = require('./MasterSanitizer');
 
 class html {
 
@@ -17,20 +25,40 @@ class html {
 
 	// render partial views
 	renderPartial(path, data){
-		
+		try {
+			var partialViewUrl = `/app/views/${path}`;
+			var fullPath = master.router.currentRoute.root + partialViewUrl;
 
-		var partialViewUrl = `/app/views/${path}`;
-		var filepartialView = fs.readFileSync(master.router.currentRoute.root + partialViewUrl, 'utf8');
+			const fileResult = safeReadFile(fs, fullPath);
 
-		var partialView = null;
-		if(master.overwrite.isTemplate){
-			partialView = master.overwrite.templateRender(data, "renderPartialView");
+			if (!fileResult.success) {
+				logger.warn({
+					code: 'MC_ERR_VIEW_NOT_FOUND',
+					message: `Partial view not found: ${path}`,
+					file: fullPath
+				});
+				return `<!-- Partial view not found: ${path} -->`;
+			}
+
+			var partialView = null;
+			if(master.overwrite.isTemplate){
+				partialView = master.overwrite.templateRender(data, "renderPartialView");
+			}
+			else{
+				partialView =  temp.htmlBuilder(fileResult.content, data);
+			}
+
+			return partialView;
+		} catch (error) {
+			const mcError = handleTemplateError(error, path, data);
+			logger.error({
+				code: mcError.code,
+				message: mcError.message,
+				file: path,
+				originalError: error
+			});
+			return `<!-- Error rendering partial: ${path} -->`;
 		}
-		else{
-			partialView =  temp.htmlBuilder(filepartialView, data);	
-		}
-
-		return partialView;
 
 	}
 
@@ -447,7 +475,7 @@ class html {
 		return rangeField;
 	}
 
-	   // allows you to add data object to params 
+	   // allows you to add data object to params
 	addDataToParams(data){
 
 		//loop through data and add it to new oobjects prototype
@@ -457,7 +485,66 @@ class html {
 			master.view.extend(newObj);
 		}
 	}
-	
+
+	// ==================== Security Methods ====================
+
+	/**
+	 * Sanitize user-generated HTML content
+	 * Use this for any HTML that comes from user input
+	 * @param {string} html - HTML content to sanitize
+	 * @returns {string} - Sanitized HTML
+	 */
+	sanitizeHTML(html) {
+		return sanitizeUserHTML(html);
+	}
+
+	/**
+	 * Escape HTML special characters
+	 * Use this to display user input as text (not HTML)
+	 * @param {string} text - Text to escape
+	 * @returns {string} - Escaped text safe for display
+	 */
+	escapeHTML(text) {
+		return escapeHTML(text);
+	}
+
+	/**
+	 * Render user content safely
+	 * Sanitizes HTML and wraps in container
+	 * @param {string} content - User-generated content
+	 * @param {string} containerTag - HTML tag to wrap content (default: div)
+	 * @param {object} attrs - Attributes for container
+	 * @returns {string} - Safe HTML
+	 */
+	renderUserContent(content, containerTag = 'div', attrs = {}) {
+		const sanitized = sanitizeUserHTML(content);
+
+		let attrStr = '';
+		for (const [key, value] of Object.entries(attrs)) {
+			attrStr += ` ${key}="${escapeHTML(String(value))}"`;
+		}
+
+		return `<${containerTag}${attrStr}>${sanitized}</${containerTag}>`;
+	}
+
+	/**
+	 * Create safe text node content
+	 * @param {string} text - Text content
+	 * @returns {string} - HTML-escaped text
+	 */
+	textNode(text) {
+		return escapeHTML(text);
+	}
+
+	/**
+	 * Create safe attribute value
+	 * @param {string} value - Attribute value
+	 * @returns {string} - Escaped and quoted value
+	 */
+	safeAttr(value) {
+		return `"${escapeHTML(String(value))}"`;
+	}
+
 }
 
 master.extendView("html", html);
