@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Cache System - Runtime Performance Optimization
 
 /**
@@ -10,7 +10,7 @@
  * - TTL support
  */
 
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 /**
  * LRU Cache with TTL support

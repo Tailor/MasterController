@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Input Validator - SQL Injection, Path Traversal, Command Injection Protection
 
 /**
@@ -12,7 +12,7 @@
  * - Header Injection
  */
 
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 const { escapeHTML } = require('./MasterSanitizer');
 const path = require('path');
 

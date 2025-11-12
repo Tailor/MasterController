@@ -1,6 +1,6 @@
 /**
  * MasterErrorMiddleware - Request/Response error handling middleware
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 const { handleControllerError, handleRoutingError, sendErrorResponse } = require('./MasterBackendErrorHandler');
@@ -23,7 +23,7 @@ function errorHandlerMiddleware(handler, controllerName, actionName) {
       // Log successful request in development
       if (isDevelopment) {
         const duration = Date.now() - startTime;
-        logger.debug({
+        logger.info({
           code: 'MC_INFO_REQUEST_SUCCESS',
           message: `${controllerName}#${actionName} completed`,
           context: {

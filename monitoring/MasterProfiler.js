@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Performance Profiler - Component and Request Profiling
 
 /**
@@ -10,7 +10,7 @@
  * - Detailed performance reports
  */
 
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 class MasterProfiler {
   constructor(options = {}) {

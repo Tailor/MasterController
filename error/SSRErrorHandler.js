@@ -1,10 +1,10 @@
 /**
  * SSRErrorHandler - Server-side rendering error handling
  * Handles component render failures with graceful fallbacks
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
-const { MasterControllerError } = require('../MasterErrorHandler');
+const { MasterControllerError } = require('./MasterErrorHandler');
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 

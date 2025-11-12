@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.248
+// version 1.0.251
 
 var url = require('url');
 var fileserver = require('fs');
@@ -12,13 +12,13 @@ var path = require('path');
 var globSearch = require("glob");
 
 // Enhanced error handling - setup global handlers
-const { setupGlobalErrorHandlers } = require('./MasterErrorMiddleware');
-const { logger } = require('./MasterErrorLogger');
+const { setupGlobalErrorHandlers } = require('./error/MasterErrorMiddleware');
+const { logger } = require('./error/MasterErrorLogger');
 
 // Security - Initialize security features
-const { security, securityHeaders } = require('./SecurityMiddleware');
-const { csp } = require('./CSPConfig');
-const { session } = require('./SessionSecurity');
+const { security, securityHeaders } = require('./security/SecurityMiddleware');
+const { csp } = require('./security/CSPConfig');
+const { session } = require('./security/SessionSecurity');
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -193,23 +193,26 @@ class MasterControl {
     component(folderLocation, innerFolder){
 
         var rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
-        var files = globSearch.sync("**/*config.js", { cwd: rootFolderLocation, absolute: true });
-        if(files && files.length > 0){
-            require(files[0]);
+
+        // Structure is always: {rootFolderLocation}/config/initializers/config.js
+        var configPath = path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
+        if(fs.existsSync(configPath)){
+            require(configPath);
         }else{
-            this.error.log(`Cannot find config file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find config file at ${configPath}`, "error");
         }
-        var routeFiles = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
-        var route = routeFiles && routeFiles.length > 0 ? routeFiles[0] : null;
+
+        // Structure is always: {rootFolderLocation}/config/routes.js
+        var routePath = path.join(rootFolderLocation, 'config', 'routes.js');
         var routeObject = {
-            isComponent : true, 
+            isComponent : true,
             root : rootFolderLocation
         }
         this.router.setup(routeObject);
-        if(route){
-            require(route);
+        if(fs.existsSync(routePath)){
+            require(routePath);
         }else{
-            this.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find routes file at ${routePath}`, "error");
         }
     }
 
@@ -541,16 +544,18 @@ class MasterControl {
 
     startMVC(foldername){
         var rootFolderLocation = path.join(this.root, foldername);
-        var files = globSearch.sync("**/*routes.js", { cwd: rootFolderLocation, absolute: true });
+
+        // Structure is always: {rootFolderLocation}/routes.js
+        var routePath = path.join(rootFolderLocation, 'routes.js');
         var route = {
-            isComponent : false, 
+            isComponent : false,
             root : `${this.root}`
         }
         this.router.setup(route);
-        if(files && files.length > 0){
-            require(files[0]);
+        if(fs.existsSync(routePath)){
+            require(routePath);
         }else{
-            this.error.log(`Cannot find routes file under ${rootFolderLocation}`, "error");
+            this.error.log(`Cannot find routes file at ${routePath}`, "error");
         }
     }
     
@@ -558,8 +563,26 @@ class MasterControl {
     // builds and calls all the required tools to have master running completely
     addInternalTools(requiredList){
         if(requiredList.constructor === Array){
+            // Map module names to their new organized paths
+            const modulePathMap = {
+                'MasterError': './error/MasterError',
+                'MasterAction': './MasterAction',
+                'MasterActionFilters': './MasterActionFilters',
+                'MasterRouter': './MasterRouter',
+                'MasterRequest': './MasterRequest',
+                'MasterCors': './MasterCors',
+                'MasterSession': './MasterSession',
+                'MasterSocket': './MasterSocket',
+                'MasterHtml': './MasterHtml',
+                'MasterTemplate': './MasterTemplate',
+                'MasterTools': './MasterTools',
+                'TemplateOverwrite': './TemplateOverwrite'
+            };
+
             for(var i = 0; i < requiredList.length; i++){
-                require('./' + requiredList[i]);
+                const moduleName = requiredList[i];
+                const modulePath = modulePathMap[moduleName] || './' + moduleName;
+                require(modulePath);
             }
         }
     }

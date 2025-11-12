@@ -1,5 +1,5 @@
 
-// version 0.0.22
+// version 0.0.23
 
 var master = require('./MasterControl');
 var fileserver = require('fs');
@@ -16,14 +16,14 @@ var path = require('path');
 const compileWebComponentsHTML = require('./ssr/runtime-ssr.cjs');
 
 // Enhanced error handling
-const { handleTemplateError, sendErrorResponse } = require('./MasterBackendErrorHandler');
-const { safeReadFile } = require('./MasterErrorMiddleware');
-const { logger } = require('./MasterErrorLogger');
+const { handleTemplateError, sendErrorResponse } = require('./error/MasterBackendErrorHandler');
+const { safeReadFile } = require('./error/MasterErrorMiddleware');
+const { logger } = require('./error/MasterErrorLogger');
 
 // Security - CSRF, validation, sanitization
-const { generateCSRFToken, validateCSRFToken } = require('./SecurityMiddleware');
-const { validator, validateRequestBody, sanitizeObject } = require('./MasterValidator');
-const { sanitizeUserHTML, escapeHTML } = require('./MasterSanitizer');
+const { generateCSRFToken, validateCSRFToken } = require('./security/SecurityMiddleware');
+const { validator, validateRequestBody, sanitizeObject } = require('./security/MasterValidator');
+const { sanitizeUserHTML, escapeHTML } = require('./security/MasterSanitizer');
 
 class MasterAction{
 	

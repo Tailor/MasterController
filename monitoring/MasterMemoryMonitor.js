@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Memory Monitor - Memory Leak Detection
 
 /**
@@ -9,7 +9,7 @@
  * - Memory alerts
  */
 
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 class MasterMemoryMonitor {
   constructor(options = {}) {

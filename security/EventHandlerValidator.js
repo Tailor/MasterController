@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Event Handler Validator - Prevent code injection in @event attributes
 
 /**
@@ -8,8 +8,8 @@
  * - Malicious function calls
  */
 
-const { logger } = require('./MasterErrorLogger');
-const { MasterControllerError } = require('./MasterErrorHandler');
+const { logger } = require('../error/MasterErrorLogger');
+const { MasterControllerError } = require('../error/MasterErrorHandler');
 
 // Valid patterns for event handler expressions
 const VALID_PATTERNS = [

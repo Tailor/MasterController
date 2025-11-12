@@ -1,4 +1,4 @@
-// version 0.0.249
+// version 0.0.250
 
 var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
@@ -8,13 +8,13 @@ var currentRoute = {};
 var tools = new toolClass();
 
 // Enhanced error handling
-const { handleRoutingError, handleControllerError, sendErrorResponse } = require('./MasterBackendErrorHandler');
-const { logger } = require('./MasterErrorLogger');
-const { performanceTracker, errorHandlerMiddleware } = require('./MasterErrorMiddleware');
+const { handleRoutingError, handleControllerError, sendErrorResponse } = require('./error/MasterBackendErrorHandler');
+const { logger } = require('./error/MasterErrorLogger');
+const { performanceTracker, errorHandlerMiddleware } = require('./error/MasterErrorMiddleware');
 
 // Security - Input validation and sanitization
-const { validator, detectPathTraversal, detectSQLInjection, detectCommandInjection } = require('./MasterValidator');
-const { escapeHTML } = require('./MasterSanitizer');
+const { validator, detectPathTraversal, detectSQLInjection, detectCommandInjection } = require('./security/MasterValidator');
+const { escapeHTML } = require('./security/MasterSanitizer');
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
@@ -135,10 +135,16 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
                     try {
                         requestObject.toController = routeList[item].toController;
                         requestObject.toAction = routeList[item].toAction;
-                        var pathObj = normalizePaths(requestObject.pathName, routeList[item].path, requestObject.params);
+
+                        // FIX: Create a clean copy of params for each route test to prevent parameter pollution
+                        // This prevents parameters from non-matching routes from accumulating in requestObject.params
+                        var testParams = Object.assign({}, requestObject.params);
+                        var pathObj = normalizePaths(requestObject.pathName, routeList[item].path, testParams);
 
                         // if we find the route that matches the request
                         if(pathObj.requestPath === pathObj.routePath && routeList[item].type === requestObject.type){
+                            // Only commit the extracted params if this route actually matches
+                            requestObject.params = testParams;
 
                             // call Constraint
                             if(typeof routeList[item].constraint === "function"){
@@ -197,6 +203,8 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
 
                         if(pathObj.requestPath === pathObj.routePath && "options" ===requestObject.type.toLowerCase()){
                             // this means that the request is correct but its an options request means its the browser checking to see if the request is allowed
+                            // Commit the params for OPTIONS requests too
+                            requestObject.params = testParams;
                             requestObject.response.writeHead(200, {'Content-Type': 'application/json'});
                             requestObject.response.end(JSON.stringify({"done": "true"}));
                             return true;

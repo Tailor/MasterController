@@ -13,18 +13,18 @@ const vm = require('vm');
 const moduleCache = new Map();
 
 // Error handling and monitoring
-const { MasterControllerError, findSimilarStrings } = require('../MasterErrorHandler');
-const { safeRenderComponent, validateSSRComponent, wrapConnectedCallback } = require('./SSRErrorHandler');
-const { monitor } = require('./PerformanceMonitor');
-const { logger } = require('../MasterErrorLogger');
+const { MasterControllerError, findSimilarStrings } = require('../error/MasterErrorHandler');
+const { safeRenderComponent, validateSSRComponent, wrapConnectedCallback } = require('../error/SSRErrorHandler');
+const { monitor } = require('../monitoring/PerformanceMonitor');
+const { logger } = require('../error/MasterErrorLogger');
 
 // Security - Sanitization and validation
-const { sanitizer, sanitizeTemplateHTML, sanitizeProps } = require('../MasterSanitizer');
-const { validateEventAttribute } = require('../EventHandlerValidator');
+const { sanitizer, sanitizeTemplateHTML, sanitizeProps } = require('../security/MasterSanitizer');
+const { validateEventAttribute } = require('../security/EventHandlerValidator');
 
 // Performance - Caching and profiling
-const { cache } = require('../MasterCache');
-const { profiler } = require('../MasterProfiler');
+const { cache } = require('../monitoring/MasterCache');
+const { profiler } = require('../monitoring/MasterProfiler');
 
 // Track registered custom elements to detect duplicates
 const registeredElements = new Map();
@@ -462,7 +462,7 @@ module.exports = async function compileWebComponentsHTML(inputHTML, preloadModul
           if (isDevelopment) {
             el.innerHTML = error.toHTML();
           } else {
-            const { renderFallback } = require('./SSRErrorHandler');
+            const { renderFallback } = require('../error/SSRErrorHandler');
             el.innerHTML = renderFallback(componentName);
           }
         }

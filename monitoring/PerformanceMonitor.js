@@ -1,9 +1,9 @@
 /**
  * PerformanceMonitor - Track and report SSR performance metrics
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
-const { MasterControllerError } = require('../MasterErrorHandler');
+const { MasterControllerError } = require('../error/MasterErrorHandler');
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 

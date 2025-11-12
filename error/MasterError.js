@@ -1,6 +1,6 @@
 
-// version 1.0.20 - improved console/error logging with syntax error code frames
-var master = require('./MasterControl');
+// version 1.0.21 - improved console/error logging with syntax error code frames
+var master = require('../MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
 const { request } = require('http');

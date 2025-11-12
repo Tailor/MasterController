@@ -1,10 +1,10 @@
-// version 0.0.4
+// version 0.0.5
 // https://github.com/WebReflection/backtick-template
 // https://stackoverflow.com/questions/29182244/convert-a-string-to-a-template-string
 
 // Security - Template injection prevention
-const { escapeHTML } = require('./MasterSanitizer');
-const { logger } = require('./MasterErrorLogger');
+const { escapeHTML } = require('./security/MasterSanitizer');
+const { logger } = require('./error/MasterErrorLogger');
 
 var replace = ''.replace;
 

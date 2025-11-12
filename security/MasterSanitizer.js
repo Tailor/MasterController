@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController HTML Sanitizer - XSS Protection
 
 /**
@@ -7,7 +7,7 @@
  * CSS injection, iframe attacks, form hijacking, meta tag injection
  */
 
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 // Dangerous HTML tags that should be removed
 const DANGEROUS_TAGS = [

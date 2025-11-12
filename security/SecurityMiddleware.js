@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Security Middleware - CSRF, Headers, Rate Limiting, CORS
 
 /**
@@ -7,7 +7,7 @@
  */
 
 const crypto = require('crypto');
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 // Rate limiting store
 const rateLimitStore = new Map();

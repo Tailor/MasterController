@@ -1,11 +1,11 @@
 /**
  * MasterController Client-Side Hydration Runtime
  * Handles error boundaries and hydration mismatch detection
- * Version: 2.0.0
+ * Version: 2.0.1
  */
 
 // Import error boundary
-import { ErrorBoundary } from './ErrorBoundary.js';
+import { ErrorBoundary } from '../error/ErrorBoundary.js';
 
 // Import hydration mismatch detection
 const isDevelopment = window.location.hostname === 'localhost' ||
@@ -13,7 +13,7 @@ const isDevelopment = window.location.hostname === 'localhost' ||
 
 if (isDevelopment && typeof require !== 'undefined') {
   try {
-    const { enableHydrationMismatchDetection } = require('./HydrationMismatch.js');
+    const { enableHydrationMismatchDetection } = require('../error/HydrationMismatch.js');
     enableHydrationMismatchDetection({
       verbose: localStorage.getItem('mc-hydration-debug') === 'true',
       delay: 1000

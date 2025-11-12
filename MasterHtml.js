@@ -1,4 +1,4 @@
-// version 0.0.24
+// version 0.0.25
 
 var master = require('./MasterControl');
 var fs = require('fs');
@@ -8,12 +8,12 @@ var temp = new tempClass();
 var tools = new toolClass();
 
 // Enhanced error handling
-const { handleTemplateError } = require('./MasterBackendErrorHandler');
-const { safeReadFile, safeFileExists } = require('./MasterErrorMiddleware');
-const { logger } = require('./MasterErrorLogger');
+const { handleTemplateError } = require('./error/MasterBackendErrorHandler');
+const { safeReadFile, safeFileExists } = require('./error/MasterErrorMiddleware');
+const { logger } = require('./error/MasterErrorLogger');
 
 // Security - Sanitization
-const { sanitizeTemplateHTML, sanitizeUserHTML, escapeHTML } = require('./MasterSanitizer');
+const { sanitizeTemplateHTML, sanitizeUserHTML, escapeHTML } = require('./security/MasterSanitizer');
 
 class html {
 

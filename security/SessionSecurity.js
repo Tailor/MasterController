@@ -1,4 +1,4 @@
-// version 1.0.0
+// version 1.0.1
 // MasterController Session Security - Secure cookie handling, session fixation prevention
 
 /**
@@ -7,7 +7,7 @@
  */
 
 const crypto = require('crypto');
-const { logger } = require('./MasterErrorLogger');
+const { logger } = require('../error/MasterErrorLogger');
 
 // Session store (use Redis in production)
 const sessionStore = new Map();
