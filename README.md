@@ -790,9 +790,141 @@ master.cors.init({
 
 ## Sessions
 
-### `master.sessions.init(options)`
+MasterController provides **two session systems**:
+- **`master.session`** (NEW) - Secure, Rails/Django-style sessions with automatic regeneration and protection (RECOMMENDED)
+- **`master.sessions`** (LEGACY) - Original cookie-based session API (backward compatibility only)
 
-Initialize sessions (auto-registers with middleware pipeline).
+### Secure Sessions (NEW - Recommended)
+
+#### `master.session.init(options)`
+
+Initialize secure sessions with Rails/Django-style `req.session` object (auto-registers with middleware pipeline).
+
+```javascript
+// Environment-specific configuration
+const isProduction = master.environmentType === 'production';
+
+master.session.init({
+    cookieName: 'mc_session',
+    maxAge: isProduction ? 3600000 : 86400000,  // Production: 1 hour, Dev: 24 hours
+    httpOnly: true,                              // Prevent JavaScript access (XSS protection)
+    secure: isProduction,                        // HTTPS only in production
+    sameSite: isProduction ? 'strict' : 'lax',  // CSRF protection
+    rolling: true,                               // Extend session on each request
+    regenerateInterval: 900000,                  // Regenerate session ID every 15 minutes
+    useFingerprint: false                        // Session hijacking detection (opt-in)
+});
+```
+
+**Security Features:**
+- ✅ 32-byte (256-bit) session IDs (cryptographically secure)
+- ✅ Automatic session regeneration (prevents fixation attacks)
+- ✅ HttpOnly cookies (prevents XSS cookie theft)
+- ✅ Secure flag for HTTPS (prevents MITM attacks)
+- ✅ SameSite CSRF protection
+- ✅ Rolling sessions (extends expiry on activity)
+- ✅ Automatic cleanup of expired sessions
+- ✅ Optional fingerprinting (detects hijacking)
+
+#### Using Sessions in Controllers
+
+Sessions are accessed via `obj.request.session` object:
+
+```javascript
+class AuthController {
+    login(obj) {
+        const user = authenticateUser(obj.params.formData);
+
+        // Set session data (Rails/Express style)
+        obj.request.session.userId = user.id;
+        obj.request.session.username = user.name;
+        obj.request.session.loggedInAt = Date.now();
+
+        this.redirect('/dashboard');
+    }
+
+    logout(obj) {
+        // Destroy entire session
+        master.session.destroy(obj.request, obj.response);
+        this.redirect('/');
+    }
+}
+```
+
+```javascript
+class DashboardController {
+    index(obj) {
+        // Read session data
+        const userId = obj.request.session.userId;
+
+        if (!userId) {
+            this.redirect('/login');
+            return;
+        }
+
+        this.render('dashboard', { userId });
+    }
+}
+```
+
+#### Session Management API
+
+**`master.session.destroy(req, res)`** - Destroy session completely
+
+```javascript
+master.session.destroy(obj.request, obj.response);
+```
+
+**`master.session.touch(sessionId)`** - Extend session expiry
+
+```javascript
+master.session.touch(obj.request.sessionId);
+```
+
+**`master.session.getSessionCount()`** - Get active session count (monitoring)
+
+```javascript
+const count = master.session.getSessionCount();
+console.log(`Active sessions: ${count}`);
+```
+
+**`master.session.clearAllSessions()`** - Clear all sessions (testing only)
+
+```javascript
+master.session.clearAllSessions();
+```
+
+#### Environment-Specific Best Practices
+
+```javascript
+// Get recommended settings
+const settings = master.session.getBestPractices('production');
+master.session.init(settings);
+```
+
+**Production Settings:**
+- Secure: true (HTTPS only)
+- SameSite: 'strict' (maximum CSRF protection)
+- MaxAge: 1 hour (short-lived sessions)
+- RegenerateInterval: 15 minutes
+
+**Development Settings:**
+- Secure: false (allow HTTP)
+- SameSite: 'lax' (easier testing)
+- MaxAge: 24 hours (convenient for development)
+- RegenerateInterval: 1 hour
+
+---
+
+### Legacy Sessions (Backward Compatibility)
+
+**⚠️ DEPRECATED: Use `master.session` (singular) for new projects.**
+
+The original `master.sessions` (plural) API is maintained for backward compatibility but lacks modern security features.
+
+#### `master.sessions.init(options)`
+
+Initialize legacy sessions (auto-registers with middleware pipeline).
 
 ```javascript
 master.sessions.init({
@@ -800,83 +932,87 @@ master.sessions.init({
     maxAge: 900000,        // 15 minutes
     httpOnly: true,
     secure: true,          // HTTPS only
-    sameSite: true,
+    sameSite: 'strict',    // Must be string: 'strict', 'lax', or 'none'
     path: '/'
 });
 ```
 
-### Session API
+#### Legacy Session API
 
-#### `master.sessions.set(name, data, response, secret, options)`
-Create a session.
-
-```javascript
-class AuthController {
-    login(obj) {
-        const user = authenticateUser(obj.params.formData);
-
-        master.sessions.set('user', user, obj.response);
-
-        this.redirect('/dashboard');
-    }
-}
-```
-
-#### `master.sessions.get(name, request, secret)`
-Retrieve session data.
+**`master.sessions.set(name, data, response, secret, options)`** - Create a session
 
 ```javascript
-class DashboardController {
-    index(obj) {
-        const user = master.sessions.get('user', obj.request);
-
-        if (!user) {
-            this.redirect('/login');
-            return;
-        }
-
-        this.render('dashboard', { user });
-    }
-}
+master.sessions.set('user', userData, obj.response);
 ```
 
-#### `master.sessions.delete(name, response)`
-Delete a session.
+**`master.sessions.get(name, request, secret)`** - Retrieve session data
 
 ```javascript
-class AuthController {
-    logout(obj) {
-        master.sessions.delete('user', obj.response);
-        this.redirect('/');
-    }
-}
+const user = master.sessions.get('user', obj.request);
 ```
 
-#### `master.sessions.reset()`
-Clear all sessions (useful for testing).
+**`master.sessions.delete(name, response)`** - Delete a session
+
+```javascript
+master.sessions.delete('user', obj.response);
+```
+
+**`master.sessions.reset()`** - Clear all sessions
 
 ```javascript
 master.sessions.reset();
 ```
 
-### Cookie Methods
+#### Legacy Cookie Methods
 
-Direct cookie access:
-
-#### `master.sessions.setCookie(name, value, response, options)`
+**`master.sessions.setCookie(name, value, response, options)`**
 ```javascript
 master.sessions.setCookie('theme', 'dark', obj.response);
 ```
 
-#### `master.sessions.getCookie(name, request, secret)`
+**`master.sessions.getCookie(name, request, secret)`**
 ```javascript
 const theme = master.sessions.getCookie('theme', obj.request);
 ```
 
-#### `master.sessions.deleteCookie(name, response, options)`
+**`master.sessions.deleteCookie(name, response, options)`**
 ```javascript
 master.sessions.deleteCookie('theme', obj.response);
 ```
+
+#### Migration Guide: Legacy → Secure Sessions
+
+**Old (master.sessions):**
+```javascript
+// Set
+master.sessions.set('user', userData, obj.response);
+
+// Get
+const user = master.sessions.get('user', obj.request);
+
+// Delete
+master.sessions.delete('user', obj.response);
+```
+
+**New (master.session):**
+```javascript
+// Set (Rails/Express style)
+obj.request.session.user = userData;
+
+// Get
+const user = obj.request.session.user;
+
+// Delete
+master.session.destroy(obj.request, obj.response);
+```
+
+**Benefits of migration:**
+- ✅ Automatic session regeneration (prevents fixation)
+- ✅ 32-byte session IDs (stronger than 20-byte)
+- ✅ Rolling sessions (better UX)
+- ✅ Automatic cleanup (no memory leaks)
+- ✅ Rails/Express-style API (more familiar)
+- ✅ No broken encryption (legacy has crypto bugs)
 
 ---
 

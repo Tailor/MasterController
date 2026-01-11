@@ -25,8 +25,8 @@ class SessionSecurity {
     this.domain = options.domain || null;
     this.path = options.path || '/';
 
-    // Session fingerprinting
-    this.useFingerprint = options.useFingerprint !== false;
+    // Session fingerprinting (disabled by default like ASP.NET Core)
+    this.useFingerprint = options.useFingerprint === true;
 
     // Start cleanup interval
     this._startCleanup();
@@ -406,6 +406,103 @@ const SESSION_BEST_PRACTICES = {
     useFingerprint: true
   }
 };
+
+// MasterController Integration
+const master = require('../MasterControl');
+
+// Create MasterController-compatible wrapper
+class MasterSessionSecurity {
+  constructor() {
+    this._instance = null;
+    this._options = {};
+  }
+
+  /**
+   * Initialize session security (Rails/Django style)
+   * Auto-registers with middleware pipeline
+   */
+  init(options = {}) {
+    this._options = options;
+    this._instance = new SessionSecurity(options);
+
+    // Auto-register with pipeline if available
+    if (master.pipeline) {
+      master.pipeline.use(this._instance.middleware());
+    }
+
+    return this;
+  }
+
+  /**
+   * Get middleware function
+   */
+  middleware() {
+    if (!this._instance) {
+      this.init();
+    }
+    return this._instance.middleware();
+  }
+
+  /**
+   * Destroy session
+   */
+  destroy(req, res) {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.destroySession(req, res);
+  }
+
+  /**
+   * Get session by ID
+   */
+  getSession(sessionId) {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.getSession(sessionId);
+  }
+
+  /**
+   * Touch session (extend expiry)
+   */
+  touch(sessionId) {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.touch(sessionId);
+  }
+
+  /**
+   * Get session count (monitoring)
+   */
+  getSessionCount() {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.getSessionCount();
+  }
+
+  /**
+   * Clear all sessions (testing only)
+   */
+  clearAllSessions() {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.clearAllSessions();
+  }
+
+  /**
+   * Get recommended settings for environment
+   */
+  getBestPractices(env) {
+    return SESSION_BEST_PRACTICES[env] || SESSION_BEST_PRACTICES.development;
+  }
+}
+
+// Auto-register with MasterController
+master.extend("session", MasterSessionSecurity);
 
 module.exports = {
   SessionSecurity,

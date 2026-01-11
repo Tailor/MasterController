@@ -44,7 +44,7 @@ class MasterPipeline {
     /**
      * Run: Add terminal middleware that ends the pipeline
      *
-     * Terminal middleware signature: async (ctx) => { /* send response */ }
+     * Terminal middleware signature: async (ctx) => { ... send response ... }
      * - Does NOT call next()
      * - Must send response
      *

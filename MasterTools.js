@@ -51,21 +51,48 @@ class MasterTools{
     };
    
     encrypt(payload, secret){
-        let iv = crypto.randomBytes(16).toString('hex').slice(0, 16);
-        let key = crypto.createHash('sha256').update(String(secret)).digest('base64').substr(0, 32);
-        crypto.createCipheriv('aes-256-cbc', key, iv);
-        var cipher = crypto.createCipher(algorithm,  key);
-        var crypted = cipher.update(payload,'utf8','hex');
-        crypted += cipher.final('hex');
-        return crypted;
+        // Generate random IV (16 bytes for AES)
+        const iv = crypto.randomBytes(16);
+
+        // Create 256-bit key from secret
+        const key = crypto.createHash('sha256').update(String(secret)).digest();
+
+        // Create cipher with AES-256-CBC
+        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+
+        // Encrypt payload
+        let encrypted = cipher.update(String(payload), 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+
+        // Prepend IV to encrypted data (IV is not secret, needed for decryption)
+        return iv.toString('hex') + ':' + encrypted;
     }
-    
+
     decrypt(encryption, secret){
-          var key = crypto.createHash('sha256').update(String(secret)).digest('base64').substr(0, 32);
-          var decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-          var dec = decipher.update(encryption,'hex','utf8');
-          dec += decipher.final('utf8');
-          return dec;
+        try {
+            // Split IV and encrypted data
+            const parts = encryption.split(':');
+            if (parts.length !== 2) {
+                throw new Error('Invalid encrypted data format');
+            }
+
+            const iv = Buffer.from(parts[0], 'hex');
+            const encryptedData = parts[1];
+
+            // Create 256-bit key from secret
+            const key = crypto.createHash('sha256').update(String(secret)).digest();
+
+            // Create decipher
+            const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+
+            // Decrypt
+            let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+
+            return decrypted;
+        } catch (error) {
+            throw new Error('Decryption failed: ' + error.message);
+        }
     }
     
     generateRandomKey(hash){
