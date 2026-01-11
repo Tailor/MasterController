@@ -1,5 +1,5 @@
 // MasterControl - by Alexander rich
-// version 1.0.251
+// version 1.0.252
 
 var url = require('url');
 var fileserver = require('fs');
@@ -192,7 +192,16 @@ class MasterControl {
 
     component(folderLocation, innerFolder){
 
-        var rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
+        // Enhanced: Support both relative (to master.root) and absolute paths
+        // If folderLocation is absolute, use it directly; otherwise join with master.root
+        var rootFolderLocation;
+        if (path.isAbsolute(folderLocation)) {
+            // Absolute path provided - use it directly
+            rootFolderLocation = path.join(folderLocation, innerFolder);
+        } else {
+            // Relative path - join with master.root (original behavior)
+            rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
+        }
 
         // Structure is always: {rootFolderLocation}/config/initializers/config.js
         var configPath = path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
