@@ -260,6 +260,9 @@ class MasterControl {
             // before user config initializes them.
             try {
                 $that.addInternalTools([
+                    'MasterPipeline',
+                    'MasterTimeout',
+                    'MasterErrorRenderer',
                     'MasterAction',
                     'MasterActionFilters',
                     'MasterRouter',
@@ -276,6 +279,10 @@ class MasterControl {
             } catch (e) {
                 console.error('[MasterControl] Failed to load internal tools:', e && e.message);
             }
+
+            // Register core middleware that must run for framework to function
+            $that._registerCoreMiddleware();
+
             if(type === "http"){
                 $that.serverProtocol = "http";
                 return http.createServer(async function(req, res) {
@@ -432,120 +439,148 @@ class MasterControl {
         });
     }
 
+    /**
+     * Register core middleware that must run for the framework to function
+     * This includes: static files, body parsing, scoped services, routing, error handling
+     */
+    _registerCoreMiddleware(){
+        var $that = this;
+
+        // 1. Static File Serving
+        $that.pipeline.use(async (ctx, next) => {
+            if (ctx.isStatic) {
+                // Serve static files
+                let pathname = `.${ctx.request.url}`;
+
+                fs.exists(pathname, function (exist) {
+                    if (!exist) {
+                        ctx.response.statusCode = 404;
+                        ctx.response.end(`File ${pathname} not found!`);
+                        return;
+                    }
+
+                    if (fs.statSync(pathname).isDirectory()) {
+                        pathname += '/index' + path.parse(pathname).ext;
+                    }
+
+                    fs.readFile(pathname, function(err, data) {
+                        if (err) {
+                            ctx.response.statusCode = 500;
+                            ctx.response.end(`Error getting the file: ${err}.`);
+                        } else {
+                            const mimeType = $that.router.findMimeType(path.parse(pathname).ext);
+                            ctx.response.setHeader('Content-type', mimeType || 'text/plain');
+                            ctx.response.end(data);
+                        }
+                    });
+                });
+
+                return; // Terminal - don't call next()
+            }
+
+            await next(); // Not static, continue pipeline
+        });
+
+        // 2. Timeout Tracking (optional - disabled by default until init)
+        // Will be configured by user in config.js with master.timeout.init()
+        // This is just a placeholder registration - actual timeout is set in user config
+
+        // 3. Request Body Parsing (always needed)
+        $that.pipeline.use(async (ctx, next) => {
+            // Parse body using MasterRequest
+            const params = await $that.request.getRequestParam(ctx.request, ctx.response);
+
+            // Merge parsed params into context
+            if (params && params.query) {
+                ctx.params.query = params.query;
+            }
+            if (params && params.formData) {
+                ctx.params.formData = params.formData;
+            }
+
+            await next();
+        });
+
+        // 4. Load Scoped Services (per request - always needed)
+        $that.pipeline.use(async (ctx, next) => {
+            for (var key in $that._scopedList) {
+                var className = $that._scopedList[key];
+                $that.requestList[key] = new className();
+            }
+            await next();
+        });
+
+        // 4. HSTS Header (if enabled for HTTPS)
+        $that.pipeline.use(async (ctx, next) => {
+            if ($that.serverProtocol === 'https' && $that._hstsEnabled) {
+                ctx.response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+            }
+            await next();
+        });
+
+        // 5. Routing (TERMINAL - always needed)
+        $that.pipeline.run(async (ctx) => {
+            // Load config/load which triggers routing
+            require(`${$that.root}/config/load`)(ctx);
+        });
+
+        // 6. Global Error Handler
+        $that.pipeline.useError(async (error, ctx, next) => {
+            logger.error({
+                code: 'MC_ERR_PIPELINE',
+                message: 'Error in middleware pipeline',
+                error: error.message,
+                stack: error.stack,
+                path: ctx.request.url,
+                method: ctx.type
+            });
+
+            if (!ctx.response.headersSent) {
+                ctx.response.statusCode = 500;
+                ctx.response.setHeader('Content-Type', 'application/json');
+                ctx.response.end(JSON.stringify({
+                    error: 'Internal Server Error',
+                    message: process.env.NODE_ENV === 'production'
+                        ? 'An error occurred'
+                        : error.message
+                }));
+            }
+        });
+    }
+
     async serverRun(req, res){
         var $that = this;
         console.log("path", `${req.method} ${req.url}`);
 
-          // Handle CORS preflight (OPTIONS) requests early and positively
-        if (req.method === 'OPTIONS') {
-            try {
-                if (this.cors && typeof this.cors.load === 'function') {
-                    if (!this.cors.options) {
-                        this.cors.init({
-                            origin: true,
-                            methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-                            allowedHeaders: true,
-                            credentials: false,
-                            maxAge: 86400
-                        });
-                    }
-                    this.cors.load({ request: req, response: res });
-                } else {
-                    res.setHeader('access-control-allow-origin', '*');
-                    res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-                    if (req.headers['access-control-request-headers']) {
-                        res.setHeader('access-control-allow-headers', req.headers['access-control-request-headers']);
-                    }
-                    res.setHeader('access-control-max-age', '86400');
-                }
-            } catch (e) {
-                res.setHeader('access-control-allow-origin', '*');
-                res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-                if (req.headers['access-control-request-headers']) {
-                    res.setHeader('access-control-allow-headers', req.headers['access-control-request-headers']);
-                }
-                res.setHeader('access-control-max-age', '86400');
-            }
-            res.statusCode = 204;
-            res.setHeader('content-length', '0');
-            res.end();
-            return;
-        }
-
-        // Apply CORS headers to ALL non-OPTIONS requests
-        try {
-            if (this.cors && typeof this.cors.load === 'function') {
-                this.cors.load({ request: req, response: res });
-            }
-        } catch (e) {
-            console.warn('CORS load failed for non-OPTIONS request:', e.message);
-        }
-
-        // parse URL
+        // Create request context for middleware pipeline
         const parsedUrl = url.parse(req.url);
-        // extract URL path
-        let pathname = `.${parsedUrl.pathname}`;
-
-        // based on the URL path, extract the file extension. e.g. .js, .doc, ...
+        const pathname = parsedUrl.pathname;
         const ext = path.parse(pathname).ext;
 
-        // handle simple preflight configuration - might need a complex approch for all scenarios
+        const context = {
+            request: req,
+            response: res,
+            requrl: url.parse(req.url, true),
+            pathName: pathname.replace(/^\/|\/$/g, '').toLowerCase(),
+            type: req.method.toLowerCase(),
+            params: {},
+            state: {},       // User-defined state shared across middleware
+            master: $that,   // Access to framework instance
+            isStatic: ext !== '' // Is this a static file request?
+        };
 
+        // Execute middleware pipeline
+        try {
+            await $that.pipeline.execute(context);
+        } catch (error) {
+            console.error('Pipeline execution failed:', error);
+            if (!res.headersSent) {
+                res.statusCode = 500;
+                res.end('Internal Server Error');
+            }
+        }
 
-        // if extension exist then its a file.
-        if(ext === ""){
-          var requestObject = await this.middleware(req, res);
-          if(requestObject !== -1){
-            // HSTS header if enabled
-            if(this.serverProtocol === 'https' && this._hstsEnabled){
-                res.setHeader('strict-transport-security', `max-age=${this._hstsMaxAge}; includeSubDomains`);
-            }
-            var loadedDone = false;
-            if (typeof $that._loadedFunc === 'function') {
-               loadedDone = $that._loadedFunc(requestObject);
-                if (loadedDone){
-                    require(`${this.root}/config/load`)(requestObject);
-                } 
-            }
-            else{
-                require(`${this.root}/config/load`)(requestObject);
-            }
-           
-          
-          }
-        }
-        else{
-      
-            fs.exists(pathname, function (exist) {
-      
-                if(!exist) {
-                  // if the file is not found, return 404
-                  res.statusCode = 404;
-                  res.end(`File ${pathname} not found!`);
-                  return;
-                }
-      
-                // if is a directory search for index file matching the extension
-                if (fs.statSync(pathname).isDirectory()) pathname += '/index' + ext;
-      
-                // read file from file system
-                fs.readFile(pathname, function(err, data){
-                  if(err){
-                    res.statusCode = 500;
-                    res.end(`Error getting the file: ${err}.`);
-                  } else {
-                    const mimeType = $that.router.findMimeType(ext);
-                    
-                    // if the file is found, set Content-type and send data
-                    res.setHeader('Content-type', mimeType || 'text/plain' );
-                    res.end(data);
-                  }
-                });
-      
-            });
-        }
-     
-    } // end server()
+    } // end serverRun()
 
     start(server){
         this.server = server;
@@ -574,6 +609,9 @@ class MasterControl {
         if(requiredList.constructor === Array){
             // Map module names to their new organized paths
             const modulePathMap = {
+                'MasterPipeline': './MasterPipeline',
+                'MasterTimeout': './MasterTimeout',
+                'MasterErrorRenderer': './error/MasterErrorRenderer',
                 'MasterError': './error/MasterError',
                 'MasterAction': './MasterAction',
                 'MasterActionFilters': './MasterActionFilters',

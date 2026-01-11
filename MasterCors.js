@@ -11,6 +11,13 @@ class MasterCors{
 		else{
 			master.error.log("cors options missing", "warn");
 		}
+
+		// Auto-register with pipeline if available
+		if (master.pipeline) {
+			master.pipeline.use(this.middleware());
+		}
+
+		return this; // Chainable
 	}
 
 	load(params){
@@ -166,6 +173,28 @@ class MasterCors{
 				this.setHeader('access-control-allow-max-age', this.options.maxAge);
 			}
 		}
+	}
+
+	/**
+	 * Get CORS middleware for the pipeline
+	 * Handles both preflight OPTIONS requests and regular requests
+	 */
+	middleware() {
+		var $that = this;
+
+		return async (ctx, next) => {
+			// Handle preflight OPTIONS request
+			if (ctx.type === 'options') {
+				$that.load({ request: ctx.request, response: ctx.response });
+				ctx.response.statusCode = 204;
+				ctx.response.end();
+				return; // Terminal - don't call next()
+			}
+
+			// Regular request - apply CORS headers
+			$that.load({ request: ctx.request, response: ctx.response });
+			await next();
+		};
 	}
 }
 

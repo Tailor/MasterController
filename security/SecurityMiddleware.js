@@ -473,6 +473,73 @@ function validateCSRFToken(token) {
   return security.validateCSRFToken(token);
 }
 
+/**
+ * Pipeline-compatible middleware wrappers
+ * These adapt from (ctx, next) format to (req, res, next) format
+ */
+
+function pipelineSecurityHeaders(options = {}) {
+  const instance = options.instance || security;
+  return async (ctx, next) => {
+    // Create next callback for old-style middleware
+    let nextCalled = false;
+    const oldNext = () => { nextCalled = true; };
+
+    // Call old middleware
+    instance.securityHeadersMiddleware(ctx.request, ctx.response, oldNext);
+
+    // Continue pipeline if next was called
+    if (nextCalled) {
+      await next();
+    }
+  };
+}
+
+function pipelineCors(options = {}) {
+  const instance = new SecurityMiddleware({ ...options, headers: false, csrf: false, rateLimit: false });
+  return async (ctx, next) => {
+    let nextCalled = false;
+    const oldNext = () => { nextCalled = true; };
+
+    instance.corsMiddleware(ctx.request, ctx.response, oldNext);
+
+    // CORS might terminate for OPTIONS - check if response ended
+    if (!ctx.response.writableEnded && nextCalled) {
+      await next();
+    }
+  };
+}
+
+function pipelineRateLimit(options = {}) {
+  const instance = new SecurityMiddleware({ ...options, headers: false, csrf: false, cors: false });
+  return async (ctx, next) => {
+    let nextCalled = false;
+    const oldNext = () => { nextCalled = true; };
+
+    instance.rateLimitMiddleware(ctx.request, ctx.response, oldNext);
+
+    // Rate limit might terminate - check if response ended
+    if (!ctx.response.writableEnded && nextCalled) {
+      await next();
+    }
+  };
+}
+
+function pipelineCsrf(options = {}) {
+  const instance = new SecurityMiddleware({ ...options, headers: false, cors: false, rateLimit: false });
+  return async (ctx, next) => {
+    let nextCalled = false;
+    const oldNext = () => { nextCalled = true; };
+
+    instance.csrfMiddleware(ctx.request, ctx.response, oldNext);
+
+    // CSRF might terminate - check if response ended
+    if (!ctx.response.writableEnded && nextCalled) {
+      await next();
+    }
+  };
+}
+
 module.exports = {
   SecurityMiddleware,
   security,
@@ -482,5 +549,10 @@ module.exports = {
   csrf,
   generateCSRFToken,
   validateCSRFToken,
-  SECURITY_HEADERS
+  SECURITY_HEADERS,
+  // Pipeline-compatible exports
+  pipelineSecurityHeaders,
+  pipelineCors,
+  pipelineRateLimit,
+  pipelineCsrf
 };

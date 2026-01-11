@@ -35,6 +35,11 @@ class MasterSession{
             this.options.secret = TID;
         }
 
+        // Auto-register with pipeline if available
+        if (master.pipeline) {
+            master.pipeline.use(this.middleware());
+        }
+
         return {
             setPath : function(path){
                 $that.options.path = path === undefined ? '/' : path;
@@ -183,6 +188,20 @@ class MasterSession{
         else{
             return -1;
         }
+    }
+
+    /**
+     * Get session middleware for the pipeline
+     * Sessions are accessed lazily via master.sessions in controllers
+     */
+    middleware() {
+        var $that = this;
+
+        return async (ctx, next) => {
+            // Sessions are available via master.sessions.get/set in controllers
+            // No action needed here - just continue pipeline
+            await next();
+        };
     }
 }
 

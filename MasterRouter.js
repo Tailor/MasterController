@@ -246,88 +246,110 @@ var loadScopedListClasses = function(){
 };
 
 
+/**
+ * Normalize route path: lowercase segments but preserve param names
+ *
+ * @param {String} path - Route path like "/Period/:periodId/Items/:itemId"
+ * @returns {String} - Normalized: "period/:periodId/items/:itemId"
+ */
+function normalizeRoutePath(path) {
+    const trimmed = path.replace(/^\/|\/$/g, '');
+    const segments = trimmed.split('/');
+
+    const normalized = segments.map(segment => {
+        // Preserve parameter names (start with :)
+        if (segment.startsWith(':')) {
+            return segment;
+        }
+        // Lowercase path segments
+        return segment.toLowerCase();
+    });
+
+    return normalized.join('/');
+}
+
 class MasterRouter {
     currentRouteName = null
     _routes = {}
-    
+
     start(){
         var $that = this;
         return {
             route : function(path, toPath, type, constraint){ // function to add to list of routes
-                
+
                 var pathList = toPath.replace(/^\/|\/$/g, '').split("#");
-                
+
                 var route = {
                     type: type.toLowerCase(),
-                    path: path.replace(/^\/|\/$/g, '').toLowerCase(),
+                    path: normalizeRoutePath(path),
                     toController :pathList[0].replace(/^\/|\/$/g, ''),
                     toAction: pathList[1],
                     constraint : constraint
                 };
-        
+
                 $that._routes[$that.currentRouteName].routes.push(route);
-        
+
             },
         
             resources: function(routeName){ // function to add to list of routes using resources bulk
-        
+
 
                 $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName.toLowerCase(),
+                        path: normalizeRoutePath(routeName),
                         toController :routeName,
                         toAction: "index",
                         constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName.toLowerCase(),
+                        path: normalizeRoutePath(routeName),
                         toController :routeName,
                         toAction: "new",
                         constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "post",
-                        path: routeName.toLowerCase(),
+                        path: normalizeRoutePath(routeName),
                         toController :routeName,
                         toAction: "create",
                         constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         // pages/3
                         type: "get",
-                        path: routeName.toLowerCase() + "/:id",
+                        path: normalizeRoutePath(routeName + "/:id"),
                         toController :routeName,
                         toAction: "show",
                         constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "get",
-                        path: routeName.toLowerCase() + "/:id/" + "edit",
+                        path: normalizeRoutePath(routeName + "/:id/edit"),
                         toController :routeName,
                         toAction: "edit",
-                        constraint : null    
+                        constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "put",
-                        path: routeName.toLowerCase() + "/:id",
+                        path: normalizeRoutePath(routeName + "/:id"),
                         toController :routeName,
                         toAction: "update",
                         constraint : null
                     });
-        
+
                     $that._routes[$that.currentRouteName].routes.push({
                         type: "delete",
-                        path: routeName.toLowerCase() + "/:id",
+                        path: normalizeRoutePath(routeName + "/:id"),
                         toController :routeName,
                         toAction: "destroy",
                         constraint : null
-                    });   
+                    });
             }
         }
     }
