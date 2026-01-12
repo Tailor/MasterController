@@ -1,7 +1,6 @@
 // MasterPipeline - Middleware Pipeline System
 // version 1.0
 
-var master = require('./MasterControl');
 const { logger } = require('./error/MasterErrorLogger');
 
 class MasterPipeline {
@@ -340,5 +339,5 @@ class MasterPipeline {
     }
 }
 
-// Register with master
-master.extend("pipeline", MasterPipeline);
+// Export for MasterControl to register (prevents circular dependency)
+module.exports = { MasterPipeline };

@@ -1,8 +1,15 @@
 // version 2.0 - FIXED: Instance-level filters, async support, multiple filters
-var master = require('./MasterControl');
 const { logger } = require('./error/MasterErrorLogger');
 
 class MasterActionFilters {
+
+	// Lazy-load master to avoid circular dependency (Google-style Singleton pattern)
+	static get _master() {
+		if (!MasterActionFilters.__masterCache) {
+			MasterActionFilters.__masterCache = require('./MasterControl');
+		}
+		return MasterActionFilters.__masterCache;
+	}
 
 	constructor() {
 		// FIXED: Instance-level storage instead of module-level
@@ -200,4 +207,12 @@ class MasterActionFilters {
 	}
 }
 
-master.extendController(MasterActionFilters);
+// Export and lazy register (prevents circular dependency - Spring/Angular pattern)
+module.exports = MasterActionFilters;
+
+setImmediate(() => {
+	const master = require('./MasterControl');
+	if (master && master.extendController) {
+		master.extendController(MasterActionFilters);
+	}
+});

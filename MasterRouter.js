@@ -1,6 +1,5 @@
 // version 0.0.250
 
-var master = require('./MasterControl');
 var toolClass =  require('./MasterTools');
 const EventEmitter = require("events");
 var path = require('path');
@@ -564,4 +563,4 @@ class MasterRouter {
     
 }
 
-master.extend("router", MasterRouter);
+module.exports = { MasterRouter };

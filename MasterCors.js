@@ -1,5 +1,4 @@
 // version 0.0.3 - robust origin handling (all envs), creds-safe reflection, function origins, extended Vary
-var master = require('./MasterControl');
 
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
@@ -198,4 +197,4 @@ class MasterCors{
 	}
 }
 
-master.extend("cors", MasterCors);
+module.exports = { MasterCors };

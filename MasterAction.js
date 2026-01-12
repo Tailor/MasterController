@@ -1,7 +1,6 @@
 
 // version 0.0.23
 
-var master = require('./MasterControl');
 var fileserver = require('fs');
 var toolClass =  require('./MasterTools');
 var tempClass =  require('./MasterTemplate');
@@ -26,9 +25,18 @@ const { validator, validateRequestBody, sanitizeObject } = require('./security/M
 const { sanitizeUserHTML, escapeHTML } = require('./security/MasterSanitizer');
 
 class MasterAction{
-	
+
+	// Lazy-load master to avoid circular dependency
+	// Static getter ensures single instance (Singleton pattern - Google style)
+	static get _master() {
+		if (!MasterAction.__masterCache) {
+			MasterAction.__masterCache = require('./MasterControl');
+		}
+		return MasterAction.__masterCache;
+	}
+
 	getView(location, data){
-		var actionUrl =  master.root + location;
+		var actionUrl =  MasterAction._master.root + location;
 		const fileResult = safeReadFile(fileserver, actionUrl);
 
 		if (!fileResult.success) {
@@ -598,5 +606,14 @@ class MasterAction{
 
 }
 
+// Export for MasterControl and register after event loop (prevents circular dependency)
+// This is the Lazy Registration pattern used by Spring Framework, Angular, Google Guice
+module.exports = MasterAction;
 
-master.extendController(MasterAction);
+// Use setImmediate to register after master is fully loaded
+setImmediate(() => {
+	const master = require('./MasterControl');
+	if (master && master.extendController) {
+		master.extendController(MasterAction);
+	}
+});

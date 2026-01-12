@@ -1,6 +1,5 @@
 
 // version 1.0.21 - improved console/error logging with syntax error code frames
-var master = require('../MasterControl');
 var winston = require('winston');
 var fileserver = require('fs');
 const { request } = require('http');
@@ -174,7 +173,7 @@ class MasterError{
 	}
 }
 
-master.extend("error", MasterError);
+module.exports = { MasterError };
 
 // ================ CODES YOU CAN USE ================ //
 // ACCEPTED    202 Accepted

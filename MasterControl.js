@@ -319,19 +319,46 @@ class MasterControl {
                 'TemplateOverwrite': './TemplateOverwrite'
             };
 
-            for (const moduleName in internalModules) {
-                try {
-                    const modulePath = internalModules[moduleName];
-                    const module = require(modulePath);
+            // Explicit module registration (prevents circular dependency issues)
+            // This is the Google-style dependency injection pattern
+            const moduleRegistry = {
+                'pipeline': { path: './MasterPipeline', exportName: 'MasterPipeline' },
+                'timeout': { path: './MasterTimeout', exportName: 'MasterTimeout' },
+                'errorRenderer': { path: './error/MasterErrorRenderer', exportName: 'MasterErrorRenderer' },
+                'error': { path: './error/MasterError', exportName: 'MasterError' },
+                'router': { path: './MasterRouter', exportName: 'MasterRouter' },
+                'request': { path: './MasterRequest', exportName: 'MasterRequest' },
+                'cors': { path: './MasterCors', exportName: 'MasterCors' },
+                'socket': { path: './MasterSocket', exportName: 'MasterSocket' },
+                'tempdata': { path: './MasterTemp', exportName: 'MasterTemp' },
+                'overwrite': { path: './TemplateOverwrite', exportName: 'TemplateOverwrite' },
+                'session': { path: './security/SessionSecurity', exportName: 'MasterSessionSecurity' }
+            };
 
-                    // Special handling for SessionSecurity to avoid circular dependency
-                    if (moduleName === 'SessionSecurity' && module.MasterSessionSecurity) {
-                        $that.session = new module.MasterSessionSecurity();
+            for (const [name, config] of Object.entries(moduleRegistry)) {
+                try {
+                    const module = require(config.path);
+                    const ClassConstructor = module[config.exportName] || module;
+
+                    if (ClassConstructor) {
+                        $that[name] = new ClassConstructor();
+                    } else {
+                        console.warn(`[MasterControl] Module ${name} does not export ${config.exportName}`);
                     }
-                    // Most modules auto-register via master.extend() at module load time
                 } catch (e) {
-                    console.error(`[MasterControl] Failed to load ${moduleName}:`, e && e.message);
+                    console.error(`[MasterControl] Failed to load ${name}:`, e.message);
                 }
+            }
+
+            // Load view and controller extensions (these extend prototypes, not master instance)
+            try {
+                require('./MasterAction');
+                require('./MasterActionFilters');
+                require('./MasterHtml');
+                require('./MasterTemplate');
+                require('./MasterTools');
+            } catch (e) {
+                console.error('[MasterControl] Failed to load extensions:', e.message);
             }
 
             // Initialize global error handlers

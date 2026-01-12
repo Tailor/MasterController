@@ -407,9 +407,6 @@ const SESSION_BEST_PRACTICES = {
   }
 };
 
-// MasterController Integration
-const master = require('../MasterControl');
-
 // Create MasterController-compatible wrapper
 class MasterSessionSecurity {
   constructor() {
@@ -424,6 +421,9 @@ class MasterSessionSecurity {
   init(options = {}) {
     this._options = options;
     this._instance = new SessionSecurity(options);
+
+    // Lazy load master to avoid circular dependency
+    const master = require('../MasterControl');
 
     // Auto-register with pipeline if available
     if (master.pipeline) {

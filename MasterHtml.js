@@ -1,6 +1,5 @@
 // version 0.0.25
 
-var master = require('./MasterControl');
 var fs = require('fs');
 var tempClass =  require('./MasterTemplate');
 var toolClass =  require('./MasterTools');
@@ -16,6 +15,14 @@ const { logger } = require('./error/MasterErrorLogger');
 const { sanitizeTemplateHTML, sanitizeUserHTML, escapeHTML } = require('./security/MasterSanitizer');
 
 class html {
+
+	// Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+	get _master() {
+		if (!this.__masterCache) {
+			this.__masterCache = require('./MasterControl');
+		}
+		return this.__masterCache;
+	}
 
 	javaScriptSerializer(name, obj){
 		// SECURITY: Escape closing script tags and dangerous characters
@@ -630,5 +637,13 @@ class html {
 
 }
 
-master.extendView("html", html);
+// Export and lazy register (prevents circular dependency - Spring/Angular pattern)
+module.exports = html;
+
+setImmediate(() => {
+	const master = require('./MasterControl');
+	if (master && master.extendView) {
+		master.extendView("html", html);
+	}
+});
 

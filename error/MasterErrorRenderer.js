@@ -14,7 +14,6 @@
  * @version 1.0.0
  */
 
-var master = require('../MasterControl');
 const fs = require('fs');
 const path = require('path');
 const { logger } = require('./MasterErrorLogger');
@@ -524,6 +523,6 @@ class MasterErrorRenderer {
     }
 }
 
-master.extend("errorRenderer", MasterErrorRenderer);
+module.exports = { MasterErrorRenderer };
 
 module.exports = MasterErrorRenderer;

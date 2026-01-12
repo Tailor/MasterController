@@ -30,4 +30,4 @@ class TemplateOverwrite{
 	}
 }
 
-master.extend("overwrite", TemplateOverwrite);
+module.exports = { TemplateOverwrite };

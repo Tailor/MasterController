@@ -1,7 +1,6 @@
 
 // version 0.0.2
 
-var master = require('./MasterControl');
 var url = require('url');
 const StringDecoder = require('string_decoder').StringDecoder;
 var qs = require('qs');
@@ -407,4 +406,4 @@ class MasterRequest{
     }
 }
 
-master.extend("request", MasterRequest);
+module.exports = { MasterRequest };

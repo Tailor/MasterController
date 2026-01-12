@@ -1,6 +1,5 @@
 // version 0.1.2
 
-var master = require('./MasterControl');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
@@ -139,7 +138,7 @@ class MasterSocket{
     }
 }
 
-master.extend("socket", MasterSocket);
+module.exports = { MasterSocket };
 
 // shallow+deep merge helper
 function isObject(item) {

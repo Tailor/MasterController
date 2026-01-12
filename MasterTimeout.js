@@ -13,7 +13,6 @@
  * @version 1.0.0
  */
 
-var master = require('./MasterControl');
 const { logger } = require('./error/MasterErrorLogger');
 
 class MasterTimeout {
@@ -327,6 +326,5 @@ class MasterTimeout {
     }
 }
 
-master.extend("timeout", MasterTimeout);
-
-module.exports = MasterTimeout;
+// Export for MasterControl to register (prevents circular dependency)
+module.exports = { MasterTimeout };
