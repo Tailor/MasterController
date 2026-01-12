@@ -24,6 +24,14 @@ class MasterTimeout {
         this.enabled = true;
     }
 
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     /**
      * Initialize timeout system
      *
@@ -62,8 +70,8 @@ class MasterTimeout {
      * @param {Number} timeout - Timeout in milliseconds
      *
      * @example
-     * master.timeout.setRouteTimeout('/api/*', 30000); // 30 seconds for APIs
-     * master.timeout.setRouteTimeout('/admin/reports', 300000); // 5 minutes for reports
+     * this._master.timeout.setRouteTimeout('/api/*', 30000); // 30 seconds for APIs
+     * this._master.timeout.setRouteTimeout('/admin/reports', 300000); // 5 minutes for reports
      */
     setRouteTimeout(routePattern, timeout) {
         if (typeof timeout !== 'number' || timeout <= 0) {

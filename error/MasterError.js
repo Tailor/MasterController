@@ -7,7 +7,15 @@ const { request } = require('http');
 class MasterError{
     logger = "";
     statuses = [];
-    
+
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('../MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     init(error){
         var that = this;
         var stat = error;
@@ -17,7 +25,7 @@ class MasterError{
             format: winston.format.json(),
             transports: [
                   new winston.transports.Console(),
-                  new winston.transports.File({ filename: `${master.root}/log/${master.environmentType}.log` })
+                  new winston.transports.File({ filename: `${this._master.root}/log/${this._master.environmentType}.log` })
               ]
           });
         
@@ -71,7 +79,7 @@ class MasterError{
                     for (var i = 0; i < status.length; i++) {
                             if(parseInt(status[i].code) === statusCode){
                                 var location = status[i].route;
-                                var html = fileserver.readFileSync(`${master.root}/${status[i].route.replace(/^\/|\/$/g, '')}`, 'utf8' );
+                                var html = fileserver.readFileSync(`${this._master.root}/${status[i].route.replace(/^\/|\/$/g, '')}`, 'utf8' );
                                 if (!res.headersSent) {
                                         res.writeHead(200, {'Content-Type': 'text/html'});
                                         res.write(html, 'utf8');

@@ -14,6 +14,14 @@ class MasterRequest{
     request = {};
     response = {};
 
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
+
    init(options){
      if(options){
         this.options = {};
@@ -402,7 +410,7 @@ class MasterRequest{
   // have a clear all object that you can run that will delete all rununing objects
     clear(code, end){
         this.parsedURL = {}; 
-        master.action.close(this.response, code, contentTypeManager.parse(this.request), end);
+        this._master.action.close(this.response, code, contentTypeManager.parse(this.request), end);
     }
 }
 

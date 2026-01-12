@@ -22,7 +22,7 @@ class MasterActionFilters {
 	// FIXED: Adds to array instead of overwriting
 	beforeAction(actionlist, func){
 		if (typeof func !== 'function') {
-			master.error.log("beforeAction callback not a function", "warn");
+			MasterActionFilters._master.error.log("beforeAction callback not a function", "warn");
 			return;
 		}
 
@@ -39,7 +39,7 @@ class MasterActionFilters {
 	// FIXED: Adds to array instead of overwriting
 	afterAction(actionlist, func){
 		if (typeof func !== 'function') {
-			master.error.log("afterAction callback not a function", "warn");
+			MasterActionFilters._master.error.log("afterAction callback not a function", "warn");
 			return;
 		}
 
@@ -119,7 +119,7 @@ class MasterActionFilters {
 					res.writeHead(500, { 'Content-Type': 'application/json' });
 					res.end(JSON.stringify({
 						error: 'Internal Server Error',
-						message: master.environmentType === 'development' ? error.message : 'Filter execution failed'
+						message: MasterActionFilters._master.environmentType === 'development' ? error.message : 'Filter execution failed'
 					}));
 				}
 
@@ -212,7 +212,7 @@ module.exports = MasterActionFilters;
 
 setImmediate(() => {
 	const master = require('./MasterControl');
-	if (master && master.extendController) {
-		master.extendController(MasterActionFilters);
+	if (master && MasterActionFilters._master.extendController) {
+		MasterActionFilters._master.extendController(MasterActionFilters);
 	}
 });

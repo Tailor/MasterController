@@ -3,17 +3,25 @@
 	// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
 
+	// Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+	get _master() {
+		if (!this.__masterCache) {
+			this.__masterCache = require('./MasterControl');
+		}
+		return this.__masterCache;
+	}
+
 	init(options){
 		if(options){
 			this.options = options;
 		}
 		else{
-			master.error.log("cors options missing", "warn");
+			this._master.error.log("cors options missing", "warn");
 		}
 
 		// Auto-register with pipeline if available
-		if (master.pipeline) {
-			master.pipeline.use(this.middleware());
+		if (this._master.pipeline) {
+			this._master.pipeline.use(this.middleware());
 		}
 
 		return this; // Chainable
@@ -33,7 +41,7 @@ class MasterCors{
 			this.configureMaxAge();
 		}
 		else{
-			master.error.log("cors response and requests missing", "warn");
+			this._master.error.log("cors response and requests missing", "warn");
 		}
 	}
 

@@ -9,9 +9,17 @@ var jsUcfirst = function(string){
 };
 
 class MasterSocket{
-    
+
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     init(serverOrIo, options = {}){
-        this._baseurl = master.root;
+        this._baseurl = this._master.root;
 
         // Build Socket.IO options using master cors initializer when available
         const defaults = this._buildDefaultIoOptions();
@@ -22,14 +30,14 @@ class MasterSocket{
             // It's already an io instance
             this.io = serverOrIo;
         } else {
-            // Prefer explicit server, fallback to master.server
-            const httpServer = serverOrIo || master.server;
+            // Prefer explicit server, fallback to this._master.server
+            const httpServer = serverOrIo || this._master.server;
             if (!httpServer) {
                 throw new Error(
                     'MasterSocket.init requires an HTTP server. ' +
-                    'Either pass the server explicitly: master.socket.init(server) ' +
-                    'or call master.start(server) before socket.init(). ' +
-                    'Current initialization order issue: socket.init() called before master.start()'
+                    'Either pass the server explicitly: this._master.socket.init(server) ' +
+                    'or call this._master.start(server) before socket.init(). ' +
+                    'Current initialization order issue: socket.init() called before this._master.start()'
                 );
             }
             this.io = new Server(httpServer, ioOptions);
@@ -60,7 +68,7 @@ class MasterSocket{
 
     _loadCorsConfig(){
         try {
-            const cfgPath = path.join(master.root, 'config', 'initializers', 'cors.json');
+            const cfgPath = path.join(this._master.root, 'config', 'initializers', 'cors.json');
             if (fs.existsSync(cfgPath)) {
                 const raw = fs.readFileSync(cfgPath, 'utf8');
                 return JSON.parse(raw);
@@ -80,8 +88,8 @@ class MasterSocket{
                     try{
                         // MasterSocket.load expects [action, payload]
                         const data = [eventName, payload];
-                        if (master && master.socket && typeof master.socket.load === 'function') {
-                            master.socket.load(data, socket, io);
+                        if (master && this._master.socket && typeof this._master.socket.load === 'function') {
+                            this._master.socket.load(data, socket, io);
                         }
                     }catch(e){
                         try { console.error('Socket routing error:', e?.message || e); } catch(_){}
@@ -131,7 +139,7 @@ class MasterSocket{
                 bs[data[0]](data[1], socket, io);
             }
             catch(ex){
-                master.error.log(ex, "warn");
+                this._master.error.log(ex, "warn");
             }
 
         }
@@ -163,19 +171,19 @@ function mergeDeep(target, source) {
  * 
  * 
  * 
- * It loads CORS and methods from config/initializers/cors.json automatically. During init, it reads master.root/config/initializers/cors.json and builds the Socket.IO options from:
+ * It loads CORS and methods from config/initializers/cors.json automatically. During init, it reads this._master.root/config/initializers/cors.json and builds the Socket.IO options from:
 origin, credentials, methods, allowedHeaders (if present)
 transports defaults to ['websocket', 'polling']
 If cors.json is missing or a field isn’t present, it falls back to:
 cors: { origin: true, credentials: true, methods: ['GET','POST'] }
 transports: ['websocket','polling']
 You can still override anything explicitly:
-master.socket.init(master.server, { cors: { origin: ['https://foo.com'], methods: ['GET','POST','PUT'] }, transports: ['websocket'] })
+this._master.socket.init(this._master.server, { cors: { origin: ['https://foo.com'], methods: ['GET','POST','PUT'] }, transports: ['websocket'] })
 
-If you don’t pass a server/io, init() falls back to master.server:
-master.socket.init() → uses master.server automatically
+If you don’t pass a server/io, init() falls back to this._master.server:
+this._master.socket.init() → uses this._master.server automatically
 You can pass overrides as the second arg:
-master.socket.init(undefined, { cors: { origin: ['https://app.com'] }, transports: ['websocket'] })
+this._master.socket.init(undefined, { cors: { origin: ['https://app.com'] }, transports: ['websocket'] })
 Or pass a prebuilt io:
-const io = new Server(master.server, opts); master.socket.init(io)
+const io = new Server(this._master.server, opts); this._master.socket.init(io)
  */

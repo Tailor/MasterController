@@ -4,13 +4,21 @@ class MasterTemp{
 
     temp = {};
 
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     add(name, data){
 
         if(name !== "add" && name !== "clear"){
             this[name] = data;
         }
         else{
-            master.error.log("cannot use tempdata name add or clear", "warn");
+            this._master.error.log("cannot use tempdata name add or clear", "warn");
         }
     }
 

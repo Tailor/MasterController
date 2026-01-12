@@ -111,7 +111,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
     try{
             // Ensure routes is an array
             if(!Array.isArray(routeList)){
-                master.error.log(`route list is not an array`, "error");
+                this._master.error.log(`route list is not an array`, "error");
                 return -1;
             }
 
@@ -149,7 +149,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
                             if(typeof routeList[item].constraint === "function"){
 
                                 var newObj = {};
-                                //tools.combineObjects(newObj, master.controllerList);
+                                //tools.combineObjects(newObj, this._master.controllerList);
                                 newObj.next = function(){
                                     currentRoute.root = root;
                                     currentRoute.pathName = requestObject.pathName;
@@ -238,9 +238,9 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
 };
 
 var loadScopedListClasses = function(){
-    for (var key in master._scopedList) {
-        var className =  master._scopedList[key];
-        master.requestList[key] = new className();
+    for (var key in this._master._scopedList) {
+        var className =  this._master._scopedList[key];
+        this._master.requestList[key] = new className();
     };
 };
 
@@ -270,6 +270,14 @@ function normalizeRoutePath(path) {
 class MasterRouter {
     currentRouteName = null
     _routes = {}
+
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
 
     start(){
         var $that = this;
@@ -416,8 +424,8 @@ class MasterRouter {
          const requestId = `${Date.now()}-${Math.random()}`;
          performanceTracker.start(requestId, requestObject);
 
-         tools.combineObjects(master.requestList, requestObject);
-         requestObject = master.requestList;
+         tools.combineObjects(this._master.requestList, requestObject);
+         requestObject = this._master.requestList;
          var Control = null;
 
          try{
@@ -443,7 +451,7 @@ class MasterRouter {
                  }
              }
 
-             tools.combineObjectPrototype(Control, master.controllerList);
+             tools.combineObjectPrototype(Control, this._master.controllerList);
              Control.prototype.__namespace = Control.name;
              Control.prototype.__requestObject = requestObject;
              Control.prototype.__currentRoute = currentRoute;

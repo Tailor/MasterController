@@ -26,6 +26,14 @@ class MasterErrorRenderer {
         this.environment = 'development';
     }
 
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('../MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     /**
      * Initialize error renderer
      *
@@ -35,8 +43,8 @@ class MasterErrorRenderer {
      * @param {Boolean} options.showStackTrace - Show stack traces in dev (default: true in dev)
      */
     init(options = {}) {
-        this.templateDir = options.templateDir || path.join(master.root, 'public/errors');
-        this.environment = options.environment || master.environmentType || 'development';
+        this.templateDir = options.templateDir || path.join(this._master.root, 'public/errors');
+        this.environment = options.environment || this._master.environmentType || 'development';
         this.showStackTrace = options.showStackTrace !== undefined
             ? options.showStackTrace
             : (this.environment === 'development');
@@ -118,7 +126,7 @@ class MasterErrorRenderer {
      * @param {Function} handler - Handler function (ctx, errorData) => String
      *
      * @example
-     * master.errorRenderer.registerHandler(404, (ctx, errorData) => {
+     * this._master.errorRenderer.registerHandler(404, (ctx, errorData) => {
      *     return `<html><body>Custom 404: ${errorData.message}</body></html>`;
      * });
      */

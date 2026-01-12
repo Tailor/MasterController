@@ -6,6 +6,14 @@ class TemplateOverwrite{
 	#templateFunc;
 	#isTemplate = false;
 
+	// Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+	get _master() {
+		if (!this.__masterCache) {
+			this.__masterCache = require('./MasterControl');
+		}
+		return this.__masterCache;
+	}
+
 	get isTemplate(){
 		return this.#isTemplate;
 	}

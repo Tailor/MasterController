@@ -52,7 +52,7 @@ class html {
 			}
 
 			var partialViewUrl = `/app/views/${path}`;
-			var fullPath = master.router.currentRoute.root + partialViewUrl;
+			var fullPath = this._master.router.currentRoute.root + partialViewUrl;
 
 			const fileResult = safeReadFile(fs, fullPath);
 
@@ -66,8 +66,8 @@ class html {
 			}
 
 			var partialView = null;
-			if(master.overwrite.isTemplate){
-				partialView = master.overwrite.templateRender(data, "renderPartialView");
+			if(this._master.overwrite.isTemplate){
+				partialView = this._master.overwrite.templateRender(data, "renderPartialView");
 			}
 			else{
 				partialView =  temp.htmlBuilder(fileResult.content, data);
@@ -101,11 +101,11 @@ class html {
 
 		var styles = [];
 		var styleFolder = `/app/assets/stylesheets/`;
-		var rootLocation = master.router.currentRoute.root;
+		var rootLocation = this._master.router.currentRoute.root;
 		var extention = "";
 
-		if(master.router.currentRoute.isComponent === true){
-			extention = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+		if(this._master.router.currentRoute.isComponent === true){
+			extention = tools.getBackSlashBySection(this._master.router.currentRoute.root, 2, "/");
 		}
 
 		var type = typeArray === undefined ? ["css"] : typeArray;
@@ -120,7 +120,7 @@ class html {
 					var fileExtension = file.replace(/^.*\./, '');
 					if(type.indexOf(fileExtension) >= 0){
 						var fileLocatoon = `${styleFolder}${file}`;
-						if(master.router.currentRoute.isComponent === true){
+						if(this._master.router.currentRoute.isComponent === true){
 							styles.push(`<link rel="stylesheet" type="text/${type}" href="/${extention}${fileLocatoon}">`);
 						}
 						else{
@@ -131,8 +131,8 @@ class html {
 		}
 	   	var partialView = null;
 		
-		if(master.overwrite.isTemplate){
-			partialView = master.overwrite.templateRender({}, "renderStyles");
+		if(this._master.overwrite.isTemplate){
+			partialView = this._master.overwrite.templateRender({}, "renderStyles");
 		}
 		else{
 			partialView =  temp.htmlBuilder(styles.join(""),{});	
@@ -155,11 +155,11 @@ class html {
 
 		var scripts = [];
 		var jsFolder =`/app/assets/javascripts/`;
-		var rootLocation = master.router.currentRoute.root;
+		var rootLocation = this._master.router.currentRoute.root;
 		var extention = "";
 		//components/auth/app/assets/javascripts/pages/changePassword.js
-		if(master.router.currentRoute.isComponent === true){
-			extention = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+		if(this._master.router.currentRoute.isComponent === true){
+			extention = tools.getBackSlashBySection(this._master.router.currentRoute.root, 2, "/");
 		}
 
 		var type = typeArray === undefined ? ["js"] : typeArray;
@@ -173,7 +173,7 @@ class html {
 				var fileExtension = file.replace(/^.*\./, '');
 				if(type.indexOf(fileExtension) >= 0){
 					var fileLocatoon = `${jsFolder}${file}`;
-					if(master.router.currentRoute.isComponent === true){
+					if(this._master.router.currentRoute.isComponent === true){
 						scripts.push(`<script src="/${extention}${fileLocatoon}"></script>`);
 					}
 					else{
@@ -185,8 +185,8 @@ class html {
 
 		var partialView = null;
 
-		if(master.overwrite.isTemplate){
-			partialView = master.overwrite.templateRender({}, "renderScripts");
+		if(this._master.overwrite.isTemplate){
+			partialView = this._master.overwrite.templateRender({}, "renderScripts");
 		}
 		else{
 			partialView =  temp.htmlBuilder(scripts.join(""),{});	
@@ -202,10 +202,10 @@ class html {
 			return "";
 		}
 		else{
-			var rootLocation = master.router.currentRoute.root;
+			var rootLocation = this._master.router.currentRoute.root;
 			var jsFolder = `/app/assets/javascripts/`;
-			if(master.router.currentRoute.isComponent === true){
-				rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+			if(this._master.router.currentRoute.isComponent === true){
+				rootLocation = tools.getBackSlashBySection(this._master.router.currentRoute.root, 2, "/");
 				jsFolder = `${rootLocation}${jsFolder}`;
 			}
 			if(folderName){
@@ -222,9 +222,9 @@ class html {
 		}
 		else{
 			var styleFolder = `/app/assets/stylesheets/`;
-			var rootLocation = master.router.currentRoute.root;
-			if(master.router.currentRoute.isComponent === true){
-				rootLocation = tools.getBackSlashBySection(master.router.currentRoute.root, 2, "/");
+			var rootLocation = this._master.router.currentRoute.root;
+			if(this._master.router.currentRoute.isComponent === true){
+				rootLocation = tools.getBackSlashBySection(this._master.router.currentRoute.root, 2, "/");
 				styleFolder =  `${rootLocation}${styleFolder}`;
 			}
 			
@@ -572,7 +572,7 @@ class html {
 		if(data){
 			var newObj = Object.create(data);
 			newObj.prototype = newObj.__proto__;
-			master.view.extend(newObj);
+			this._master.view.extend(newObj);
 		}
 	}
 
@@ -642,8 +642,8 @@ module.exports = html;
 
 setImmediate(() => {
 	const master = require('./MasterControl');
-	if (master && master.extendView) {
-		master.extendView("html", html);
+	if (master && this._master.extendView) {
+		this._master.extendView("html", html);
 	}
 });
 

@@ -9,6 +9,14 @@ class MasterPipeline {
         this.errorHandlers = [];
     }
 
+    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
+    get _master() {
+        if (!this.__masterCache) {
+            this.__masterCache = require('./MasterControl');
+        }
+        return this.__masterCache;
+    }
+
     /**
      * Use: Add middleware that processes request/response
      *
@@ -17,7 +25,7 @@ class MasterPipeline {
      * - next: Function to call next middleware in chain
      *
      * Example:
-     *   master.use(async (ctx, next) => {
+     *   this._master.use(async (ctx, next) => {
      *       console.log('Before');
      *       await next();
      *       console.log('After');
@@ -48,7 +56,7 @@ class MasterPipeline {
      * - Must send response
      *
      * Example:
-     *   master.run(async (ctx) => {
+     *   this._master.run(async (ctx) => {
      *       ctx.response.end('Hello World');
      *   });
      *
@@ -77,7 +85,7 @@ class MasterPipeline {
      * - configure: Function that receives a branch pipeline
      *
      * Example:
-     *   master.map('/api/*', (api) => {
+     *   this._master.map('/api/*', (api) => {
      *       api.use(authMiddleware);
      *       api.use(jsonMiddleware);
      *   });
@@ -128,7 +136,7 @@ class MasterPipeline {
      * - next: Pass to next error handler or rethrow
      *
      * Example:
-     *   master.useError(async (err, ctx, next) => {
+     *   this._master.useError(async (err, ctx, next) => {
      *       if (err.statusCode === 404) {
      *           ctx.response.statusCode = 404;
      *           ctx.response.end('Not Found');
@@ -275,7 +283,7 @@ class MasterPipeline {
             : (options.folders || ['middleware']);
 
         folders.forEach(folder => {
-            const dir = path.join(master.root, folder);
+            const dir = path.join(this._master.root, folder);
             if (!fs.existsSync(dir)) {
                 console.warn(`[Middleware] Folder not found: ${folder}`);
                 return;
