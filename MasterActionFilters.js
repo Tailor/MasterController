@@ -212,7 +212,7 @@ module.exports = MasterActionFilters;
 
 setImmediate(() => {
 	const master = require('./MasterControl');
-	if (master && MasterActionFilters._master.extendController) {
-		MasterActionFilters._master.extendController(MasterActionFilters);
+	if (master && master.extendController) {
+		master.extendController(MasterActionFilters);
 	}
 });

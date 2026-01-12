@@ -642,8 +642,8 @@ module.exports = html;
 
 setImmediate(() => {
 	const master = require('./MasterControl');
-	if (master && this._master.extendView) {
-		this._master.extendView("html", html);
+	if (master && master.extendView) {
+		master.extendView("html", html);
 	}
 });
 
