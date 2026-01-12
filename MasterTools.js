@@ -101,7 +101,24 @@ class MasterTools{
         return sha.digest('hex');
     }
 
+    /**
+     * @deprecated This custom base64 implementation ONLY works for TEXT strings, NOT binary files.
+     * For binary files (images, PDFs, videos), use Node.js Buffer API or the new file conversion methods below.
+     * This method will be removed in v2.0.
+     *
+     * @example
+     * // ❌ WRONG - Corrupts binary files
+     * const base64 = tools.base64().encode(binaryData);
+     *
+     * // ✅ CORRECT - Use Node.js Buffer
+     * const base64 = Buffer.from(binaryData).toString('base64');
+     *
+     * // ✅ CORRECT - Use new helper methods
+     * const base64 = tools.fileToBase64('/path/to/file.jpg');
+     */
     base64(){
+        console.warn('[DEPRECATED] MasterTools.base64() only works for TEXT strings, not binary files. Use Buffer.toString("base64") or tools.fileToBase64() instead. This method will be removed in v2.0.');
+
         var $that = this;
         return {
             encode: function(string){
@@ -158,6 +175,377 @@ class MasterTools{
             }
         }
     };
+
+    // ============================================================================
+    // FILE CONVERSION UTILITIES (Production-Grade)
+    // ============================================================================
+
+    /**
+     * Convert file to base64 string (binary-safe)
+     *
+     * @param {String|Object} filePathOrFile - File path or formidable file object
+     * @param {Object} options - Conversion options
+     * @param {Number} options.maxSize - Maximum file size in bytes (default: 10MB)
+     * @param {Boolean} options.includeDataURI - Include data URI prefix (default: false)
+     * @returns {String} Base64 encoded string
+     *
+     * @example
+     * // Convert uploaded file to base64
+     * const file = obj.params.formData.files.image[0];
+     * const base64 = master.tools.fileToBase64(file);
+     *
+     * @example
+     * // Convert file by path with data URI
+     * const base64 = master.tools.fileToBase64('/path/to/image.jpg', {
+     *     includeDataURI: true,
+     *     maxSize: 5 * 1024 * 1024  // 5MB limit
+     * });
+     * // Returns: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+     */
+    fileToBase64(filePathOrFile, options = {}) {
+        const fs = require('fs');
+        const path = require('path');
+
+        // Extract file path from formidable file object or use as-is
+        const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
+            ? filePathOrFile.filepath
+            : filePathOrFile;
+
+        // Validate file path
+        if (!filepath || typeof filepath !== 'string') {
+            throw new Error('Invalid file path provided');
+        }
+
+        if (!fs.existsSync(filepath)) {
+            throw new Error(`File not found: ${filepath}`);
+        }
+
+        // Get file stats
+        const stats = fs.statSync(filepath);
+
+        // Check file size
+        const maxSize = options.maxSize || 10 * 1024 * 1024; // 10MB default
+        if (stats.size > maxSize) {
+            throw new Error(`File size (${stats.size} bytes) exceeds maximum (${maxSize} bytes). Use streaming for large files.`);
+        }
+
+        // Security: Check if it's actually a file
+        if (!stats.isFile()) {
+            throw new Error('Path is not a file');
+        }
+
+        try {
+            // Read file as binary buffer
+            const buffer = fs.readFileSync(filepath);
+
+            // Convert to base64
+            const base64 = buffer.toString('base64');
+
+            // Include data URI if requested
+            if (options.includeDataURI) {
+                const mimetype = filePathOrFile.mimetype || this._getMimeTypeFromPath(filepath);
+                return `data:${mimetype};base64,${base64}`;
+            }
+
+            return base64;
+        } catch (error) {
+            throw new Error(`Failed to convert file to base64: ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert base64 string to file (binary-safe)
+     *
+     * @param {String} base64String - Base64 encoded string (with or without data URI)
+     * @param {String} outputPath - Output file path
+     * @param {Object} options - Conversion options
+     * @param {Boolean} options.overwrite - Overwrite existing file (default: false)
+     * @returns {Object} File information {path, size, mimetype}
+     *
+     * @example
+     * const fileInfo = master.tools.base64ToFile(
+     *     'data:image/jpeg;base64,/9j/4AAQSkZJRg...',
+     *     '/path/to/output.jpg',
+     *     { overwrite: true }
+     * );
+     * console.log(fileInfo);
+     * // { path: '/path/to/output.jpg', size: 51234, mimetype: 'image/jpeg' }
+     */
+    base64ToFile(base64String, outputPath, options = {}) {
+        const fs = require('fs');
+        const path = require('path');
+
+        // Validate inputs
+        if (!base64String || typeof base64String !== 'string') {
+            throw new Error('Invalid base64 string provided');
+        }
+
+        if (!outputPath || typeof outputPath !== 'string') {
+            throw new Error('Invalid output path provided');
+        }
+
+        // Check if file exists
+        if (fs.existsSync(outputPath) && !options.overwrite) {
+            throw new Error(`File already exists: ${outputPath}. Set overwrite: true to replace.`);
+        }
+
+        // Extract mimetype and base64 data from data URI if present
+        let mimetype = null;
+        let base64Data = base64String;
+
+        const dataURIMatch = base64String.match(/^data:([^;]+);base64,(.+)$/);
+        if (dataURIMatch) {
+            mimetype = dataURIMatch[1];
+            base64Data = dataURIMatch[2];
+        }
+
+        // Validate base64 format
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)) {
+            throw new Error('Invalid base64 string format');
+        }
+
+        try {
+            // Convert base64 to buffer
+            const buffer = Buffer.from(base64Data, 'base64');
+
+            // Ensure output directory exists
+            const dir = path.dirname(outputPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+
+            // Write buffer to file
+            fs.writeFileSync(outputPath, buffer);
+
+            // Get file stats
+            const stats = fs.statSync(outputPath);
+
+            return {
+                path: outputPath,
+                size: stats.size,
+                mimetype: mimetype || this._getMimeTypeFromPath(outputPath)
+            };
+        } catch (error) {
+            throw new Error(`Failed to convert base64 to file: ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert file to Node.js Buffer (binary-safe)
+     *
+     * @param {String|Object} filePathOrFile - File path or formidable file object
+     * @param {Object} options - Conversion options
+     * @param {Number} options.maxSize - Maximum file size in bytes (default: 10MB)
+     * @returns {Buffer} Node.js Buffer containing file data
+     *
+     * @example
+     * const file = obj.params.formData.files.document[0];
+     * const buffer = master.tools.fileToBuffer(file);
+     * console.log(buffer.length);  // File size in bytes
+     */
+    fileToBuffer(filePathOrFile, options = {}) {
+        const fs = require('fs');
+
+        const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
+            ? filePathOrFile.filepath
+            : filePathOrFile;
+
+        if (!filepath || typeof filepath !== 'string') {
+            throw new Error('Invalid file path provided');
+        }
+
+        if (!fs.existsSync(filepath)) {
+            throw new Error(`File not found: ${filepath}`);
+        }
+
+        const stats = fs.statSync(filepath);
+        const maxSize = options.maxSize || 10 * 1024 * 1024; // 10MB default
+
+        if (stats.size > maxSize) {
+            throw new Error(`File size (${stats.size} bytes) exceeds maximum (${maxSize} bytes)`);
+        }
+
+        if (!stats.isFile()) {
+            throw new Error('Path is not a file');
+        }
+
+        try {
+            return fs.readFileSync(filepath);
+        } catch (error) {
+            throw new Error(`Failed to read file to buffer: ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert file to Uint8Array byte array (binary-safe)
+     *
+     * @param {String|Object} filePathOrFile - File path or formidable file object
+     * @param {Object} options - Conversion options
+     * @param {Number} options.maxSize - Maximum file size in bytes (default: 10MB)
+     * @returns {Uint8Array} Byte array
+     *
+     * @example
+     * const file = obj.params.formData.files.data[0];
+     * const bytes = master.tools.fileToBytes(file);
+     * console.log(bytes[0]);       // First byte
+     * console.log(bytes.length);   // Total bytes
+     */
+    fileToBytes(filePathOrFile, options = {}) {
+        const buffer = this.fileToBuffer(filePathOrFile, options);
+        return new Uint8Array(buffer);
+    }
+
+    /**
+     * Convert Buffer or Uint8Array to base64 string
+     *
+     * @param {Buffer|Uint8Array} bytes - Binary data
+     * @returns {String} Base64 encoded string
+     *
+     * @example
+     * const buffer = fs.readFileSync('/path/to/file.pdf');
+     * const base64 = master.tools.bytesToBase64(buffer);
+     */
+    bytesToBase64(bytes) {
+        if (!bytes) {
+            throw new Error('Invalid bytes provided');
+        }
+
+        try {
+            // Convert Uint8Array to Buffer if needed
+            const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+            return buffer.toString('base64');
+        } catch (error) {
+            throw new Error(`Failed to convert bytes to base64: ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert base64 string to Buffer
+     *
+     * @param {String} base64String - Base64 encoded string (with or without data URI)
+     * @returns {Buffer} Node.js Buffer
+     *
+     * @example
+     * const base64 = 'SGVsbG8gV29ybGQ=';
+     * const buffer = master.tools.base64ToBytes(base64);
+     * console.log(buffer.toString('utf8'));  // "Hello World"
+     */
+    base64ToBytes(base64String) {
+        if (!base64String || typeof base64String !== 'string') {
+            throw new Error('Invalid base64 string provided');
+        }
+
+        // Strip data URI prefix if present
+        let base64Data = base64String;
+        const dataURIMatch = base64String.match(/^data:[^;]+;base64,(.+)$/);
+        if (dataURIMatch) {
+            base64Data = dataURIMatch[1];
+        }
+
+        // Validate base64 format
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)) {
+            throw new Error('Invalid base64 string format');
+        }
+
+        try {
+            return Buffer.from(base64Data, 'base64');
+        } catch (error) {
+            throw new Error(`Failed to convert base64 to bytes: ${error.message}`);
+        }
+    }
+
+    /**
+     * Stream large file to base64 (for files > 10MB)
+     * Returns a Promise that resolves with base64 string
+     *
+     * @param {String|Object} filePathOrFile - File path or formidable file object
+     * @param {Object} options - Streaming options
+     * @param {Function} options.onProgress - Progress callback (percent: number) => void
+     * @returns {Promise<String>} Base64 encoded string
+     *
+     * @example
+     * // Stream 500MB video file
+     * const base64 = await master.tools.streamFileToBase64('/path/to/video.mp4', {
+     *     onProgress: (percent) => console.log(`${percent}% complete`)
+     * });
+     */
+    async streamFileToBase64(filePathOrFile, options = {}) {
+        const fs = require('fs');
+        const { Transform } = require('stream');
+
+        const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
+            ? filePathOrFile.filepath
+            : filePathOrFile;
+
+        if (!filepath || !fs.existsSync(filepath)) {
+            throw new Error(`File not found: ${filepath}`);
+        }
+
+        const stats = fs.statSync(filepath);
+        if (!stats.isFile()) {
+            throw new Error('Path is not a file');
+        }
+
+        return new Promise((resolve, reject) => {
+            const chunks = [];
+            let bytesRead = 0;
+
+            const readStream = fs.createReadStream(filepath);
+
+            readStream.on('data', (chunk) => {
+                chunks.push(chunk);
+                bytesRead += chunk.length;
+
+                // Progress callback
+                if (options.onProgress && typeof options.onProgress === 'function') {
+                    const percent = Math.round((bytesRead / stats.size) * 100);
+                    options.onProgress(percent);
+                }
+            });
+
+            readStream.on('end', () => {
+                try {
+                    const buffer = Buffer.concat(chunks);
+                    const base64 = buffer.toString('base64');
+                    resolve(base64);
+                } catch (error) {
+                    reject(new Error(`Failed to convert stream to base64: ${error.message}`));
+                }
+            });
+
+            readStream.on('error', (error) => {
+                reject(new Error(`Stream error: ${error.message}`));
+            });
+        });
+    }
+
+    /**
+     * Get MIME type from file path
+     * @private
+     */
+    _getMimeTypeFromPath(filepath) {
+        const path = require('path');
+        const ext = path.extname(filepath).toLowerCase();
+
+        const mimeTypes = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.pdf': 'application/pdf',
+            '.txt': 'text/plain',
+            '.json': 'application/json',
+            '.xml': 'application/xml',
+            '.zip': 'application/zip',
+            '.mp4': 'video/mp4',
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav'
+        };
+
+        return mimeTypes[ext] || 'application/octet-stream';
+    }
 
     combineObjandArray(data, objParams){
 

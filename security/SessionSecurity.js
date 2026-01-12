@@ -501,11 +501,12 @@ class MasterSessionSecurity {
   }
 }
 
-// Auto-register with MasterController
-master.extend("session", MasterSessionSecurity);
+// Note: Auto-registration with MasterController happens in init() to avoid circular dependency
+// This is called when master.session.init() is invoked in config.js
 
 module.exports = {
   SessionSecurity,
+  MasterSessionSecurity,
   session,
   createSessionMiddleware,
   destroySession,

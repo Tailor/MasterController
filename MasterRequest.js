@@ -20,15 +20,30 @@ class MasterRequest{
         this.options = {};
         this.options.disableFormidableMultipartFormData = options.disableFormidableMultipartFormData === null? false : options.disableFormidableMultipartFormData;
         this.options.formidable = options.formidable === null? {}: options.formidable;
+        // Body size limits (DoS protection)
+        this.options.maxBodySize = options.maxBodySize || 10 * 1024 * 1024; // 10MB default
+        this.options.maxJsonSize = options.maxJsonSize || 1 * 1024 * 1024;  // 1MB default for JSON
+        this.options.maxTextSize = options.maxTextSize || 1 * 1024 * 1024;  // 1MB default for text
      }
    }
 
-   getRequestParam(request, res){
+   getRequestParam(requestOrContext, res){
     var $that = this;
     $that.response = res;
     try {
         return new Promise(function (resolve, reject) {
-            var querydata = url.parse(request.requrl, true);
+            // BACKWARD COMPATIBILITY: Support both old and new patterns
+            // New pattern (v1.3.x pipeline): Pass context with requrl property
+            // Old pattern (pre-v1.3.x): Pass request with requrl property
+            const request = requestOrContext.request || requestOrContext;
+            let requrl = requestOrContext.requrl || request.requrl;
+
+            // Fallback: If requrl not set, parse from request.url
+            if (!requrl) {
+                requrl = url.parse(request.url, true);
+            }
+
+            var querydata = url.parse(requrl, true);
             $that.parsedURL.query = querydata.query;
             $that.form = new formidable.IncomingForm($that.options.formidable);
             if(request.headers['content-type'] || request.headers['transfer-encoding'] ){
@@ -43,14 +58,23 @@ class MasterRequest{
                         case "multipart/form-data" :
                             // Offer operturnity to add options. find a way to add dependecy injection. to request
                             if(!$that.options.disableFormidableMultipartFormData){
-                            
+
                                 $that.parsedURL.formData = {
                                     files : {},
                                     fields : {}
                                 };
 
+                                // Track uploaded files for cleanup on error
+                                const uploadedFiles = [];
+                                let uploadAborted = false;
+
                                 $that.form.on('field', function(field, value) {
                                     $that.parsedURL.formData.fields[field] = value;
+                                });
+
+                                $that.form.on('fileBegin', function(formname, file) {
+                                    // Track file for potential cleanup
+                                    uploadedFiles.push(file);
                                 });
 
                                 $that.form.on('file', function(field, file) {
@@ -65,14 +89,55 @@ class MasterRequest{
                                     }
                                 });
 
+                                $that.form.on('error', function(err) {
+                                    // CRITICAL: Handle upload errors
+                                    uploadAborted = true;
+                                    console.error('[MasterRequest] File upload error:', err.message);
+
+                                    // Cleanup temporary files
+                                    uploadedFiles.forEach(file => {
+                                        if (file.filepath) {
+                                            try {
+                                                $that.deleteFileBuffer(file.filepath);
+                                            } catch (cleanupErr) {
+                                                console.error('[MasterRequest] Failed to cleanup temp file:', cleanupErr.message);
+                                            }
+                                        }
+                                    });
+
+                                    reject(new Error(`File upload failed: ${err.message}`));
+                                });
+
+                                $that.form.on('aborted', function() {
+                                    // CRITICAL: Handle client abort (connection closed)
+                                    uploadAborted = true;
+                                    console.warn('[MasterRequest] File upload aborted by client');
+
+                                    // Cleanup temporary files
+                                    uploadedFiles.forEach(file => {
+                                        if (file.filepath) {
+                                            try {
+                                                $that.deleteFileBuffer(file.filepath);
+                                            } catch (cleanupErr) {
+                                                console.error('[MasterRequest] Failed to cleanup temp file:', cleanupErr.message);
+                                            }
+                                        }
+                                    });
+
+                                    reject(new Error('File upload aborted by client'));
+                                });
+
                                 $that.form.on('end', function() {
-                                    resolve($that.parsedURL);
+                                    // Only resolve if upload wasn't aborted
+                                    if (!uploadAborted) {
+                                        resolve($that.parsedURL);
+                                    }
                                 });
 
                                 $that.form.parse(request);
-                
+
                             }else{
-                                
+
                                 resolve($that.parsedURL);
                                 console.log("skipped multipart/form-data")
                             }
@@ -124,38 +189,59 @@ class MasterRequest{
     let body = '';
     let receivedBytes = 0;
     const maxBytes = 1 * 1024 * 1024; // 1MB limit
-  
- 
+    let errorOccurred = false;
+
     try {
 
         request.on('data', (chunk) => {
+            if (errorOccurred) return;
+
             receivedBytes += chunk.length;
-      
+
             // Prevent memory overload
             if (receivedBytes > maxBytes) {
-              req.destroy(); // Close the connection
+              errorOccurred = true;
+              request.destroy(); // ✅ Fixed: was 'req', now 'request'
+              console.error(`Plain text payload too large: ${receivedBytes} bytes (max: ${maxBytes})`);
+              func({ error: 'Payload too large', maxSize: maxBytes });
               return;
             }
-            
+
             // Append chunk to body
             body += chunk.toString('utf8');
         });
-  
+
         request.on('end', () => {
+            if (errorOccurred) return;
+
             try {
                 // Process the plain text data here
                 const responseData = body;
-                func(responseData );
+                func(responseData);
               } catch (err) {
-
                 console.error('Processing error handling text/plain:', err);
-                throw err;
+                func({ error: err.message });
               }
 
         });
+
+        request.on('error', (err) => {
+            if (errorOccurred) return;
+            errorOccurred = true;
+            console.error('[MasterRequest] Stream error in fetchData:', err.message);
+            func({ error: err.message });
+        });
+
+        request.on('aborted', () => {
+            if (errorOccurred) return;
+            errorOccurred = true;
+            console.warn('[MasterRequest] Request aborted in fetchData');
+            func({ error: 'Request aborted' });
+        });
+
     } catch (error) {
       console.error("Failed to fetch data:", error);
-      throw error;
+      func({ error: error.message });
     }
   }
 
@@ -170,54 +256,146 @@ class MasterRequest{
 
   urlEncodeStream(request, func){
       const decoder = new StringDecoder('utf-8');
-      //request.pipe(decoder);
       let buffer = '';
+      let receivedBytes = 0;
+      const maxBytes = this.options.maxBodySize || 10 * 1024 * 1024; // 10MB limit
+      let errorOccurred = false;
+
       request.on('data', (chunk) => {
+          if (errorOccurred) return;
+
+          receivedBytes += chunk.length;
+
+          // Prevent memory overload (DoS protection)
+          if (receivedBytes > maxBytes) {
+              errorOccurred = true;
+              request.destroy();
+              console.error(`Form data too large: ${receivedBytes} bytes (max: ${maxBytes})`);
+              func({ error: 'Payload too large', maxSize: maxBytes });
+              return;
+          }
+
           buffer += decoder.write(chunk);
       });
 
       request.on('end', () => {
+          if (errorOccurred) return;
+
           buffer += decoder.end();
           var buff = qs.parse(buffer);
           func(buff);
       });
 
+      request.on('error', (err) => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.error('[MasterRequest] Stream error in urlEncodeStream:', err.message);
+          func({ error: err.message });
+      });
+
+      request.on('aborted', () => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.warn('[MasterRequest] Request aborted in urlEncodeStream');
+          func({ error: 'Request aborted' });
+      });
+
   }
 
-  stringToJson(request, func){
-
-  }
-  
   jsonStream(request, func){
-      //request.pipe(decoder);
       let buffer = '';
+      let receivedBytes = 0;
+      const maxBytes = this.options.maxJsonSize || 1 * 1024 * 1024; // 1MB limit
+      let errorOccurred = false;
+
       request.on('data', (chunk) => {
+          if (errorOccurred) return;
+
+          receivedBytes += chunk.length;
+
+          // Prevent memory overload (DoS protection)
+          if (receivedBytes > maxBytes) {
+              errorOccurred = true;
+              request.destroy();
+              console.error(`JSON payload too large: ${receivedBytes} bytes (max: ${maxBytes})`);
+              func({ error: 'JSON payload too large', maxSize: maxBytes });
+              return;
+          }
+
           buffer += chunk;
       });
 
       request.on('end', () => {
+            if (errorOccurred) return;
+
             try {
                 var buff = JSON.parse(buffer);
                 func(buff);
             } catch (e) {
-                var buff = qs.parse(buffer);
-                func(buff);
+                // Security: Don't fallback to qs.parse to avoid prototype pollution
+                console.error('Invalid JSON payload:', e.message);
+                func({ error: 'Invalid JSON', details: e.message });
             }
+      });
+
+      request.on('error', (err) => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.error('[MasterRequest] Stream error in jsonStream:', err.message);
+          func({ error: err.message });
+      });
+
+      request.on('aborted', () => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.warn('[MasterRequest] Request aborted in jsonStream');
+          func({ error: 'Request aborted' });
       });
 
   }
 
   textStream(request, func){
       const decoder = new StringDecoder('utf-8');
-      //request.pipe(decoder);
       let buffer = '';
+      let receivedBytes = 0;
+      const maxBytes = this.options.maxTextSize || 1 * 1024 * 1024; // 1MB limit
+      let errorOccurred = false;
+
       request.on('data', (chunk) => {
+          if (errorOccurred) return;
+
+          receivedBytes += chunk.length;
+
+          // Prevent memory overload (DoS protection)
+          if (receivedBytes > maxBytes) {
+              errorOccurred = true;
+              request.destroy();
+              console.error(`Text payload too large: ${receivedBytes} bytes (max: ${maxBytes})`);
+              func({ error: 'Text payload too large', maxSize: maxBytes });
+              return;
+          }
+
           buffer += decoder.write(chunk);
       });
 
       request.on('end', () => {
+          if (errorOccurred) return;
           buffer += decoder.end();
           func(buffer);
+      });
+
+      request.on('error', (err) => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.error('[MasterRequest] Stream error in textStream:', err.message);
+          func({ error: err.message });
+      });
+
+      request.on('aborted', () => {
+          if (errorOccurred) return;
+          errorOccurred = true;
+          console.warn('[MasterRequest] Request aborted in textStream');
+          func({ error: 'Request aborted' });
       });
 
   }

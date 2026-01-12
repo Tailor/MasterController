@@ -46,22 +46,72 @@ class MasterAction{
 
 
 	returnJson(data){
-		var json = JSON.stringify(data);
-		if (!this.__response._headerSent) {
-			this.__response.writeHead(200, {'Content-Type': 'application/json'});
-			this.__response.end(json);
+		try {
+			const json = JSON.stringify(data);
+			// FIXED: Check both _headerSent and headersSent for compatibility
+			if (!this.__response._headerSent && !this.__response.headersSent) {
+				this.__response.writeHead(200, {'Content-Type': 'application/json'});
+				this.__response.end(json);
+			} else {
+				logger.warn({
+					code: 'MC_WARN_HEADERS_SENT',
+					message: 'Attempted to send JSON but headers already sent'
+				});
+			}
+		} catch (error) {
+			logger.error({
+				code: 'MC_ERR_JSON_SEND',
+				message: 'Failed to send JSON response',
+				error: error.message,
+				stack: error.stack
+			});
 		}
 	}
 
 	// location starts from the view folder. Ex: partialViews/fileName.html
 	returnPartialView(location, data){
-		var actionUrl = master.root + location;
-		var getAction = fileserver.readFileSync(actionUrl, 'utf8');
-		if(master.overwrite.isTemplate){
-			return master.overwrite.templateRender( data, "returnPartialView");
+		// SECURITY: Validate path to prevent traversal attacks
+		if (!location || location.includes('..') || location.includes('~') || path.isAbsolute(location)) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal attempt blocked in returnPartialView',
+				path: location
+			});
+			this.returnError(400, 'Invalid path');
+			return '';
 		}
-		else{
-			return temp.htmlBuilder(getAction, data);
+
+		const actionUrl = path.resolve(master.root, location);
+
+		// SECURITY: Ensure resolved path is within app root
+		if (!actionUrl.startsWith(master.root)) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal blocked in returnPartialView',
+				requestedPath: location,
+				resolvedPath: actionUrl
+			});
+			this.returnError(403, 'Forbidden');
+			return '';
+		}
+
+		try {
+			const getAction = fileserver.readFileSync(actionUrl, 'utf8');
+			if(master.overwrite.isTemplate){
+				return master.overwrite.templateRender( data, "returnPartialView");
+			}
+			else{
+				return temp.htmlBuilder(getAction, data);
+			}
+		} catch (error) {
+			logger.error({
+				code: 'MC_ERR_PARTIAL_VIEW',
+				message: 'Failed to read partial view',
+				path: location,
+				error: error.message
+			});
+			this.returnError(404, 'View not found');
+			return '';
 		}
 	}
 
@@ -112,21 +162,34 @@ class MasterAction{
 
 	// redirects to another action inside the same controller = does not reload the page
 	redirectToAction(namespace, action, type, data, components){
+		// FIXED: Declare variables before if/else to avoid undefined reference
+		const resp = this.__requestObject.response;
+		const req = this.__requestObject.request;
 
-		var requestObj = {
+		const requestObj = {
 			toController : namespace,
 			toAction : action,
 			type : type,
 			params : data
-		}
+		};
+
 		if(components){
-			var resp = this.__requestObject.response;
-			var req = this.__requestObject.request;
-			master.router.currentRoute = {root : `${master.root}/components/${namespace}`, toController : namespace, toAction : action, response : resp, request: req };
+			master.router.currentRoute = {
+				root : `${master.root}/components/${namespace}`,
+				toController : namespace,
+				toAction : action,
+				response : resp,
+				request: req
+			};
 		}else{
-			master.router.currentRoute = {root : `${master.root}/${namespace}`, toController : namespace, toAction : action, response : resp, request: req };
+			master.router.currentRoute = {
+				root : `${master.root}/${namespace}`,
+				toController : namespace,
+				toAction : action,
+				response : resp,
+				request: req
+			};
 		}
-		
 
 		master.router._call(requestObj);
 	}
@@ -176,11 +239,45 @@ class MasterAction{
 	}
 
 	returnViewWithoutEngine(location){
-		var actionUrl =  master.root + location;
-		var masterView = fileserver.readFileSync(actionUrl, 'utf8');
-		if (!this.__requestObject.response._headerSent) {
-			this.__requestObject.response.writeHead(200, {'Content-Type': 'text/html'});
-			this.__requestObject.response.end(masterView);
+		// SECURITY: Validate path to prevent traversal attacks
+		if (!location || location.includes('..') || location.includes('~') || path.isAbsolute(location)) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal attempt blocked in returnViewWithoutEngine',
+				path: location
+			});
+			this.returnError(400, 'Invalid path');
+			return;
+		}
+
+		const actionUrl = path.resolve(master.root, location);
+
+		// SECURITY: Ensure resolved path is within app root
+		if (!actionUrl.startsWith(master.root)) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal blocked in returnViewWithoutEngine',
+				requestedPath: location,
+				resolvedPath: actionUrl
+			});
+			this.returnError(403, 'Forbidden');
+			return;
+		}
+
+		try {
+			const masterView = fileserver.readFileSync(actionUrl, 'utf8');
+			if (!this.__requestObject.response._headerSent) {
+				this.__requestObject.response.writeHead(200, {'Content-Type': 'text/html'});
+				this.__requestObject.response.end(masterView);
+			}
+		} catch (error) {
+			logger.error({
+				code: 'MC_ERR_VIEW_READ',
+				message: 'Failed to read view file',
+				path: location,
+				error: error.message
+			});
+			this.returnError(404, 'View not found');
 		}
 	}
 
@@ -448,6 +545,7 @@ class MasterAction{
   /**
    * Require HTTPS for this action
    * Usage: if (!this.requireHTTPS()) return;
+   * FIXED: Uses configured hostname, not unvalidated Host header
    */
   requireHTTPS() {
     if (!this.isSecure()) {
@@ -457,7 +555,23 @@ class MasterAction{
         path: this.__requestObject.pathName
       });
 
-      const httpsUrl = `https://${this.__requestObject.request.headers.host}${this.__requestObject.pathName}`;
+      // SECURITY FIX: Never use Host header from request (open redirect vulnerability)
+      // Use configured hostname instead
+      const configuredHost = master.env?.server?.hostname || 'localhost';
+      const httpsPort = master.env?.server?.httpsPort || 443;
+      const port = httpsPort === 443 ? '' : `:${httpsPort}`;
+
+      // Validate configured host exists
+      if (!configuredHost || configuredHost === 'localhost') {
+        logger.error({
+          code: 'MC_CONFIG_MISSING_HOSTNAME',
+          message: 'requireHTTPS called but no hostname configured in master.env.server.hostname'
+        });
+        this.returnError(500, 'Server misconfiguration');
+        return false;
+      }
+
+      const httpsUrl = `https://${configuredHost}${port}${this.__requestObject.pathName}`;
       this.redirectTo(httpsUrl);
       return false;
     }

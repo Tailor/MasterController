@@ -64,6 +64,9 @@ class MasterControl {
     _loadedFunc = null
     _tlsOptions = null
     _hstsEnabled = false
+    _hstsMaxAge = 31536000 // 1 year default
+    _hstsIncludeSubDomains = true
+    _hstsPreload = false
 
     #loadTransientListClasses(name, params){
         Object.defineProperty(this.requestList, name, {
@@ -228,6 +231,13 @@ class MasterControl {
 
     // adds all the server settings needed
     serverSettings(settings){
+        // Defensive: Check if server exists (may be called before master.start())
+        if (!this.server) {
+            console.warn('[MasterControl] serverSettings() called before master.start(server). Settings will be applied when server is set.');
+            // Store settings to apply later
+            this._pendingServerSettings = settings;
+            return;
+        }
 
         if(settings.httpPort || settings.requestTimeout){
             this.server.timeout = settings.requestTimeout;
@@ -244,6 +254,38 @@ class MasterControl {
 
     }
 
+    /**
+     * Enable HSTS (HTTP Strict Transport Security) for HTTPS
+     * Should only be called for production HTTPS servers
+     *
+     * @param {Object} options - HSTS configuration options
+     * @param {Number} options.maxAge - Max age in seconds (default: 31536000 = 1 year)
+     * @param {Boolean} options.includeSubDomains - Include subdomains (default: true)
+     * @param {Boolean} options.preload - Enable HSTS preload (default: false)
+     * @returns {MasterControl} - Returns this for chaining
+     *
+     * @example
+     * // Basic usage (1 year, includeSubDomains)
+     * master.enableHSTS();
+     *
+     * // Custom configuration
+     * master.enableHSTS({
+     *     maxAge: 15552000,        // 180 days
+     *     includeSubDomains: true,
+     *     preload: true            // Submit to HSTS preload list
+     * });
+     */
+    enableHSTS(options = {}) {
+        this._hstsEnabled = true;
+        this._hstsMaxAge = options.maxAge || 31536000; // 1 year default (matches industry standard)
+        this._hstsIncludeSubDomains = options.includeSubDomains !== false; // true by default
+        this._hstsPreload = options.preload === true; // false by default
+
+        console.log(`[MasterControl] HSTS enabled: max-age=${this._hstsMaxAge}${this._hstsIncludeSubDomains ? ', includeSubDomains' : ''}${this._hstsPreload ? ', preload' : ''}`);
+
+        return this; // Chainable
+    }
+
     useHTTPServer(port, func){
         if (typeof func === 'function') {
             http.createServer(function (req, res) {
@@ -256,39 +298,56 @@ class MasterControl {
     setupServer(type, credentials ){
         try {
             var $that = this;
-            // Auto-load internal master tools so services (request, error, router, etc.) are available
-            // before user config initializes them.
-            try {
-                $that.addInternalTools([
-                    'MasterPipeline',
-                    'MasterTimeout',
-                    'MasterErrorRenderer',
-                    'MasterAction',
-                    'MasterActionFilters',
-                    'MasterRouter',
-                    'MasterRequest',
-                    'MasterError',
-                    'MasterCors',
-                    'MasterSession',
-                    'SessionSecurity',
-                    'MasterSocket',
-                    'MasterHtml',
-                    'MasterTemplate',
-                    'MasterTools',
-                    'TemplateOverwrite'
-                ]);
-            } catch (e) {
-                console.error('[MasterControl] Failed to load internal tools:', e && e.message);
+
+            // AUTO-LOAD internal framework modules
+            // These are required for the framework to function and are loaded transparently
+            const internalModules = {
+                'MasterPipeline': './MasterPipeline',
+                'MasterTimeout': './MasterTimeout',
+                'MasterErrorRenderer': './error/MasterErrorRenderer',
+                'MasterAction': './MasterAction',
+                'MasterActionFilters': './MasterActionFilters',
+                'MasterRouter': './MasterRouter',
+                'MasterRequest': './MasterRequest',
+                'MasterError': './error/MasterError',
+                'MasterCors': './MasterCors',
+                'SessionSecurity': './security/SessionSecurity',
+                'MasterSocket': './MasterSocket',
+                'MasterHtml': './MasterHtml',
+                'MasterTemplate': './MasterTemplate',
+                'MasterTools': './MasterTools',
+                'TemplateOverwrite': './TemplateOverwrite'
+            };
+
+            for (const moduleName in internalModules) {
+                try {
+                    const modulePath = internalModules[moduleName];
+                    const module = require(modulePath);
+
+                    // Special handling for SessionSecurity to avoid circular dependency
+                    if (moduleName === 'SessionSecurity' && module.MasterSessionSecurity) {
+                        $that.session = new module.MasterSessionSecurity();
+                    }
+                    // Most modules auto-register via master.extend() at module load time
+                } catch (e) {
+                    console.error(`[MasterControl] Failed to load ${moduleName}:`, e && e.message);
+                }
             }
+
+            // Initialize global error handlers
+            setupGlobalErrorHandlers();
 
             // Register core middleware that must run for framework to function
             $that._registerCoreMiddleware();
 
             if(type === "http"){
                 $that.serverProtocol = "http";
-                return http.createServer(async function(req, res) {
+                const server = http.createServer(async function(req, res) {
                     $that.serverRun(req, res);
                 });
+                // Set server immediately so config can access it
+                $that.server = server;
+                return server;
             }
             if(type === "https"){
                 $that.serverProtocol = "https";
@@ -297,14 +356,42 @@ class MasterControl {
                     $that._initializeTlsFromEnv();
                     credentials = $that._tlsOptions;
                 }
-                // Apply secure defaults if missing
+                // Apply secure defaults if missing (2026 security standards)
                 if(credentials){
-                    if(!credentials.minVersion){ credentials.minVersion = 'TLSv1.2'; }
+                    // Default to TLS 1.3 for security (2026 standard)
+                    // TLS 1.2 still supported but not default
+                    if(!credentials.minVersion){
+                        credentials.minVersion = 'TLSv1.3';
+                        console.log('[MasterControl] TLS 1.3 enabled by default (recommended for 2026)');
+                    }
+
+                    // Secure cipher suites (Mozilla Intermediate configuration - 2026)
+                    // Supports TLS 1.3 and TLS 1.2 for backward compatibility
+                    if(!credentials.ciphers){
+                        credentials.ciphers = [
+                            // TLS 1.3 cipher suites (strongest)
+                            'TLS_AES_256_GCM_SHA384',
+                            'TLS_CHACHA20_POLY1305_SHA256',
+                            'TLS_AES_128_GCM_SHA256',
+                            // TLS 1.2 cipher suites (backward compatibility)
+                            'ECDHE-ECDSA-AES256-GCM-SHA384',
+                            'ECDHE-RSA-AES256-GCM-SHA384',
+                            'ECDHE-ECDSA-CHACHA20-POLY1305',
+                            'ECDHE-RSA-CHACHA20-POLY1305',
+                            'ECDHE-ECDSA-AES128-GCM-SHA256',
+                            'ECDHE-RSA-AES128-GCM-SHA256'
+                        ].join(':');
+                        console.log('[MasterControl] Secure cipher suites configured (Mozilla Intermediate)');
+                    }
+
                     if(credentials.honorCipherOrder === undefined){ credentials.honorCipherOrder = true; }
                     if(!credentials.ALPNProtocols){ credentials.ALPNProtocols = ['h2', 'http/1.1']; }
-                    return https.createServer(credentials, async function(req, res) {
+                    const server = https.createServer(credentials, async function(req, res) {
                         $that.serverRun(req, res);
                     });
+                    // Set server immediately so config can access it
+                    $that.server = server;
+                    return server;
                 }else{
                     throw "Credentials needed to setup https"
                 }
@@ -316,18 +403,69 @@ class MasterControl {
         }
     }
 
-    // Creates an HTTP server that 301-redirects to HTTPS counterpart
-    startHttpToHttpsRedirect(redirectPort, bindHost){
+    /**
+     * Creates an HTTP server that 301-redirects to HTTPS counterpart
+     * SECURITY: Validates host header to prevent open redirect attacks
+     *
+     * @param {Number} redirectPort - Port to listen on (usually 80)
+     * @param {String} bindHost - Host to bind to (e.g., '0.0.0.0')
+     * @param {Array<String>} allowedHosts - Whitelist of allowed hostnames (REQUIRED for security)
+     * @returns {http.Server} - HTTP server instance
+     *
+     * @example
+     * // Production usage (MUST specify allowed hosts)
+     * const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+     *     'example.com',
+     *     'www.example.com',
+     *     'api.example.com'
+     * ]);
+     *
+     * @security CRITICAL: Always provide allowedHosts in production to prevent open redirect attacks
+     */
+    startHttpToHttpsRedirect(redirectPort, bindHost, allowedHosts = []){
         var $that = this;
+
+        // Security warning if no hosts specified
+        if (allowedHosts.length === 0) {
+            console.warn('[MasterControl] ⚠️  SECURITY WARNING: startHttpToHttpsRedirect() called without allowedHosts.');
+            console.warn('[MasterControl] This is vulnerable to open redirect attacks. Specify allowed hosts:');
+            console.warn('[MasterControl] master.startHttpToHttpsRedirect(80, "0.0.0.0", ["example.com", "www.example.com"])');
+        }
+
         return http.createServer(function (req, res) {
             try{
                 var host = req.headers['host'] || '';
-                // Force original host, just change scheme
+                var hostname = host.split(':')[0]; // Remove port number
+
+                // CRITICAL SECURITY: Validate host header to prevent open redirect attacks
+                if (allowedHosts.length > 0) {
+                    if (!allowedHosts.includes(hostname)) {
+                        logger.warn({
+                            code: 'MC_SECURITY_INVALID_HOST',
+                            message: 'HTTP redirect blocked: invalid host header',
+                            host: hostname,
+                            ip: req.connection.remoteAddress
+                        });
+                        res.statusCode = 400;
+                        res.setHeader('Content-Type', 'text/plain');
+                        res.end('Bad Request: Invalid host header');
+                        return;
+                    }
+                }
+
+                // Redirect to HTTPS with validated host
                 var location = 'https://' + host + req.url;
                 res.statusCode = 301;
                 res.setHeader('Location', location);
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 res.end();
             }catch(e){
+                logger.error({
+                    code: 'MC_ERR_REDIRECT',
+                    message: 'HTTP to HTTPS redirect failed',
+                    error: e.message,
+                    stack: e.stack
+                });
                 res.statusCode = 500;
                 res.end();
             }
@@ -447,30 +585,90 @@ class MasterControl {
     _registerCoreMiddleware(){
         var $that = this;
 
-        // 1. Static File Serving
+        // 1. Static File Serving (with path traversal protection)
         $that.pipeline.use(async (ctx, next) => {
             if (ctx.isStatic) {
-                // Serve static files
-                let pathname = `.${ctx.request.url}`;
+                // SECURITY: Prevent path traversal attacks
+                let requestedPath = ctx.request.url;
 
-                fs.exists(pathname, function (exist) {
+                // Normalize the path and resolve it
+                const publicRoot = path.resolve($that.root || '.');
+                const safePath = path.join(publicRoot, requestedPath);
+                const resolvedPath = path.resolve(safePath);
+
+                // CRITICAL: Ensure resolved path is within public root (prevents ../ attacks)
+                if (!resolvedPath.startsWith(publicRoot)) {
+                    logger.warn({
+                        code: 'MC_SECURITY_PATH_TRAVERSAL',
+                        message: 'Path traversal attack blocked',
+                        requestedPath: requestedPath,
+                        resolvedPath: resolvedPath,
+                        ip: ctx.request.connection.remoteAddress
+                    });
+                    ctx.response.statusCode = 403;
+                    ctx.response.setHeader('Content-Type', 'text/plain');
+                    ctx.response.end('Forbidden');
+                    return;
+                }
+
+                // SECURITY: Block dotfiles (.env, .git, .htaccess, etc.)
+                const filename = path.basename(resolvedPath);
+                if (filename.startsWith('.')) {
+                    logger.warn({
+                        code: 'MC_SECURITY_DOTFILE_BLOCKED',
+                        message: 'Dotfile access blocked',
+                        filename: filename,
+                        ip: ctx.request.connection.remoteAddress
+                    });
+                    ctx.response.statusCode = 403;
+                    ctx.response.setHeader('Content-Type', 'text/plain');
+                    ctx.response.end('Forbidden');
+                    return;
+                }
+
+                // Check if file exists
+                fs.exists(resolvedPath, function (exist) {
                     if (!exist) {
                         ctx.response.statusCode = 404;
-                        ctx.response.end(`File ${pathname} not found!`);
+                        ctx.response.setHeader('Content-Type', 'text/plain');
+                        ctx.response.end('Not Found');
                         return;
                     }
 
-                    if (fs.statSync(pathname).isDirectory()) {
-                        pathname += '/index' + path.parse(pathname).ext;
+                    // Get file stats
+                    let finalPath = resolvedPath;
+                    const stats = fs.statSync(resolvedPath);
+
+                    // If directory, try to serve index.html
+                    if (stats.isDirectory()) {
+                        finalPath = path.join(resolvedPath, 'index.html');
+
+                        // Check if index.html exists
+                        if (!fs.existsSync(finalPath)) {
+                            ctx.response.statusCode = 403;
+                            ctx.response.setHeader('Content-Type', 'text/plain');
+                            ctx.response.end('Forbidden');
+                            return;
+                        }
                     }
 
-                    fs.readFile(pathname, function(err, data) {
+                    // Read and serve the file
+                    fs.readFile(finalPath, function(err, data) {
                         if (err) {
+                            logger.error({
+                                code: 'MC_ERR_FILE_READ',
+                                message: 'Error reading static file',
+                                path: finalPath,
+                                error: err.message
+                            });
                             ctx.response.statusCode = 500;
-                            ctx.response.end(`Error getting the file: ${err}.`);
+                            ctx.response.setHeader('Content-Type', 'text/plain');
+                            ctx.response.end('Internal Server Error');
                         } else {
-                            const mimeType = $that.router.findMimeType(path.parse(pathname).ext);
-                            ctx.response.setHeader('Content-type', mimeType || 'text/plain');
+                            const ext = path.extname(finalPath);
+                            const mimeType = $that.router.findMimeType(ext);
+                            ctx.response.setHeader('Content-Type', mimeType || 'application/octet-stream');
+                            ctx.response.setHeader('X-Content-Type-Options', 'nosniff');
                             ctx.response.end(data);
                         }
                     });
@@ -489,7 +687,9 @@ class MasterControl {
         // 3. Request Body Parsing (always needed)
         $that.pipeline.use(async (ctx, next) => {
             // Parse body using MasterRequest
-            const params = await $that.request.getRequestParam(ctx.request, ctx.response);
+            // Pass entire context for backward compatibility (v1.3.x)
+            // getRequestParam() will extract request and requrl from context
+            const params = await $that.request.getRequestParam(ctx, ctx.response);
 
             // Merge parsed params into context
             if (params && params.query) {
@@ -514,7 +714,15 @@ class MasterControl {
         // 4. HSTS Header (if enabled for HTTPS)
         $that.pipeline.use(async (ctx, next) => {
             if ($that.serverProtocol === 'https' && $that._hstsEnabled) {
-                ctx.response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+                // Use configured HSTS values (not hardcoded)
+                let hstsValue = `max-age=${$that._hstsMaxAge}`;
+                if ($that._hstsIncludeSubDomains) {
+                    hstsValue += '; includeSubDomains';
+                }
+                if ($that._hstsPreload) {
+                    hstsValue += '; preload';
+                }
+                ctx.response.setHeader('Strict-Transport-Security', hstsValue);
             }
             await next();
         });
@@ -585,6 +793,13 @@ class MasterControl {
 
     start(server){
         this.server = server;
+
+        // Apply any pending server settings that were called before start()
+        if (this._pendingServerSettings) {
+            console.log('[MasterControl] Applying pending server settings');
+            this.serverSettings(this._pendingServerSettings);
+            this._pendingServerSettings = null;
+        }
     }
 
     startMVC(foldername){
@@ -619,7 +834,6 @@ class MasterControl {
                 'MasterRouter': './MasterRouter',
                 'MasterRequest': './MasterRequest',
                 'MasterCors': './MasterCors',
-                'MasterSession': './MasterSession',
                 'SessionSecurity': './security/SessionSecurity',
                 'MasterSocket': './MasterSocket',
                 'MasterHtml': './MasterHtml',
@@ -631,7 +845,12 @@ class MasterControl {
             for(var i = 0; i < requiredList.length; i++){
                 const moduleName = requiredList[i];
                 const modulePath = modulePathMap[moduleName] || './' + moduleName;
-                require(modulePath);
+                const module = require(modulePath);
+
+                // Special handling for SessionSecurity to avoid circular dependency
+                if (moduleName === 'SessionSecurity' && module.MasterSessionSecurity) {
+                    this.session = new module.MasterSessionSecurity();
+                }
             }
         }
     }

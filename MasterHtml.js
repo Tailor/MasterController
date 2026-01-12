@@ -18,14 +18,32 @@ const { sanitizeTemplateHTML, sanitizeUserHTML, escapeHTML } = require('./securi
 class html {
 
 	javaScriptSerializer(name, obj){
+		// SECURITY: Escape closing script tags and dangerous characters
+		const jsonStr = JSON.stringify(obj)
+			.replace(/</g, '\\u003c')
+			.replace(/>/g, '\\u003e')
+			.replace(/&/g, '\\u0026')
+			.replace(/\u2028/g, '\\u2028')
+			.replace(/\u2029/g, '\\u2029');
+
 		return `<script type="text/javascript">
-			${name} = ${JSON.stringify(obj)}
+			${escapeHTML(name)} = ${jsonStr}
 		</script>`;
 	}
 
 	// render partial views
 	renderPartial(path, data){
 		try {
+			// SECURITY: Validate path to prevent traversal attacks
+			if (!path || path.includes('..') || path.includes('~') || path.startsWith('/')) {
+				logger.warn({
+					code: 'MC_SECURITY_PATH_TRAVERSAL',
+					message: 'Path traversal attempt blocked in renderPartial',
+					path: path
+				});
+				return '<!-- Invalid path -->';
+			}
+
 			var partialViewUrl = `/app/views/${path}`;
 			var fullPath = master.router.currentRoute.root + partialViewUrl;
 
@@ -64,6 +82,16 @@ class html {
 
 	   // render all your link tags styles given the folder location
 	   renderStyles(folderName, typeArray){
+		// SECURITY: Validate folder name to prevent path traversal
+		if (folderName && (folderName.includes('..') || folderName.includes('~') || folderName.startsWith('/'))) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal attempt blocked in renderStyles',
+				folderName: folderName
+			});
+			return '';
+		}
+
 		var styles = [];
 		var styleFolder = `/app/assets/stylesheets/`;
 		var rootLocation = master.router.currentRoute.root;
@@ -108,6 +136,15 @@ class html {
 
 	// renders all scripts in main folder or folder location inside of javascript also its type specific if you provide type
 	renderScripts(folderName, typeArray){
+		// SECURITY: Validate folder name to prevent path traversal
+		if (folderName && (folderName.includes('..') || folderName.includes('~') || folderName.startsWith('/'))) {
+			logger.warn({
+				code: 'MC_SECURITY_PATH_TRAVERSAL',
+				message: 'Path traversal attempt blocked in renderScripts',
+				folderName: folderName
+			});
+			return '';
+		}
 
 		var scripts = [];
 		var jsFolder =`/app/assets/javascripts/`;
@@ -193,38 +230,46 @@ class html {
 
 	// return link tag
 	linkTo(name, location){
-		return'<a href=' + location + '>' + name + '</a>';
+		const safeName = escapeHTML(String(name));
+		const safeLocation = escapeHTML(String(location));
+		return `<a href="${safeLocation}">${safeName}</a>`;
 	}
 
 	   // return image tag
 	imgTag(alt, location){
-		return '<img src=' + location + ' alt='+ alt +'>';
+		const safeAlt = escapeHTML(String(alt));
+		const safeLocation = escapeHTML(String(location));
+		return `<img src="${safeLocation}" alt="${safeAlt}">`;
 	}
 
 	   // return text are tag
 	textAreaTag(name, message, obj){
-		
-		var textArea = "<textarea name='" + name + "'";
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				textArea = textArea + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
+		const safeName = escapeHTML(String(name));
+		const safeMessage = escapeHTML(String(message));
 
-		textArea = textArea + "/>" + message + "</textarea>";
+		let textArea = `<textarea name="${safeName}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			textArea += ` ${safeKey}="${safeValue}"`;
+		}
+
+		textArea += `>${safeMessage}</textarea>`;
 
 		return textArea;
 	}
 
 	   // form element builder starter
 	formTag(location, obj){
-		var form = "<form action='" + location + "'" ;
+		const safeLocation = escapeHTML(String(location));
+		let form = `<form action="${safeLocation}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				form = form + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			form += ` ${safeKey}="${safeValue}"`;
+		}
 
 		return form + ">";
 	}
@@ -235,90 +280,102 @@ class html {
 	}
 		   // return text tag
 	passwordFieldTag(name, obj){
-		var passwordField = "<input type='password' name='" + name + "'";
+		const safeName = escapeHTML(String(name));
+		let passwordField = `<input type="password" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				passwordField = passwordField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		passwordField = passwordField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			passwordField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		passwordField += '/>';
 
 		return passwordField;
 	}
-	   
+
 	   // return password field tag
 	textFieldTag(name, obj){
-		var textField = "<input type='text' name='" + name + "'";
+		const safeName = escapeHTML(String(name));
+		let textField = `<input type="text" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				textField = textField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		textField = textField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			textField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		textField += '/>';
 		return textField;
 	   };
 
 	   // hidden field tag
 	hiddenFieldTag(name, value, obj){
-		
-		var hiddenField = "<input type='hidden' name='" + name + "' value='" + value + "'";
+		const safeName = escapeHTML(String(name));
+		const safeValue = escapeHTML(String(value));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				hiddenField = hiddenField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		hiddenField = hiddenField + '/>';
-		
+		let hiddenField = `<input type="hidden" name="${safeName}" value="${safeValue}"`;
+
+		for (const [key, val] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeVal = escapeHTML(String(val));
+			hiddenField += ` ${safeKey}="${safeVal}"`;
+		}
+
+		hiddenField += '/>';
+
 		return hiddenField;
 
 	}
 
 	   // subit tag
 	submitButton(name, obj){
-		
-		var submitButton = "<button type='submit' name='" + name + "'";
+		const safeName = escapeHTML(String(name));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				submitButton = submitButton + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
+		let submitButton = `<button type="submit" name="${safeName}"`;
 
-		submitButton = submitButton + ">" + name  +'</button>';
-		
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			submitButton += ` ${safeKey}="${safeValue}"`;
+		}
+
+		submitButton += `>${safeName}</button>`;
+
 		return submitButton;
 
 	}
 
 	   // search tag
 	searchField(name, obj){
-		
-		var searchField = "<input type='search' name='" + name + "'";
+		const safeName = escapeHTML(String(name));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				searchField = searchField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		searchField = searchField + '/>';
-		
+		let searchField = `<input type="search" name="${safeName}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			searchField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		searchField += '/>';
+
 		return searchField;
 	}
 
 	   // telephone field tag
 	telephoneField(name, obj){
+		const safeName = escapeHTML(String(name));
 
-		var telephoneField = "<input type='tel' name='" + name + "'";
+		let telephoneField = `<input type="tel" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				telephoneField = telephoneField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		telephoneField = telephoneField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			telephoneField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		telephoneField += '/>';
 
 		return telephoneField;
 
@@ -326,75 +383,85 @@ class html {
 
 	   // date field tag
 	dateField(name, obj){
+		const safeName = escapeHTML(String(name));
 
-		var dateField = "<input type='date' name='" + name + "'";
+		let dateField = `<input type="date" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				dateField = dateField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		dateField = dateField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			dateField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		dateField += '/>';
 
 		return dateField;
 	}
 
 	   // date time local field tag
 	datetimeLocalField(name, obj){
+		const safeName = escapeHTML(String(name));
 
-		var datetimeLocalField = "<input type='datetime-local' name='" + name + "' ";
+		let datetimeLocalField = `<input type="datetime-local" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				datetimeLocalField = datetimeLocalField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		datetimeLocalField = datetimeLocalField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			datetimeLocalField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		datetimeLocalField += '/>';
 
 		return datetimeLocalField;
 	}
 
 	   // date month field tag
 	monthField(name, obj){
+		const safeName = escapeHTML(String(name));
 
-		var monthField = "<input type='month' name='" + name + "' ";
+		let monthField = `<input type="month" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				monthField = monthField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		monthField = monthField + '/>';
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			monthField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		monthField += '/>';
 
 		return monthField;
 	}
 
 	   // date week field tag
 	weekField(name, obj){
+		const safeName = escapeHTML(String(name));
 
-		var weekField = "<input type='week' name='" + name + "' ";
+		let weekField = `<input type="week" name="${safeName}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				weekField = weekField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		weekField = weekField + '/>';
-		
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			weekField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		weekField += '/>';
+
 		return weekField;
 	}
 
 	   // date url field tag
 	urlField(name, obj){
-		
-		var urlField = "<input type='url' name='" + name + "' ";
+		const safeName = escapeHTML(String(name));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				urlField = urlField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		urlField = urlField + '/>';
+		let urlField = `<input type="url" name="${safeName}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			urlField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		urlField += '/>';
 
 		return urlField;
 	}
@@ -402,76 +469,92 @@ class html {
 
 	   // date email field tag
 	emailField(name, obj){
-		
-		var emailField = "<input type='email' name='" + name + "' ";
+		const safeName = escapeHTML(String(name));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				emailField = emailField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		emailField = emailField + '/>';
+		let emailField = `<input type="email" name="${safeName}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			emailField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		emailField += '/>';
 
 		return emailField;
 	}
 
 	   // date color field tag
 	colorField(name, color,  obj){
-		
-		var colorField = "<input type='color' name='" + name + "' value='" + color + "'";
+		const safeName = escapeHTML(String(name));
+		const safeColor = escapeHTML(String(color));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				colorField = colorField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		colorField = colorField + '/>';
+		let colorField = `<input type="color" name="${safeName}" value="${safeColor}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			colorField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		colorField += '/>';
 
 		return colorField;
 	}
 
 	   // date time field tag
 	timeField(name, obj){
-		
-		var timeField = "<input type='time' name='" + name + "' ";
+		const safeName = escapeHTML(String(name));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				timeField = timeField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		timeField = timeField + '/>';
+		let timeField = `<input type="time" name="${safeName}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			timeField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		timeField += '/>';
 
 		return timeField;
 	}
 
 	   // date number field tag
 	numberField(name, min, max, step, obj){
-		
-		var numberField = "<input type='number' name='" + name + "'" + " min='" +  min + "'" + " max='" + max + "'" + " step='" + step + "'";
+		const safeName = escapeHTML(String(name));
+		const safeMin = escapeHTML(String(min));
+		const safeMax = escapeHTML(String(max));
+		const safeStep = escapeHTML(String(step));
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				numberField = numberField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		numberField = numberField + '/>';
+		let numberField = `<input type="number" name="${safeName}" min="${safeMin}" max="${safeMax}" step="${safeStep}"`;
+
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			numberField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		numberField += '/>';
 
 		return numberField;
 	}
 
 	   // date range field tag
 	rangeField(name, min, max, obj){
+		const safeName = escapeHTML(String(name));
+		const safeMin = escapeHTML(String(min));
+		const safeMax = escapeHTML(String(max));
 
-		var rangeField = "<input type='range' name='" + name + "'" + " min='" +  min + "'" + " max='" + max + "'";
+		let rangeField = `<input type="range" name="${safeName}" min="${safeMin}" max="${safeMax}"`;
 
-		for (var key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				rangeField = rangeField + " " + key + "=" + "'" + obj[key] + "'";
-			}
-		};
-		rangeField = rangeField + '/>';
-		
+		for (const [key, value] of Object.entries(obj || {})) {
+			const safeKey = escapeHTML(String(key));
+			const safeValue = escapeHTML(String(value));
+			rangeField += ` ${safeKey}="${safeValue}"`;
+		}
+
+		rangeField += '/>';
+
 		return rangeField;
 	}
 

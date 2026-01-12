@@ -26,7 +26,12 @@ class MasterSocket{
             // Prefer explicit server, fallback to master.server
             const httpServer = serverOrIo || master.server;
             if (!httpServer) {
-                throw new Error('MasterSocket.init requires an HTTP server or a pre-created Socket.IO instance');
+                throw new Error(
+                    'MasterSocket.init requires an HTTP server. ' +
+                    'Either pass the server explicitly: master.socket.init(server) ' +
+                    'or call master.start(server) before socket.init(). ' +
+                    'Current initialization order issue: socket.init() called before master.start()'
+                );
             }
             this.io = new Server(httpServer, ioOptions);
         }

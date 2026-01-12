@@ -1,6 +1,6 @@
 # Professional Timeout and Error Handling
 
-MasterController v2.0 includes production-ready timeout tracking and error page rendering inspired by Rails and Django.
+MasterController includes production-ready timeout tracking and error page rendering inspired by Rails and Django.
 
 ---
 
@@ -25,7 +25,7 @@ The timeout system provides per-request timeout tracking with configurable optio
 - **Detailed logging** of timeouts
 - **Custom timeout handlers**
 
-###Configuration
+### Configuration
 
 **config/initializers/config.js:**
 
@@ -339,7 +339,7 @@ Accept: application/json
 
 ## Migration Guide
 
-### From Old System (v1.x)
+### From Previous Versions
 
 **OLD - Static HTML in public/ folder:**
 
@@ -396,10 +396,12 @@ Accept: application/json
 # Create error templates directory
 mkdir -p public/errors
 
-# Copy provided templates
-cp node_modules/mastercontroller/templates/errors/*.html public/errors/
+# Move existing error pages
+mv public/404.html public/errors/
+mv public/500.html public/errors/
 
-# Or use your custom templates
+# Create missing templates
+touch public/errors/{400,401,403,405,422,429,502,503,504}.html
 ```
 
 ### Step 3: Update config.js

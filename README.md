@@ -14,6 +14,7 @@ MasterController is a lightweight MVC-style server framework for Node.js with mi
 - [CORS](#cors)
 - [Sessions](#sessions)
 - [Security](#security)
+- [File Conversion & Binary Data](#file-conversion--binary-data)
 - [Components](#components)
 - [Timeout System](#timeout-system)
 - [Error Handling](#error-handling)
@@ -55,7 +56,13 @@ const cors = require('./cors.json');
 master.cors.init(cors);
 
 // Initialize sessions (auto-registers with pipeline)
-master.sessions.init();
+master.session.init({
+    cookieName: 'mc_session',
+    maxAge: 3600000,
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict'
+});
 
 // Auto-discover custom middleware from middleware/ folder
 master.pipeline.discoverMiddleware('middleware');
@@ -790,11 +797,9 @@ master.cors.init({
 
 ## Sessions
 
-MasterController provides **two session systems**:
-- **`master.session`** (NEW) - Secure, Rails/Django-style sessions with automatic regeneration and protection (RECOMMENDED)
-- **`master.sessions`** (LEGACY) - Original cookie-based session API (backward compatibility only)
+MasterController provides secure, Rails/Django-style sessions with automatic regeneration and protection.
 
-### Secure Sessions (NEW - Recommended)
+### Secure Sessions
 
 #### `master.session.init(options)`
 
@@ -914,105 +919,6 @@ master.session.init(settings);
 - MaxAge: 24 hours (convenient for development)
 - RegenerateInterval: 1 hour
 
----
-
-### Legacy Sessions (Backward Compatibility)
-
-**⚠️ DEPRECATED: Use `master.session` (singular) for new projects.**
-
-The original `master.sessions` (plural) API is maintained for backward compatibility but lacks modern security features.
-
-#### `master.sessions.init(options)`
-
-Initialize legacy sessions (auto-registers with middleware pipeline).
-
-```javascript
-master.sessions.init({
-    secret: 'your-secret-key',
-    maxAge: 900000,        // 15 minutes
-    httpOnly: true,
-    secure: true,          // HTTPS only
-    sameSite: 'strict',    // Must be string: 'strict', 'lax', or 'none'
-    path: '/'
-});
-```
-
-#### Legacy Session API
-
-**`master.sessions.set(name, data, response, secret, options)`** - Create a session
-
-```javascript
-master.sessions.set('user', userData, obj.response);
-```
-
-**`master.sessions.get(name, request, secret)`** - Retrieve session data
-
-```javascript
-const user = master.sessions.get('user', obj.request);
-```
-
-**`master.sessions.delete(name, response)`** - Delete a session
-
-```javascript
-master.sessions.delete('user', obj.response);
-```
-
-**`master.sessions.reset()`** - Clear all sessions
-
-```javascript
-master.sessions.reset();
-```
-
-#### Legacy Cookie Methods
-
-**`master.sessions.setCookie(name, value, response, options)`**
-```javascript
-master.sessions.setCookie('theme', 'dark', obj.response);
-```
-
-**`master.sessions.getCookie(name, request, secret)`**
-```javascript
-const theme = master.sessions.getCookie('theme', obj.request);
-```
-
-**`master.sessions.deleteCookie(name, response, options)`**
-```javascript
-master.sessions.deleteCookie('theme', obj.response);
-```
-
-#### Migration Guide: Legacy → Secure Sessions
-
-**Old (master.sessions):**
-```javascript
-// Set
-master.sessions.set('user', userData, obj.response);
-
-// Get
-const user = master.sessions.get('user', obj.request);
-
-// Delete
-master.sessions.delete('user', obj.response);
-```
-
-**New (master.session):**
-```javascript
-// Set (Rails/Express style)
-obj.request.session.user = userData;
-
-// Get
-const user = obj.request.session.user;
-
-// Delete
-master.session.destroy(obj.request, obj.response);
-```
-
-**Benefits of migration:**
-- ✅ Automatic session regeneration (prevents fixation)
-- ✅ 32-byte session IDs (stronger than 20-byte)
-- ✅ Rolling sessions (better UX)
-- ✅ Automatic cleanup (no memory leaks)
-- ✅ Rails/Express-style API (more familiar)
-- ✅ No broken encryption (legacy has crypto bugs)
 
 ---
 
@@ -1123,6 +1029,690 @@ class UsersController {
 - `detectSQLInjection(input)` - Detect SQL injection
 - `detectCommandInjection(input)` - Detect command injection
 
+### File Upload Security
+
+MasterController v1.3.1 includes built-in protection against file upload attacks and DoS.
+
+#### Request Body Size Limits
+
+**config/initializers/request.json:**
+```json
+{
+    "disableFormidableMultipartFormData": false,
+    "formidable": {
+        "multiples": true,
+        "keepExtensions": true,
+        "maxFileSize": 10485760,      // 10MB per file
+        "maxFieldsSize": 2097152,     // 2MB total form fields
+        "maxFields": 1000,             // Max number of fields
+        "allowEmptyFiles": false,      // Reject empty files
+        "minFileSize": 1               // Reject 0-byte files
+    },
+    "maxBodySize": 10485760,           // 10MB for form-urlencoded
+    "maxJsonSize": 1048576,            // 1MB for JSON payloads
+    "maxTextSize": 1048576             // 1MB for text/plain
+}
+```
+
+**DoS Protection:**
+- All request bodies are size-limited (prevents memory exhaustion)
+- Connections destroyed if limits exceeded
+- Configurable per content-type
+
+#### File Type Validation
+
+**Always validate file types in your controllers:**
+
+```javascript
+class UploadController {
+    uploadImage(obj) {
+        const file = obj.params.formData.files.avatar[0];
+
+        // 1. Validate MIME type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+            this.json({ error: 'Only images allowed (JPEG, PNG, GIF, WebP)' });
+            return;
+        }
+
+        // 2. Validate file extension
+        const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+        if (!allowedExts.includes(file.extension.toLowerCase())) {
+            this.json({ error: 'Invalid file extension' });
+            return;
+        }
+
+        // 3. Validate file size (additional check)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            this.json({ error: 'File too large (max 5MB)' });
+            return;
+        }
+
+        // 4. Generate safe filename (prevent path traversal)
+        const crypto = require('crypto');
+        const safeFilename = crypto.randomBytes(16).toString('hex') + file.extension;
+        const uploadPath = path.join(master.root, 'uploads', safeFilename);
+
+        // 5. Move file
+        fs.renameSync(file.filepath, uploadPath);
+
+        this.json({ success: true, filename: safeFilename });
+    }
+
+    uploadDocument(obj) {
+        const file = obj.params.formData.files.document[0];
+
+        // Allow PDF, DOC, DOCX only
+        const allowedTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+            this.json({ error: 'Only PDF and Word documents allowed' });
+            return;
+        }
+
+        // Process upload...
+    }
+}
+```
+
+#### Formidable Custom Filter
+
+**Add file filter in request.json (formidable v3+):**
+
+```json
+{
+    "formidable": {
+        "filter": "function({ name, originalFilename, mimetype }) { return mimetype && mimetype.startsWith('image/'); }"
+    }
+}
+```
+
+**Note:** JSON doesn't support functions, so filters must be configured in code:
+
+```javascript
+// config/initializers/config.js
+const formidableOptions = master.env.request.formidable;
+
+// Add runtime filter for images only
+formidableOptions.filter = function({ name, originalFilename, mimetype }) {
+    return mimetype && mimetype.startsWith('image/');
+};
+
+master.request.init({
+    ...master.env.request,
+    formidable: formidableOptions
+});
+```
+
+#### Security Best Practices
+
+1. **Always validate both MIME type AND file extension** (double check)
+2. **Generate random filenames** (prevents overwriting and path traversal)
+3. **Store uploads outside public directory** (prevent direct execution)
+4. **Scan files for viruses** (use ClamAV or similar)
+5. **Set proper file permissions** (chmod 644 for files, 755 for dirs)
+6. **Never trust user-provided filenames** (can contain `../` or null bytes)
+7. **Limit file sizes** (prevent disk space exhaustion)
+8. **Delete temporary files** after processing
+
+#### Delete Temporary Files
+
+```javascript
+class UploadController {
+    upload(obj) {
+        const file = obj.params.formData.files.upload[0];
+
+        try {
+            // Validate and process...
+
+            // Delete temp file after processing
+            master.request.deleteFileBuffer(file.filepath);
+
+            this.json({ success: true });
+        } catch (error) {
+            // Always cleanup on error
+            master.request.deleteFileBuffer(file.filepath);
+            this.json({ error: error.message });
+        }
+    }
+}
+```
+
+---
+
+## File Conversion & Binary Data
+
+MasterController v1.3.1 includes production-grade utilities for converting between files, base64, and binary data. These are essential for working with uploaded files, API responses, and data storage.
+
+### Quick Start
+
+```javascript
+// Convert uploaded file to base64 for API response
+class UploadController {
+    uploadImage(obj) {
+        const file = obj.params.formData.files.image[0];
+
+        // Convert to base64 (with data URI for <img> src)
+        const base64 = master.tools.fileToBase64(file, {
+            includeDataURI: true,  // Adds "data:image/jpeg;base64," prefix
+            maxSize: 5 * 1024 * 1024  // 5MB limit
+        });
+
+        this.json({
+            success: true,
+            imageData: base64  // Can be used directly in <img src="">
+        });
+    }
+}
+```
+
+### File to Base64
+
+#### `master.tools.fileToBase64(filePathOrFile, options)`
+
+Convert a file to base64 string (binary-safe for all file types).
+
+**Parameters:**
+- `filePathOrFile`: File path string OR formidable file object
+- `options`:
+  - `includeDataURI` (boolean) - Prepend data URI (e.g., `data:image/jpeg;base64,`)
+  - `maxSize` (number) - Maximum file size in bytes (default: 10MB)
+
+**Returns:** Base64 string
+
+**Examples:**
+
+```javascript
+// Convert file from file path
+const base64 = master.tools.fileToBase64('/path/to/image.jpg');
+
+// Convert uploaded file with data URI
+const file = obj.params.formData.files.avatar[0];
+const dataURI = master.tools.fileToBase64(file, {
+    includeDataURI: true,
+    maxSize: 5 * 1024 * 1024  // 5MB
+});
+
+// Use in HTML email or response
+const html = `<img src="${dataURI}" alt="Avatar">`;
+
+// Store in database
+await db.query('UPDATE users SET avatar = ? WHERE id = ?', [base64, userId]);
+```
+
+**Error Handling:**
+
+```javascript
+try {
+    const base64 = master.tools.fileToBase64(file);
+} catch (error) {
+    if (error.message.includes('not found')) {
+        console.error('File does not exist');
+    } else if (error.message.includes('exceeds maximum')) {
+        console.error('File too large');
+    } else if (error.message.includes('directory')) {
+        console.error('Path is a directory, not a file');
+    }
+}
+```
+
+---
+
+### Base64 to File
+
+#### `master.tools.base64ToFile(base64String, outputPath, options)`
+
+Convert base64 string to a file on disk (binary-safe).
+
+**Parameters:**
+- `base64String`: Base64 encoded string (with or without data URI prefix)
+- `outputPath`: Destination file path
+- `options`:
+  - `overwrite` (boolean) - Allow overwriting existing files (default: false)
+  - `createDir` (boolean) - Create parent directories if needed (default: true)
+
+**Returns:** `{ success: true, filePath: outputPath, size: number }`
+
+**Examples:**
+
+```javascript
+// Save base64 from API to file
+class ApiController {
+    async saveImage(obj) {
+        const base64Data = obj.params.formData.imageData;
+
+        // Save to disk
+        const result = master.tools.base64ToFile(
+            base64Data,
+            './uploads/images/photo.jpg',
+            { overwrite: false, createDir: true }
+        );
+
+        this.json({
+            success: true,
+            path: result.filePath,
+            size: result.size
+        });
+    }
+}
+
+// Data URI with prefix (automatically handled)
+const dataURI = 'data:image/png;base64,iVBORw0KGgoAAAANS...';
+master.tools.base64ToFile(dataURI, './output.png');
+
+// Pure base64 without prefix
+const pureBase64 = 'iVBORw0KGgoAAAANS...';
+master.tools.base64ToFile(pureBase64, './output.png');
+```
+
+---
+
+### Buffer Operations
+
+#### `master.tools.fileToBuffer(filePathOrFile, options)`
+
+Convert file to Node.js Buffer (for in-memory processing).
+
+**Parameters:**
+- `filePathOrFile`: File path string OR formidable file object
+- `options`:
+  - `maxSize` (number) - Maximum file size (default: 10MB)
+
+**Returns:** Node.js Buffer
+
+**Examples:**
+
+```javascript
+// Read file into buffer
+const buffer = master.tools.fileToBuffer('./image.jpg');
+
+// Process image with sharp library
+const sharp = require('sharp');
+const resized = await sharp(buffer)
+    .resize(800, 600)
+    .toBuffer();
+
+// Convert buffer back to base64
+const base64 = master.tools.bytesToBase64(resized);
+```
+
+---
+
+#### `master.tools.fileToBytes(filePathOrFile, options)`
+
+Convert file to Uint8Array (for Web APIs and TypedArrays).
+
+**Parameters:**
+- `filePathOrFile`: File path string OR formidable file object
+- `options`:
+  - `maxSize` (number) - Maximum file size (default: 10MB)
+
+**Returns:** Uint8Array
+
+**Examples:**
+
+```javascript
+// Get raw bytes
+const bytes = master.tools.fileToBytes('./document.pdf');
+
+// Send over WebSocket as binary
+websocket.send(bytes);
+
+// Use with crypto
+const crypto = require('crypto');
+const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+```
+
+---
+
+#### `master.tools.bytesToBase64(bufferOrBytes, options)`
+
+Convert Buffer or Uint8Array to base64 string.
+
+**Parameters:**
+- `bufferOrBytes`: Node.js Buffer OR Uint8Array
+- `options`:
+  - `includeDataURI` (boolean) - Prepend data URI
+  - `mimetype` (string) - MIME type for data URI (required if includeDataURI=true)
+
+**Returns:** Base64 string
+
+**Examples:**
+
+```javascript
+const buffer = Buffer.from('Hello World');
+const base64 = master.tools.bytesToBase64(buffer);
+// → 'SGVsbG8gV29ybGQ='
+
+// With data URI
+const base64WithURI = master.tools.bytesToBase64(buffer, {
+    includeDataURI: true,
+    mimetype: 'text/plain'
+});
+// → 'data:text/plain;base64,SGVsbG8gV29ybGQ='
+```
+
+---
+
+#### `master.tools.base64ToBytes(base64String)`
+
+Convert base64 string to Node.js Buffer.
+
+**Parameters:**
+- `base64String`: Base64 string (with or without data URI prefix)
+
+**Returns:** Node.js Buffer
+
+**Examples:**
+
+```javascript
+const base64 = 'SGVsbG8gV29ybGQ=';
+const buffer = master.tools.base64ToBytes(base64);
+console.log(buffer.toString('utf8'));  // → 'Hello World'
+
+// Handles data URIs automatically
+const dataURI = 'data:text/plain;base64,SGVsbG8gV29ybGQ=';
+const buffer2 = master.tools.base64ToBytes(dataURI);
+```
+
+---
+
+### Streaming Large Files
+
+#### `master.tools.streamFileToBase64(filePathOrFile, options)`
+
+Stream large files to base64 without loading into memory (async).
+
+**Parameters:**
+- `filePathOrFile`: File path string OR formidable file object
+- `options`:
+  - `includeDataURI` (boolean) - Prepend data URI
+  - `chunkSize` (number) - Read chunk size (default: 64KB)
+  - `onProgress` (function) - Progress callback: `(bytesRead, totalBytes, percent) => {}`
+
+**Returns:** Promise<base64 string>
+
+**Examples:**
+
+```javascript
+// Stream large video file to base64
+class VideoController {
+    async processVideo(obj) {
+        const file = obj.params.formData.files.video[0];
+
+        // Stream with progress tracking
+        const base64 = await master.tools.streamFileToBase64(file, {
+            includeDataURI: true,
+            chunkSize: 128 * 1024,  // 128KB chunks
+            onProgress: (bytesRead, total, percent) => {
+                console.log(`Processing: ${percent.toFixed(1)}% (${bytesRead}/${total} bytes)`);
+
+                // Send progress to client via WebSocket
+                master.socket.emit('upload-progress', { percent });
+            }
+        });
+
+        this.json({ success: true, videoData: base64 });
+    }
+}
+
+// Process 500MB file without memory issues
+const largeFile = '/path/to/500mb-video.mp4';
+const base64 = await master.tools.streamFileToBase64(largeFile, {
+    onProgress: (read, total, percent) => {
+        console.log(`${percent.toFixed(1)}% complete`);
+    }
+});
+```
+
+---
+
+### Common Use Cases
+
+#### Use Case 1: API Response with Embedded Image
+
+```javascript
+class ProductController {
+    show(obj) {
+        const product = db.getProduct(obj.params.id);
+        const imagePath = `./uploads/products/${product.imageFilename}`;
+
+        // Convert image to base64 for API
+        const imageData = master.tools.fileToBase64(imagePath, {
+            includeDataURI: true,
+            maxSize: 2 * 1024 * 1024  // 2MB limit
+        });
+
+        this.json({
+            id: product.id,
+            name: product.name,
+            image: imageData  // Client can use directly in <img src="">
+        });
+    }
+}
+```
+
+#### Use Case 2: Store File in Database
+
+```javascript
+class DocumentController {
+    async upload(obj) {
+        const file = obj.params.formData.files.document[0];
+
+        // Validate file type
+        const allowedTypes = ['application/pdf', 'application/msword'];
+        if (!allowedTypes.includes(file.mimetype)) {
+            this.json({ error: 'Only PDF and Word documents allowed' });
+            return;
+        }
+
+        // Convert to base64 for database storage
+        const base64 = master.tools.fileToBase64(file, {
+            maxSize: 10 * 1024 * 1024  // 10MB
+        });
+
+        // Store in database
+        await this.db.query(
+            'INSERT INTO documents (filename, mimetype, data) VALUES (?, ?, ?)',
+            [file.originalFilename, file.mimetype, base64]
+        );
+
+        // Delete temp file
+        master.request.deleteFileBuffer(file.filepath);
+
+        this.json({ success: true });
+    }
+}
+```
+
+#### Use Case 3: Retrieve File from Database
+
+```javascript
+class DocumentController {
+    async download(obj) {
+        const docId = obj.params.id;
+
+        // Get from database
+        const doc = await this.db.query(
+            'SELECT filename, mimetype, data FROM documents WHERE id = ?',
+            [docId]
+        );
+
+        if (!doc) {
+            master.errorRenderer.send(obj, 404, {
+                message: 'Document not found'
+            });
+            return;
+        }
+
+        // Convert base64 back to file
+        const tempPath = `./temp/${Date.now()}-${doc.filename}`;
+        master.tools.base64ToFile(doc.data, tempPath);
+
+        // Send file to client
+        obj.response.setHeader('Content-Type', doc.mimetype);
+        obj.response.setHeader('Content-Disposition', `attachment; filename="${doc.filename}"`);
+
+        const fs = require('fs');
+        const fileStream = fs.createReadStream(tempPath);
+        fileStream.pipe(obj.response);
+
+        // Cleanup after sending
+        fileStream.on('end', () => {
+            fs.unlinkSync(tempPath);
+        });
+    }
+}
+```
+
+#### Use Case 4: Image Processing Pipeline
+
+```javascript
+const sharp = require('sharp');
+
+class ImageController {
+    async processThumbnail(obj) {
+        const file = obj.params.formData.files.image[0];
+
+        // Read file to buffer
+        const buffer = master.tools.fileToBuffer(file, {
+            maxSize: 10 * 1024 * 1024
+        });
+
+        // Process with sharp
+        const thumbnail = await sharp(buffer)
+            .resize(200, 200, { fit: 'cover' })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+
+        // Convert thumbnail to base64
+        const base64 = master.tools.bytesToBase64(thumbnail, {
+            includeDataURI: true,
+            mimetype: 'image/jpeg'
+        });
+
+        // Cleanup temp file
+        master.request.deleteFileBuffer(file.filepath);
+
+        this.json({
+            success: true,
+            thumbnail: base64
+        });
+    }
+}
+```
+
+#### Use Case 5: Email with Embedded Images
+
+```javascript
+const nodemailer = require('nodemailer');
+
+class EmailController {
+    async sendWithImage(obj) {
+        const file = obj.params.formData.files.logo[0];
+
+        // Convert to base64 data URI
+        const logoData = master.tools.fileToBase64(file, {
+            includeDataURI: true
+        });
+
+        // Send email with embedded image
+        const transporter = nodemailer.createTransport({/* config */});
+        await transporter.sendMail({
+            to: 'user@example.com',
+            subject: 'Welcome!',
+            html: `
+                <h1>Welcome to our platform!</h1>
+                <img src="${logoData}" alt="Logo">
+                <p>Thanks for joining.</p>
+            `
+        });
+
+        // Cleanup
+        master.request.deleteFileBuffer(file.filepath);
+
+        this.json({ success: true });
+    }
+}
+```
+
+---
+
+### Security Best Practices
+
+1. **Always set size limits:**
+```javascript
+const base64 = master.tools.fileToBase64(file, {
+    maxSize: 5 * 1024 * 1024  // Prevent DoS
+});
+```
+
+2. **Validate file types before conversion:**
+```javascript
+const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+if (!allowedTypes.includes(file.mimetype)) {
+    throw new Error('Invalid file type');
+}
+const base64 = master.tools.fileToBase64(file);
+```
+
+3. **Delete temporary files after processing:**
+```javascript
+try {
+    const base64 = master.tools.fileToBase64(file);
+    // ... process ...
+} finally {
+    master.request.deleteFileBuffer(file.filepath);
+}
+```
+
+4. **Use streaming for large files:**
+```javascript
+// ❌ Bad: Loads entire 500MB file into memory
+const base64 = master.tools.fileToBase64(largeFile);
+
+// ✅ Good: Streams in chunks
+const base64 = await master.tools.streamFileToBase64(largeFile, {
+    chunkSize: 128 * 1024
+});
+```
+
+5. **Validate base64 before decoding:**
+```javascript
+try {
+    const buffer = master.tools.base64ToBytes(untrustedBase64);
+} catch (error) {
+    console.error('Invalid base64 data');
+}
+```
+
+---
+
+### Deprecated Methods
+
+#### `master.tools.base64()` - DEPRECATED
+
+**⚠️ WARNING:** The original `base64()` method is **BROKEN for binary files** and should not be used. It uses `charCodeAt()` which only works correctly for text files (UTF-8). Binary files like images, PDFs, and videos will be corrupted.
+
+**Do NOT use:**
+```javascript
+// ❌ BROKEN - Corrupts binary files
+const broken = master.tools.base64(file.filepath);
+```
+
+**Use instead:**
+```javascript
+// ✅ CORRECT - Binary-safe
+const correct = master.tools.fileToBase64(file);
+```
+
+The old method is kept for backward compatibility with text-only use cases, but all new code should use the production-grade methods documented above.
+
 ---
 
 ## Components
@@ -1169,12 +1759,15 @@ Components are isolated and can be reused across projects.
 
 ## Timeout System
 
-MasterController v2.0 includes a professional timeout system with per-request tracking (Rails/Django style).
+MasterController includes a production-ready timeout system with per-request tracking (Rails/Django style).
 
-### Configuration
+### Quick Start
 
 ```javascript
 // config/initializers/config.js
+const master = require('mastercontroller');
+
+// Initialize timeout system
 master.timeout.init({
     globalTimeout: 120000,  // 120 seconds (2 minutes) default
     enabled: true,
@@ -1190,18 +1783,56 @@ master.pipeline.use(master.timeout.middleware());
 
 ### Route-Specific Timeouts
 
+Configure different timeouts for different routes:
+
 ```javascript
-// Short timeout for API endpoints
-master.timeout.setRouteTimeout('/api/*', 30000);  // 30 seconds
+// Short timeout for API endpoints (30 seconds)
+master.timeout.setRouteTimeout('/api/*', 30000);
 
-// Long timeout for reports
-master.timeout.setRouteTimeout('/admin/reports', 300000);  // 5 minutes
+// Long timeout for reports (5 minutes)
+master.timeout.setRouteTimeout('/admin/reports', 300000);
 
-// Very long timeout for batch operations
-master.timeout.setRouteTimeout('/batch/process', 600000);  // 10 minutes
+// Very long timeout for batch operations (10 minutes)
+master.timeout.setRouteTimeout('/batch/process', 600000);
+
+// Critical operations (1 minute)
+master.timeout.setRouteTimeout('/checkout/*', 60000);
 ```
 
-### Timeout Statistics
+### Environment-Specific Configuration
+
+**config/environments/env.development.json:**
+```json
+{
+    "server": {
+        "requestTimeout": 300000
+    }
+}
+```
+
+**config/environments/env.production.json:**
+```json
+{
+    "server": {
+        "requestTimeout": 120000
+    }
+}
+```
+
+### Timeout Response
+
+When a request times out, the client receives:
+
+```json
+{
+    "error": "Request Timeout",
+    "message": "The server did not receive a complete request within the allowed time",
+    "code": "MC_REQUEST_TIMEOUT",
+    "timeout": 120000
+}
+```
+
+### Monitoring Active Requests
 
 ```javascript
 const stats = master.timeout.getStats();
@@ -1211,7 +1842,8 @@ console.log(stats);
 //     enabled: true,
 //     globalTimeout: 120000,
 //     routeTimeouts: [
-//         { pattern: '/api/*', timeout: 30000 }
+//         { pattern: '/api/*', timeout: 30000 },
+//         { pattern: '/admin/reports', timeout: 300000 }
 //     ],
 //     activeRequests: 5,
 //     requests: [
@@ -1225,6 +1857,13 @@ console.log(stats);
 //         }
 //     ]
 // }
+
+// Check for slow requests
+stats.requests.forEach(req => {
+    if (req.elapsed > req.timeout * 0.8) {
+        console.warn(`Request close to timeout: ${req.path} (${req.elapsed}ms/${req.timeout}ms)`);
+    }
+});
 ```
 
 ### Disable/Enable Timeouts
@@ -1235,18 +1874,69 @@ master.timeout.disable();
 
 // Re-enable
 master.timeout.enable();
+
+// Check status
+console.log(master.timeout.getStats().enabled); // true/false
 ```
+
+### Complete Setup Example
+
+```javascript
+// config/initializers/config.js
+const master = require('mastercontroller');
+
+// Initialize timeout system
+master.timeout.init({
+    globalTimeout: master.env.server.requestTimeout || 120000,
+    enabled: true,
+    onTimeout: (ctx, timeoutInfo) => {
+        // Log timeout
+        console.error(`Request timeout: ${timeoutInfo.path} (${timeoutInfo.duration}ms)`);
+
+        // Send to monitoring service
+        sendToMonitoring('timeout', timeoutInfo);
+    }
+});
+
+// Configure route-specific timeouts
+master.timeout.setRouteTimeout('/api/*', 30000);          // API: 30s
+master.timeout.setRouteTimeout('/admin/reports', 300000); // Reports: 5m
+master.timeout.setRouteTimeout('/batch/*', 600000);       // Batch: 10m
+
+// Register middleware
+master.pipeline.use(master.timeout.middleware());
+
+// Monitor timeouts periodically
+setInterval(() => {
+    const stats = master.timeout.getStats();
+
+    if (stats.activeRequests > 100) {
+        console.warn(`High number of active requests: ${stats.activeRequests}`);
+    }
+}, 60000); // Every minute
+```
+
+### Best Practices
+
+1. **Set appropriate global timeout**: 120 seconds (2 minutes) is a good default
+2. **Use route-specific timeouts**: APIs should have shorter timeouts (30s)
+3. **Long operations**: Use background jobs instead of long timeouts
+4. **Disable in development**: For debugging, temporarily disable timeouts
+5. **Monitor statistics**: Regularly check active requests and slow requests
 
 ---
 
 ## Error Handling
 
-MasterController v2.0 includes a professional error template system inspired by Rails and Django.
+MasterController includes a professional error template system inspired by Rails and Django.
 
-### Error Renderer Configuration
+### Quick Start
 
 ```javascript
 // config/initializers/config.js
+const master = require('mastercontroller');
+
+// Initialize error renderer
 master.errorRenderer.init({
     templateDir: 'public/errors',  // Error templates directory
     environment: master.environmentType,
@@ -1256,23 +1946,26 @@ master.errorRenderer.init({
 
 ### Using Error Renderer
 
+**In Middleware:**
 ```javascript
-// In middleware
 master.pipeline.use(async (ctx, next) => {
     if (!isAuthenticated(ctx)) {
         master.errorRenderer.send(ctx, 401, {
             message: 'Please log in to access this resource',
             suggestions: [
                 'Sign in with your credentials',
-                'Request a password reset if forgotten'
+                'Request a password reset if forgotten',
+                'Contact support for account issues'
             ]
         });
         return;
     }
     await next();
 });
+```
 
-// In controllers
+**In Controllers:**
+```javascript
 class UsersController {
     async show(obj) {
         const userId = obj.params.userId;
@@ -1291,6 +1984,24 @@ class UsersController {
         }
 
         this.render('show', { user });
+    }
+
+    async update(obj) {
+        try {
+            const userId = obj.params.id;
+            const updates = obj.params.formData;
+
+            await this.db.query('UPDATE users SET ? WHERE id = ?', [updates, userId]);
+            this.redirect(`/users/${userId}`);
+        } catch (error) {
+            console.error('Update failed:', error);
+
+            master.errorRenderer.send(obj, 500, {
+                message: 'Failed to update user',
+                code: 'DB_ERROR',
+                stack: error.stack
+            });
+        }
     }
 }
 ```
@@ -1350,15 +2061,71 @@ public/errors/
 
 ### Custom Error Handlers
 
+Register custom error handlers for specific status codes:
+
 ```javascript
-// Register custom handler for specific status code
-master.errorRenderer.registerHandler(503, (ctx, errorData) => {
+// Custom 404 handler
+master.errorRenderer.registerHandler(404, (ctx, errorData) => {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Page Not Found</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                .icon { font-size: 100px; }
+                h1 { color: #333; }
+            </style>
+        </head>
+        <body>
+            <div class="icon">🔍</div>
+            <h1>Page Not Found</h1>
+            <p>${errorData.message}</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+    `;
+});
+
+// Custom 500 handler with logging
+master.errorRenderer.registerHandler(500, (ctx, errorData) => {
+    // Log to external service
+    logToSentry(errorData);
+
     return `
         <!DOCTYPE html>
         <html>
         <body>
-            <h1>Maintenance Mode</h1>
-            <p>We'll be back soon! Expected completion: 2:00 PM EST</p>
+            <h1>Oops! Something went wrong</h1>
+            <p>Our team has been notified.</p>
+            <p>Reference: ${errorData.code}</p>
+        </body>
+        </html>
+    `;
+});
+
+// Custom 503 handler (maintenance mode)
+master.errorRenderer.registerHandler(503, (ctx, errorData) => {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Maintenance Mode</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding: 50px;
+                }
+                .icon { font-size: 100px; }
+                h1 { color: #333; }
+            </style>
+        </head>
+        <body>
+            <div class="icon">🔧</div>
+            <h1>We'll be back soon!</h1>
+            <p>We're performing scheduled maintenance.</p>
+            <p>Expected completion: 2:00 PM EST</p>
         </body>
         </html>
     `;
@@ -1449,24 +2216,986 @@ logger.error({
 });
 ```
 
+### Common Use Cases
+
+**Rate Limiting with Custom 429 Page:**
+```javascript
+const rateLimit = new Map();
+
+master.pipeline.map('/api/*', (api) => {
+    api.use(async (ctx, next) => {
+        const clientId = ctx.request.connection.remoteAddress;
+        const requests = rateLimit.get(clientId) || [];
+        const now = Date.now();
+
+        // Remove requests older than 1 minute
+        const recent = requests.filter(time => now - time < 60000);
+
+        if (recent.length >= 100) {
+            master.errorRenderer.send(ctx, 429, {
+                message: 'Rate limit exceeded (100 requests per minute)',
+                suggestions: [
+                    'Wait 60 seconds and try again',
+                    'Upgrade to a higher tier plan',
+                    'Contact support for increased limits'
+                ]
+            });
+            return;
+        }
+
+        recent.push(now);
+        rateLimit.set(clientId, recent);
+        await next();
+    });
+});
+```
+
+**Protected Admin Section:**
+```javascript
+master.pipeline.map('/admin/*', (admin) => {
+    admin.use(async (ctx, next) => {
+        if (!ctx.state.user || !ctx.state.user.isAdmin) {
+            master.errorRenderer.send(ctx, 403, {
+                message: 'Admin access required',
+                suggestions: [
+                    'Sign in with an admin account',
+                    'Contact an administrator for access'
+                ]
+            });
+            return;
+        }
+        await next();
+    });
+});
+```
+
+**Maintenance Mode:**
+```javascript
+const maintenanceMode = process.env.MAINTENANCE === 'true';
+
+if (maintenanceMode) {
+    master.pipeline.use(async (ctx, next) => {
+        master.errorRenderer.send(ctx, 503, {
+            message: 'Service temporarily unavailable'
+        });
+    });
+}
+```
+
+### Complete Setup Example
+
+```javascript
+// config/initializers/config.js
+const master = require('mastercontroller');
+
+// Initialize error renderer
+master.errorRenderer.init({
+    templateDir: 'public/errors',
+    environment: master.environmentType,
+    showStackTrace: master.environmentType === 'development'
+});
+
+// Register custom handlers
+master.errorRenderer.registerHandler(404, (ctx, errorData) => {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>404 - Page Not Found</h1>
+            <p>${errorData.message}</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+    `;
+});
+
+// Global error handler
+master.pipeline.useError(async (error, ctx, next) => {
+    console.error('Pipeline error:', error);
+
+    master.errorRenderer.send(ctx, 500, {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+    });
+});
+```
+
+### Best Practices
+
+1. **Keep error messages user-friendly**: Don't expose technical details in production
+2. **Show stack traces in development only**: Use `showStackTrace` conditional
+3. **Provide actionable suggestions**: Help users resolve the issue
+4. **Consistent design**: Match your application's design
+5. **Test all error codes**: Ensure templates render correctly
+6. **Log errors**: Use `logger` for error tracking
+7. **Monitor errors**: Track error rates and patterns
+
 ---
 
 ## HTTPS Setup
 
-### Basic HTTPS
+MasterController v1.3.2 includes **production-grade HTTPS/TLS security** with automatic secure defaults.
+
+### 🔒 Security Features (Automatic)
+
+When you setup HTTPS, MasterController automatically configures:
+- ✅ **TLS 1.3** by default (2026 security standard)
+- ✅ **Secure cipher suites** (Mozilla Intermediate configuration)
+- ✅ **Path traversal protection** for static files
+- ✅ **Open redirect protection** for HTTP→HTTPS redirects
+- ✅ **SNI support** for multiple domains
+- ✅ **Certificate live reload** (zero-downtime updates)
+- ✅ **HSTS support** with preload option
+
+---
+
+## Quick Start: HTTPS in 5 Minutes
+
+### Development (Self-Signed Certificate)
+
+**Step 1: Generate Self-Signed Certificate**
+```bash
+# Create certificates directory
+mkdir -p certs
+cd certs
+
+# Generate self-signed certificate (valid for 365 days)
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
+  -days 365 -nodes -subj "/CN=localhost"
+
+# Combine for convenience
+cat key.pem > localhost.pem
+cat cert.pem >> localhost.pem
+
+cd ..
+```
+
+**Step 2: Update `server.js`**
+```javascript
+const fs = require('fs');
+const master = require('mastercontroller');
+
+master.environmentType = process.env.NODE_ENV || 'development';
+master.root = __dirname;
+
+// Setup HTTPS for development
+const server = master.setupServer('https', {
+    key: fs.readFileSync('./certs/key.pem'),
+    cert: fs.readFileSync('./certs/cert.pem')
+});
+
+require('./config/initializers/config');
+
+master.start(server);
+master.serverSettings({ httpPort: 3000 }); // Use 3000 for development
+
+console.log('✅ HTTPS server running on https://localhost:3000');
+console.log('⚠️  Self-signed certificate - browser will show warning (this is normal)');
+```
+
+**Step 3: Visit `https://localhost:3000`**
+- Browser will show "Not Secure" warning
+- Click "Advanced" → "Proceed to localhost" (safe for development)
+
+---
+
+### Production (Let's Encrypt - FREE)
+
+**Step 1: Install Certbot**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install certbot
+
+# CentOS/RHEL
+sudo yum install certbot
+
+# macOS
+brew install certbot
+```
+
+**Step 2: Get FREE SSL Certificate**
+```bash
+# Stop any web server on port 80
+sudo systemctl stop nginx
+
+# Get certificate (replace with your domain)
+sudo certbot certonly --standalone -d yourapp.com -d www.yourapp.com
+
+# Certificates will be saved to:
+# /etc/letsencrypt/live/yourapp.com/privkey.pem
+# /etc/letsencrypt/live/yourapp.com/fullchain.pem
+```
+
+**Step 3: Update `server.js` for Production**
+```javascript
+const fs = require('fs');
+const master = require('mastercontroller');
+
+master.environmentType = process.env.NODE_ENV || 'production';
+master.root = __dirname;
+
+// Setup HTTPS with Let's Encrypt certificates
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/etc/letsencrypt/live/yourapp.com/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/yourapp.com/fullchain.pem')
+});
+
+// Enable HSTS (strongly recommended)
+master.enableHSTS({
+    maxAge: 31536000,        // 1 year
+    includeSubDomains: true,
+    preload: true
+});
+
+require('./config/initializers/config');
+
+// Start HTTPS on port 443
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+
+// Redirect HTTP to HTTPS (port 80 → 443)
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'yourapp.com',
+    'www.yourapp.com'
+]);
+
+console.log('========================================');
+console.log('🚀 Production Server Started');
+console.log('========================================');
+console.log('✅ HTTPS: https://yourapp.com (port 443)');
+console.log('✅ HTTP redirect: http://yourapp.com → https://yourapp.com');
+console.log('✅ TLS 1.3 enabled');
+console.log('✅ HSTS enabled (1 year)');
+console.log('✅ Secure ciphers configured');
+console.log('========================================');
+```
+
+**Step 4: Set Permissions (if needed)**
+```bash
+# Option 1: Allow Node.js to bind to ports 80/443 (Linux)
+sudo setcap 'cap_net_bind_service=+ep' $(which node)
+
+# Option 2: Run with sudo (not recommended)
+sudo node server.js
+
+# Option 3: Use reverse proxy (recommended - see below)
+```
+
+**Step 5: Auto-Renew Certificates**
+```bash
+# Certbot automatically renews certificates
+# Test renewal process:
+sudo certbot renew --dry-run
+
+# Add to crontab for auto-renewal (runs daily)
+sudo crontab -e
+# Add this line:
+0 0 * * * certbot renew --quiet --post-hook "systemctl restart myapp"
+```
+
+---
+
+### Production (Custom Certificate)
+
+If you have a certificate from a commercial CA (GoDaddy, Namecheap, etc.):
 
 ```javascript
 const fs = require('fs');
+const master = require('mastercontroller');
 
-const credentials = {
-    key: fs.readFileSync('path/to/key.pem'),
-    cert: fs.readFileSync('path/to/cert.pem')
-};
+master.environmentType = 'production';
+master.root = __dirname;
 
-const server = master.setupServer('https', credentials);
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/path/to/your-domain.key'),
+    cert: fs.readFileSync('/path/to/your-domain.crt'),
+    ca: fs.readFileSync('/path/to/ca-bundle.crt') // Intermediate certificates
+});
+
+master.enableHSTS({
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+});
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'yourapp.com',
+    'www.yourapp.com'
+]);
 ```
 
-### Environment-based TLS
+---
+
+---
+
+## Production Deployment Options
+
+### Option 1: Direct HTTPS (Simple, Good for Small Apps)
+
+Run MasterController directly on ports 80/443:
+
+```javascript
+const fs = require('fs');
+const master = require('mastercontroller');
+
+master.environmentType = 'production';
+master.root = __dirname;
+
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/etc/letsencrypt/live/yourapp.com/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/yourapp.com/fullchain.pem')
+});
+
+master.enableHSTS({
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+});
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+
+// HTTP redirect
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'yourapp.com',
+    'www.yourapp.com'
+]);
+```
+
+**Pros:**
+- ✅ Simple setup
+- ✅ No extra software needed
+- ✅ Full control over TLS
+
+**Cons:**
+- ❌ Requires root/sudo for ports 80/443
+- ❌ No load balancing
+- ❌ No static file caching
+
+---
+
+### Option 2: Nginx Reverse Proxy (Recommended for Production)
+
+Run MasterController on high port (3000) behind Nginx on ports 80/443:
+
+**Step 1: Install Nginx**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install nginx
+
+# CentOS/RHEL
+sudo yum install nginx
+
+# macOS
+brew install nginx
+```
+
+**Step 2: Configure MasterController (High Port)**
+```javascript
+// server.js - Run on port 3000
+const master = require('mastercontroller');
+
+master.environmentType = 'production';
+master.root = __dirname;
+
+// HTTP only (Nginx handles HTTPS)
+const server = master.setupServer('http');
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings({
+    httpPort: 3000,
+    hostname: '127.0.0.1'  // Only accept local connections
+});
+
+console.log('✅ Server running on http://127.0.0.1:3000');
+console.log('⚠️  Behind Nginx reverse proxy');
+```
+
+**Step 3: Configure Nginx**
+```nginx
+# /etc/nginx/sites-available/yourapp.com
+
+# HTTP redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name yourapp.com www.yourapp.com;
+
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name yourapp.com www.yourapp.com;
+
+    # SSL Configuration (Let's Encrypt)
+    ssl_certificate /etc/letsencrypt/live/yourapp.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourapp.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/yourapp.com/chain.pem;
+
+    # Modern TLS configuration (matches MasterController defaults)
+    ssl_protocols TLSv1.3 TLSv1.2;
+    ssl_ciphers 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers on;
+
+    # HSTS
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Proxy to MasterController
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+
+        # Forward real client IP
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Static file caching (optional)
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+        proxy_pass http://127.0.0.1:3000;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss;
+}
+```
+
+**Step 4: Enable Nginx Configuration**
+```bash
+# Create symlink to enable site
+sudo ln -s /etc/nginx/sites-available/yourapp.com /etc/nginx/sites-enabled/
+
+# Test configuration
+sudo nginx -t
+
+# Reload Nginx
+sudo systemctl reload nginx
+
+# Enable Nginx on boot
+sudo systemctl enable nginx
+```
+
+**Step 5: Configure MasterController to Trust Proxy**
+```javascript
+// config/initializers/config.js
+const master = require('mastercontroller');
+
+// Trust X-Forwarded-* headers from Nginx
+master.pipeline.use(async (ctx, next) => {
+    // Get real client IP from X-Forwarded-For
+    const forwardedFor = ctx.request.headers['x-forwarded-for'];
+    if (forwardedFor) {
+        ctx.request.clientIp = forwardedFor.split(',')[0].trim();
+    }
+
+    // Trust X-Forwarded-Proto for HTTPS detection
+    if (ctx.request.headers['x-forwarded-proto'] === 'https') {
+        ctx.request.isHttps = true;
+    }
+
+    await next();
+});
+
+// ... rest of config
+```
+
+**Pros:**
+- ✅ No root/sudo needed for Node.js
+- ✅ Static file caching
+- ✅ Load balancing support
+- ✅ Better performance
+- ✅ Easier certificate management
+- ✅ Industry standard
+
+**Cons:**
+- ❌ Extra complexity
+- ❌ Another service to maintain
+
+---
+
+### Option 3: PM2 with Nginx (Best for Production)
+
+Combine PM2 process manager with Nginx:
+
+**Step 1: Install PM2**
+```bash
+npm install -g pm2
+```
+
+**Step 2: Create PM2 Ecosystem File**
+```javascript
+// ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'myapp',
+    script: './server.js',
+    instances: 'max',              // Use all CPU cores
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production'
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    merge_logs: true
+  }]
+};
+```
+
+**Step 3: Start with PM2**
+```bash
+# Start application
+pm2 start ecosystem.config.js
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on system boot
+pm2 startup
+
+# Monitor application
+pm2 monit
+
+# View logs
+pm2 logs
+
+# Restart application
+pm2 restart myapp
+
+# Reload with zero downtime
+pm2 reload myapp
+```
+
+**Step 4: Configure Nginx** (same as Option 2)
+
+**Pros:**
+- ✅ Auto-restart on crash
+- ✅ Zero-downtime deployments
+- ✅ Cluster mode (use all CPU cores)
+- ✅ Log management
+- ✅ Monitoring
+- ✅ Auto-start on boot
+
+---
+
+---
+
+## Advanced HTTPS Configuration
+
+### Multiple Domains (SNI - Server Name Indication)
+
+MasterController supports serving multiple domains with different certificates:
+
+**Method 1: Using Environment Configuration**
+```json
+// config/environments/env.production.json
+{
+    "server": {
+        "httpPort": 443,
+        "tls": {
+            "default": {
+                "keyPath": "/etc/letsencrypt/live/example.com/privkey.pem",
+                "certPath": "/etc/letsencrypt/live/example.com/fullchain.pem"
+            },
+            "sni": {
+                "api.example.com": {
+                    "keyPath": "/etc/letsencrypt/live/api.example.com/privkey.pem",
+                    "certPath": "/etc/letsencrypt/live/api.example.com/fullchain.pem"
+                },
+                "admin.example.com": {
+                    "keyPath": "/etc/letsencrypt/live/admin.example.com/privkey.pem",
+                    "certPath": "/etc/letsencrypt/live/admin.example.com/fullchain.pem"
+                }
+            },
+            "hsts": true,
+            "hstsMaxAge": 31536000
+        }
+    }
+}
+```
+
+```javascript
+// server.js
+const master = require('mastercontroller');
+
+master.environmentType = 'production';
+master.root = __dirname;
+
+// Loads TLS config from environment file (including SNI)
+const server = master.setupServer('https');
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings(master.env.server);
+
+console.log('✅ HTTPS with SNI enabled');
+console.log('  • example.com');
+console.log('  • api.example.com');
+console.log('  • admin.example.com');
+```
+
+**Method 2: Programmatic SNI**
+```javascript
+const fs = require('fs');
+const tls = require('tls');
+const master = require('mastercontroller');
+
+master.environmentType = 'production';
+master.root = __dirname;
+
+// Default certificate
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/etc/letsencrypt/live/example.com/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/example.com/fullchain.pem'),
+
+    // SNI callback for different domains
+    SNICallback: (servername, cb) => {
+        let ctx;
+
+        switch(servername) {
+            case 'api.example.com':
+                ctx = tls.createSecureContext({
+                    key: fs.readFileSync('/etc/letsencrypt/live/api.example.com/privkey.pem'),
+                    cert: fs.readFileSync('/etc/letsencrypt/live/api.example.com/fullchain.pem')
+                });
+                break;
+
+            case 'admin.example.com':
+                ctx = tls.createSecureContext({
+                    key: fs.readFileSync('/etc/letsencrypt/live/admin.example.com/privkey.pem'),
+                    cert: fs.readFileSync('/etc/letsencrypt/live/admin.example.com/fullchain.pem')
+                });
+                break;
+
+            default:
+                // Use default certificate
+                ctx = null;
+        }
+
+        cb(null, ctx);
+    }
+});
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+```
+
+---
+
+### HTTP to HTTPS Redirect (Secure)
+
+**⚠️ SECURITY:** Always specify allowed hosts to prevent open redirect attacks!
+
+```javascript
+// SECURE: Validate host header against whitelist
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'example.com',
+    'www.example.com',
+    'api.example.com'
+]);
+
+console.log('✅ HTTP redirect server running on port 80');
+```
+
+**Why host validation?** Without it, attackers can redirect users to malicious domains:
+```bash
+# Attack without validation:
+curl -H "Host: evil.com" http://example.com
+# Redirects to: https://evil.com (phishing!)
+
+# With validation: Returns 400 Bad Request ✅
+```
+
+**For Multiple Domains:**
+```javascript
+// Redirect all domains
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'example.com',
+    'www.example.com',
+    'api.example.com',
+    'admin.example.com',
+    'blog.example.com'
+]);
+```
+
+---
+
+### Certificate Renewal (Let's Encrypt)
+
+**Automatic Renewal (Recommended)**
+
+Let's Encrypt certificates expire after 90 days. Setup automatic renewal:
+
+```bash
+# Method 1: Systemd timer (Ubuntu/Debian - already configured)
+sudo systemctl status certbot.timer
+
+# Method 2: Crontab (manual setup)
+sudo crontab -e
+# Add this line (runs twice daily):
+0 0,12 * * * certbot renew --quiet --post-hook "systemctl restart myapp"
+
+# Method 3: PM2 with reload hook
+sudo crontab -e
+# Add this line:
+0 0 * * * certbot renew --quiet --post-hook "pm2 reload myapp"
+```
+
+**Manual Renewal**
+```bash
+# Test renewal (dry run)
+sudo certbot renew --dry-run
+
+# Actually renew certificates
+sudo certbot renew
+
+# Restart your application
+pm2 restart myapp
+# or
+sudo systemctl restart myapp
+```
+
+**Certificate Live Reload (Zero Downtime)**
+
+MasterController supports certificate live reload with `fs.watchFile()`:
+
+```javascript
+const fs = require('fs');
+const master = require('mastercontroller');
+
+const certPath = '/etc/letsencrypt/live/example.com/fullchain.pem';
+const keyPath = '/etc/letsencrypt/live/example.com/privkey.pem';
+
+let server = master.setupServer('https', {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath)
+});
+
+// Watch for certificate changes
+fs.watchFile(certPath, (curr, prev) => {
+    console.log('📝 Certificate changed, reloading...');
+
+    try {
+        // Reload certificates without restarting server
+        const newCert = fs.readFileSync(certPath);
+        const newKey = fs.readFileSync(keyPath);
+
+        // Update server context
+        server.setSecureContext({
+            key: newKey,
+            cert: newCert
+        });
+
+        console.log('✅ Certificate reloaded successfully (zero downtime)');
+    } catch (error) {
+        console.error('❌ Failed to reload certificate:', error);
+    }
+});
+
+require('./config/initializers/config');
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+```
+
+---
+
+### Common Errors and Solutions
+
+#### Error: "EACCES: permission denied, bind 80" or "bind 443"
+
+**Problem:** Node.js doesn't have permission to bind to ports 80/443.
+
+**Solutions:**
+
+**Option 1: Use setcap (Linux - Recommended)**
+```bash
+# Give Node.js permission to bind to privileged ports
+sudo setcap 'cap_net_bind_service=+ep' $(which node)
+
+# Verify
+getcap $(which node)
+# Output: /usr/bin/node = cap_net_bind_service+ep
+```
+
+**Option 2: Run as root (Not Recommended)**
+```bash
+sudo node server.js
+```
+
+**Option 3: Use reverse proxy (Best)**
+```bash
+# Run Node.js on port 3000 (no permissions needed)
+# Use Nginx on ports 80/443
+```
+
+**Option 4: Use authbind (Linux)**
+```bash
+sudo apt install authbind
+sudo touch /etc/authbind/byport/80
+sudo touch /etc/authbind/byport/443
+sudo chmod 500 /etc/authbind/byport/80
+sudo chmod 500 /etc/authbind/byport/443
+sudo chown $USER /etc/authbind/byport/80
+sudo chown $USER /etc/authbind/byport/443
+
+# Run with authbind
+authbind --deep node server.js
+```
+
+---
+
+#### Error: "ENOENT: no such file or directory, open '/path/to/cert.pem'"
+
+**Problem:** Certificate files don't exist or path is wrong.
+
+**Solutions:**
+
+```bash
+# Check if files exist
+ls -l /etc/letsencrypt/live/yourapp.com/
+
+# Check permissions
+sudo ls -l /etc/letsencrypt/live/yourapp.com/
+# If you see permission denied, you need to run as root or copy certs
+
+# Copy certificates to accessible location (if needed)
+sudo cp /etc/letsencrypt/live/yourapp.com/privkey.pem ~/certs/
+sudo cp /etc/letsencrypt/live/yourapp.com/fullchain.pem ~/certs/
+sudo chown $USER:$USER ~/certs/*.pem
+```
+
+---
+
+#### Error: "unable to verify the first certificate"
+
+**Problem:** Missing intermediate certificates (chain).
+
+**Solution:**
+
+```javascript
+// Use fullchain.pem instead of cert.pem
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/path/to/privkey.pem'),
+    cert: fs.readFileSync('/path/to/fullchain.pem'),  // NOT cert.pem!
+    ca: fs.readFileSync('/path/to/chain.pem')         // Optional: explicit chain
+});
+```
+
+---
+
+#### Error: "cert has expired"
+
+**Problem:** SSL certificate has expired.
+
+**Solutions:**
+
+```bash
+# Check expiration date
+openssl x509 -in /etc/letsencrypt/live/yourapp.com/fullchain.pem -noout -dates
+
+# Renew certificate
+sudo certbot renew
+
+# Restart application
+pm2 restart myapp
+```
+
+---
+
+#### Error: Browser shows "Not Secure" or "NET::ERR_CERT_AUTHORITY_INVALID"
+
+**Problem:** Self-signed certificate (development) or certificate not trusted.
+
+**Solutions:**
+
+**For Development (Self-Signed):**
+1. Click "Advanced" in browser
+2. Click "Proceed to localhost" (safe for development)
+3. Or add certificate to system trust store
+
+**For Production:**
+1. Use Let's Encrypt or commercial CA certificate
+2. Ensure fullchain.pem includes intermediate certificates
+3. Check certificate matches domain name
+
+---
+
+#### Browser keeps redirecting between HTTP and HTTPS (Loop)
+
+**Problem:** Redirect loop, usually caused by incorrect proxy configuration.
+
+**Solution:**
+
+```javascript
+// config/initializers/config.js
+// Configure hostname in environment file
+master.env = {
+    server: {
+        hostname: 'yourapp.com',  // Set this!
+        httpsPort: 443
+    }
+};
+
+// For Nginx proxy, make sure X-Forwarded-Proto is set correctly
+```
+
+---
+
+### HSTS (HTTP Strict Transport Security)
+
+HSTS tells browsers to always use HTTPS for your domain (prevents downgrade attacks).
+
+```javascript
+// Basic usage (1 year, includeSubDomains)
+master.enableHSTS();
+
+// Custom configuration
+master.enableHSTS({
+    maxAge: 15552000,        // 180 days
+    includeSubDomains: true, // Cover *.example.com
+    preload: false           // Don't submit to preload list yet
+});
+```
+
+**HSTS Preload List:**
+After running HSTS for 30+ days, submit to [hstspreload.org](https://hstspreload.org/) for browser built-in enforcement.
+
+### Environment-based TLS Configuration
 
 Configure TLS in `config/environments/env.production.json`:
 
@@ -1488,33 +3217,206 @@ Configure TLS in `config/environments/env.production.json`:
                     "keyPath": "/path/to/app.key",
                     "certPath": "/path/to/app.crt"
                 }
-            }
+            },
+            "hsts": true,
+            "hstsMaxAge": 31536000
         }
     }
 }
 ```
 
 ```javascript
+// Loads TLS config from environment file
 const server = master.setupServer('https');
 master.serverSettings(master.env.server);
 ```
 
-### HTTP to HTTPS Redirect
+**Features:**
+- ✅ **SNI Support** - Different certificates for different domains
+- ✅ **Live Reload** - Update certificates without restarting server
+- ✅ **HSTS Configuration** - Automatic HSTS from config
 
+### Advanced TLS Configuration
+
+#### Custom TLS Version
 ```javascript
-// Start HTTPS server on 443
-const httpsServer = master.setupServer('https');
-master.start(httpsServer);
-master.serverSettings({ httpPort: 443 });
-
-// Start redirect server on 80
-const redirectServer = master.startHttpToHttpsRedirect(80);
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/path/to/key.pem'),
+    cert: fs.readFileSync('/path/to/cert.pem'),
+    minVersion: 'TLSv1.2',  // Override default TLS 1.3 (for compatibility)
+    maxVersion: 'TLSv1.3'
+});
 ```
 
-### HSTS (HTTP Strict Transport Security)
+#### Custom Cipher Suites
+```javascript
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/path/to/key.pem'),
+    cert: fs.readFileSync('/path/to/cert.pem'),
+    ciphers: [
+        'TLS_AES_256_GCM_SHA384',
+        'TLS_CHACHA20_POLY1305_SHA256',
+        'ECDHE-RSA-AES256-GCM-SHA384'
+    ].join(':')
+});
+```
+
+**Note:** MasterController uses secure defaults. Only customize if you have specific requirements.
+
+### Let's Encrypt Example
 
 ```javascript
-master.enableHSTS(); // In production HTTPS
+// Let's Encrypt certificates (auto-renewed by certbot)
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/etc/letsencrypt/live/example.com/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/example.com/fullchain.pem')
+});
+
+master.enableHSTS({
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+});
+
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+
+// Secure HTTP redirect
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'example.com',
+    'www.example.com'
+]);
+```
+
+### Testing Your HTTPS Setup
+
+#### 1. SSL Labs Test
+```bash
+# Test your HTTPS configuration (should get A or A+)
+https://www.ssllabs.com/ssltest/analyze.html?d=yourdomain.com
+```
+
+#### 2. Local Testing
+```bash
+# Test TLS 1.3
+curl -v --tlsv1.3 https://localhost
+
+# Test HSTS header
+curl -I https://localhost | grep Strict-Transport-Security
+
+# Test HTTP redirect
+curl -I http://localhost
+
+# Test path traversal protection (should return 403)
+curl http://localhost/../../../etc/passwd
+```
+
+#### 3. Cipher Suite Testing
+```bash
+# Use testssl.sh for comprehensive testing
+./testssl.sh --full https://yourdomain.com
+
+# Or nmap
+nmap --script ssl-enum-ciphers -p 443 yourdomain.com
+```
+
+### Security Comparison
+
+MasterController's HTTPS implementation **exceeds industry standards**:
+
+| Feature | MasterController v1.3.1 | Express | ASP.NET Core | Rails |
+|---------|-------------------------|---------|--------------|-------|
+| **TLS 1.3 Default** | ✅ | ❌ | ❌ | ❌ |
+| **Secure Ciphers** | ✅ Auto | ❌ Manual | ⚠️ Partial | ❌ Manual |
+| **Path Traversal Protection** | ✅ | ✅ | ✅ | ✅ |
+| **Open Redirect Protection** | ✅ | ✅ | ✅ | ✅ |
+| **SNI Support** | ✅ Built-in | ❌ Manual | ✅ | ❌ Manual |
+| **Certificate Live Reload** | ✅ **Unique!** | ❌ | ❌ | ❌ |
+| **HSTS Built-in** | ✅ | Via helmet | ✅ | ✅ |
+
+### Complete Production Example
+
+```javascript
+// server.js - Production HTTPS setup
+const master = require('mastercontroller');
+const fs = require('fs');
+
+// Set environment
+master.environmentType = process.env.NODE_ENV || 'production';
+master.root = __dirname;
+
+// Setup HTTPS with Let's Encrypt certificates
+const server = master.setupServer('https', {
+    key: fs.readFileSync('/etc/letsencrypt/live/example.com/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/example.com/fullchain.pem')
+});
+
+// Enable HSTS with preload
+master.enableHSTS({
+    maxAge: 31536000,        // 1 year
+    includeSubDomains: true,
+    preload: true            // Submit to hstspreload.org after 30 days
+});
+
+// Load application configuration
+require('./config/initializers/config');
+
+// Start HTTPS server on port 443
+master.start(server);
+master.serverSettings({ httpPort: 443 });
+
+// Start HTTP to HTTPS redirect with host validation
+const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
+    'example.com',
+    'www.example.com',
+    'api.example.com',
+    'admin.example.com'
+]);
+
+console.log('========================================');
+console.log('🚀 MasterController Production Server');
+console.log('========================================');
+console.log('✅ HTTPS on port 443');
+console.log('✅ HTTP redirect on port 80');
+console.log('✅ TLS 1.3 enabled');
+console.log('✅ Secure cipher suites');
+console.log('✅ HSTS enabled (max-age: 1 year)');
+console.log('✅ Path traversal protection');
+console.log('✅ Open redirect protection');
+console.log('========================================');
+```
+
+### Troubleshooting
+
+**Certificate Errors:**
+```bash
+# Check certificate expiration
+openssl x509 -in /path/to/cert.pem -noout -dates
+
+# Verify certificate chain
+openssl verify -CAfile /path/to/ca.pem /path/to/cert.pem
+```
+
+**Port Permission Errors (ports 80/443):**
+```bash
+# Option 1: Use setcap (Linux)
+sudo setcap 'cap_net_bind_service=+ep' $(which node)
+
+# Option 2: Run as root (not recommended)
+sudo node server.js
+
+# Option 3: Use reverse proxy (recommended)
+# Run Node.js on high port (3000) behind nginx/Apache
+```
+
+**HSTS Testing:**
+```bash
+# Check if HSTS header is present
+curl -I https://yourdomain.com | grep -i strict
+
+# Check HSTS status in browser
+# Chrome: chrome://net-internals/#hsts
+# Firefox: about:networking#hsts
 ```
 
 ---
@@ -1580,16 +3482,15 @@ master.enableHSTS(); // In production HTTPS
 
 ### Sessions
 
-- `master.sessions.init(options)` - Initialize sessions
-- `master.sessions.set(name, data, response, secret, options)` - Create session
-- `master.sessions.get(name, request, secret)` - Get session data
-- `master.sessions.delete(name, response)` - Delete session
-- `master.sessions.reset()` - Clear all sessions
-- `master.sessions.setCookie(name, value, response, options)` - Set cookie
-- `master.sessions.getCookie(name, request, secret)` - Get cookie
-- `master.sessions.deleteCookie(name, response, options)` - Delete cookie
-- `master.sessions.createSessionID()` - Generate random session ID
-- `master.sessions.middleware()` - Get pipeline middleware
+- `master.session.init(options)` - Initialize secure sessions
+- `master.session.destroy(req, res)` - Destroy session completely
+- `master.session.touch(sessionId)` - Extend session expiry
+- `master.session.getSessionCount()` - Get active session count
+- `master.session.clearAllSessions()` - Clear all sessions (testing only)
+- `master.session.getBestPractices(environment)` - Get recommended settings
+- `master.session.middleware()` - Get pipeline middleware
+
+**Session Data Access:** Use `obj.request.session` object directly (Rails/Express style)
 
 ### Request
 
@@ -1602,10 +3503,25 @@ master.enableHSTS(); // In production HTTPS
 
 ### Tools
 
-- `master.tools.encrypt(data, secret)` - Encrypt data
-- `master.tools.decrypt(data, secret)` - Decrypt data
+**Encryption:**
+- `master.tools.encrypt(data, secret)` - Encrypt data with AES-256-CBC
+- `master.tools.decrypt(data, secret)` - Decrypt data with AES-256-CBC
+
+**File Conversion (NEW in v1.3.1):**
+- `master.tools.fileToBase64(filePathOrFile, options)` - Convert file to base64 (binary-safe)
+- `master.tools.base64ToFile(base64String, outputPath, options)` - Convert base64 to file
+- `master.tools.fileToBuffer(filePathOrFile, options)` - Convert file to Node.js Buffer
+- `master.tools.fileToBytes(filePathOrFile, options)` - Convert file to Uint8Array
+- `master.tools.bytesToBase64(bufferOrBytes, options)` - Convert Buffer/Uint8Array to base64
+- `master.tools.base64ToBytes(base64String)` - Convert base64 to Buffer
+- `master.tools.streamFileToBase64(filePathOrFile, options)` - Stream large files to base64 (async)
+
+**Utilities:**
 - `master.tools.combineObjects(target, source)` - Merge objects
 - `master.tools.makeWordId(length)` - Generate random ID
+
+**Deprecated:**
+- `master.tools.base64(path)` - ⚠️ DEPRECATED - Broken for binary files, use `fileToBase64()` instead
 
 ---
 
@@ -1626,14 +3542,17 @@ master.enableHSTS(); // In production HTTPS
 
 ## Documentation
 
-Detailed guides:
+### Security Documentation
 
-- [HTTP Server Setup](docs/server-setup-http.md)
-- [HTTPS with Credentials](docs/server-setup-https-credentials.md)
-- [HTTPS with Environment TLS & SNI](docs/server-setup-https-env-tls-sni.md)
-- [Hostname Binding](docs/server-setup-hostname-binding.md)
-- [Nginx Reverse Proxy](docs/server-setup-nginx-reverse-proxy.md)
-- [Environment TLS Reference](docs/environment-tls-reference.md)
+- [Security Fixes v1.3.2](SECURITY-FIXES-v1.3.2.md) - All security fixes and migration guide
+- [Security Quick Start](docs/SECURITY-QUICKSTART.md) - 5-minute security setup guide
+- [Security Audit - Action System](docs/SECURITY-AUDIT-ACTION-SYSTEM.md) - Complete security audit of controllers and filters
+- [Security Audit - HTTPS](docs/SECURITY-AUDIT-HTTPS.md) - HTTPS/TLS security audit
+
+### Feature Documentation
+
+- [Timeout and Error Handling](docs/timeout-and-error-handling.md) - Professional timeout tracking and error rendering
+- [Environment TLS Reference](docs/environment-tls-reference.md) - TLS/SNI configuration reference
 
 ---
 
