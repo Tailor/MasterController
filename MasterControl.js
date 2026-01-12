@@ -350,6 +350,10 @@ class MasterControl {
                 }
             }
 
+            // BACKWARD COMPATIBILITY: Alias master.sessions → master.session (v1.3.4)
+            // Legacy code uses master.sessions (plural), new API uses master.session (singular)
+            $that.sessions = $that.session;
+
             // Load view and controller extensions (these extend prototypes, not master instance)
             try {
                 require('./MasterAction');

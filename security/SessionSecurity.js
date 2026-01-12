@@ -499,6 +499,90 @@ class MasterSessionSecurity {
   getBestPractices(env) {
     return SESSION_BEST_PRACTICES[env] || SESSION_BEST_PRACTICES.development;
   }
+
+  /**
+   * BACKWARD COMPATIBILITY: Cookie methods for legacy API
+   * These methods provide compatibility with pre-v1.3.2 session API
+   */
+
+  /**
+   * Get cookie from request
+   * @param {Object} request - HTTP request object
+   * @param {String} name - Cookie name
+   * @returns {String|null} - Cookie value or null
+   */
+  getCookie(request, name) {
+    const cookies = request.headers.cookie;
+    if (!cookies) return null;
+
+    const match = cookies.match(new RegExp(`${name}=([^;]+)`));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  /**
+   * Set cookie in response
+   * @param {Object} response - HTTP response object
+   * @param {String} name - Cookie name
+   * @param {String} value - Cookie value
+   * @param {Object} options - Cookie options
+   * @param {Number} options.maxAge - Max age in seconds
+   * @param {String} options.path - Cookie path (default: '/')
+   * @param {String} options.domain - Cookie domain
+   * @param {Boolean} options.secure - Secure flag (default: false)
+   * @param {Boolean} options.httpOnly - HttpOnly flag (default: true)
+   * @param {String} options.sameSite - SameSite attribute (default: 'lax')
+   */
+  setCookie(response, name, value, options = {}) {
+    const cookieOptions = [];
+
+    cookieOptions.push(`${name}=${encodeURIComponent(value)}`);
+
+    if (options.maxAge) {
+      cookieOptions.push(`Max-Age=${options.maxAge}`);
+    }
+
+    cookieOptions.push(`Path=${options.path || '/'}`);
+
+    if (options.domain) {
+      cookieOptions.push(`Domain=${options.domain}`);
+    }
+
+    if (options.httpOnly !== false) {
+      cookieOptions.push('HttpOnly');
+    }
+
+    if (options.secure) {
+      cookieOptions.push('Secure');
+    }
+
+    if (options.sameSite) {
+      cookieOptions.push(`SameSite=${options.sameSite}`);
+    } else {
+      cookieOptions.push('SameSite=Lax');
+    }
+
+    response.setHeader('Set-Cookie', cookieOptions.join('; '));
+  }
+
+  /**
+   * Delete cookie from response
+   * @param {Object} response - HTTP response object
+   * @param {String} name - Cookie name
+   * @param {Object} options - Cookie options (path, domain)
+   */
+  deleteCookie(response, name, options = {}) {
+    const cookieOptions = [
+      `${name}=`,
+      'Max-Age=0',
+      `Path=${options.path || '/'}`
+    ];
+
+    if (options.domain) {
+      cookieOptions.push(`Domain=${options.domain}`);
+    }
+
+    response.setHeader('Set-Cookie', cookieOptions.join('; '));
+  }
 }
 
 // Note: Auto-registration with MasterController happens in init() to avoid circular dependency

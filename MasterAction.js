@@ -89,10 +89,10 @@ class MasterAction{
 			return '';
 		}
 
-		const actionUrl = path.resolve\1MasterAction._master.\2oot, location);
+		const actionUrl = path.resolve(MasterAction._master.root, location);
 
 		// SECURITY: Ensure resolved path is within app root
-		if (!actionUrl.startsWith\1MasterAction._master.\2oot)) {
+		if (!actionUrl.startsWith(MasterAction._master.root)) {
 			logger.warn({
 				code: 'MC_SECURITY_PATH_TRAVERSAL',
 				message: 'Path traversal blocked in returnPartialView',
@@ -105,8 +105,8 @@ class MasterAction{
 
 		try {
 			const getAction = fileserver.readFileSync(actionUrl, 'utf8');
-			if\1MasterAction._master.\2verwrite.isTemplate){
-				return\1MasterAction._master.\2verwrite.templateRender( data, "returnPartialView");
+			if (MasterAction._master.overwrite.isTemplate){
+				return MasterAction._master.overwrite.templateRender( data, "returnPartialView");
 			}
 			else{
 				return temp.htmlBuilder(getAction, data);
@@ -182,16 +182,16 @@ class MasterAction{
 		};
 
 		if(components){
-		\1MasterAction._master.\2outer.currentRoute = {
-				root : `$\1MasterAction._master.\2oot}/components/${namespace}`,
+			MasterAction._master.router.currentRoute = {
+				root : `${MasterAction._master.root}/components/${namespace}`,
 				toController : namespace,
 				toAction : action,
 				response : resp,
 				request: req
 			};
 		}else{
-		\1MasterAction._master.\2outer.currentRoute = {
-				root : `$\1MasterAction._master.\2oot}/${namespace}`,
+			MasterAction._master.router.currentRoute = {
+				root : `${MasterAction._master.root}/${namespace}`,
 				toController : namespace,
 				toAction : action,
 				response : resp,
@@ -199,7 +199,7 @@ class MasterAction{
 			};
 		}
 
-	\1MasterAction._master.\2outer._call(requestObj);
+		MasterAction._master.router._call(requestObj);
 	}
 	
 	// this will allow static pages without master view
@@ -207,25 +207,25 @@ class MasterAction{
 		var masterView = null;
 		this.params = this.params === undefined ? {} : this.params;
 		this.params = tools.combineObjects(data, this.params);
-		var func =\1MasterAction._master.\2iewList;
+		var func = MasterAction._master.viewList;
         this.params = tools.combineObjects(this.params, func);
     // Prefer page.js module if present (no legacy .html file)
     try {
       const controller = this.__currentRoute.toController;
       const action = this.__currentRoute.toAction;
-      const pageModuleAbs = path.join\1MasterAction._master.\2oot, 'app/views', controller, action, 'page.js');
+      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
       if (fileserver.existsSync(pageModuleAbs)) {
         if (this._renderPageModule(controller, action, data)) { return; }
       }
     } catch (_) {}
 
-		var actionUrl = (location === undefined) ? this.__currentRoute.root + "/app/views/" +  this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" :\1MasterAction._master.\2oot + location;
+		var actionUrl = (location === undefined) ? this.__currentRoute.root + "/app/views/" +  this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" : MasterAction._master.root + location;
 		var actionView = fileserver.readFileSync(actionUrl, 'utf8');
-		if\1MasterAction._master.\2verwrite.isTemplate){
-			masterView =\1MasterAction._master.\2verwrite.templateRender(data, "returnViewWithoutMaster");
+		if (MasterAction._master.overwrite.isTemplate){
+			masterView = MasterAction._master.overwrite.templateRender(data, "returnViewWithoutMaster");
 		}
 		else{
-			masterView = temp.htmlBuilder(actionView, data);	
+			masterView = temp.htmlBuilder(actionView, data);
 		}
 		if (!this.__requestObject.response._headerSent) {
 			const send = (htmlOut) => {
@@ -258,10 +258,10 @@ class MasterAction{
 			return;
 		}
 
-		const actionUrl = path.resolve\1MasterAction._master.\2oot, location);
+		const actionUrl = path.resolve(MasterAction._master.root, location);
 
 		// SECURITY: Ensure resolved path is within app root
-		if (!actionUrl.startsWith\1MasterAction._master.\2oot)) {
+		if (!actionUrl.startsWith(MasterAction._master.root)) {
 			logger.warn({
 				code: 'MC_SECURITY_PATH_TRAVERSAL',
 				message: 'Path traversal blocked in returnViewWithoutEngine',
@@ -290,40 +290,40 @@ class MasterAction{
 	}
 
 	returnReact(data, location){
-		
+
 			var masterView = null;
 			data = data === undefined ? {} : data;
 			this.params = this.params === undefined ? {} : this.params;
 			this.params = tools.combineObjects(data, this.params);
-			var func =\1MasterAction._master.\2iewList;
+			var func = MasterAction._master.viewList;
 			this.params = tools.combineObjects(this.params, func);
-			var html =\1MasterAction._master.\2eactView.compile(this.__currentRoute.toController, this.__currentRoute.toAction, this.__currentRoute.root);
-		
+			var html = MasterAction._master.reactView.compile(this.__currentRoute.toController, this.__currentRoute.toAction, this.__currentRoute.root);
+
 	}
 
 	returnView(data, location){
-		
+
 		var masterView = null;
 		data = data === undefined ? {} : data;
 		this.params = this.params === undefined ? {} : this.params;
         this.params = tools.combineObjects(data, this.params);
-        var func =\1MasterAction._master.\2iewList;
+        var func = MasterAction._master.viewList;
         this.params = tools.combineObjects(this.params, func);
     // Prefer page.js module if present (no legacy .html file)
     try {
       const controller = this.__currentRoute.toController;
       const action = this.__currentRoute.toAction;
-      const pageModuleAbs = path.join\1MasterAction._master.\2oot, 'app/views', controller, action, 'page.js');
+      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
       if (fileserver.existsSync(pageModuleAbs)) {
         if (this._renderPageModule(controller, action, data)) { return; }
       }
     } catch (_) {}
 
-		var viewUrl = (location === undefined || location === "" || location === null) ? this.__currentRoute.root + "/app/views/" + this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" :\1MasterAction._master.\2oot + location;
+		var viewUrl = (location === undefined || location === "" || location === null) ? this.__currentRoute.root + "/app/views/" + this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" : MasterAction._master.root + location;
 		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
-		var masterFile = fileserver.readFileSync(this.__currentRoute.root + "/app/views/layouts\1MasterAction._master.\2tml", 'utf8');
-		if\1MasterAction._master.\2verwrite.isTemplate){
-			masterView =\1MasterAction._master.\2verwrite.templateRender(this.params, "returnView");
+		var masterFile = fileserver.readFileSync(this.__currentRoute.root + "/app/views/layouts/master.html", 'utf8');
+		if (MasterAction._master.overwrite.isTemplate){
+			masterView = MasterAction._master.overwrite.templateRender(this.params, "returnView");
 		}
 		else{
 			var childView = temp.htmlBuilder(viewFile, this.params);
@@ -384,8 +384,8 @@ class MasterAction{
   // Render using a page.js Web Component module when present
   _renderPageModule(controller, action, data) {
     try {
-      const pageModuleAbs = path.join\1MasterAction._master.\2oot, 'app/views', controller, action, 'page.js');
-      const layoutModuleAbs = path.join\1MasterAction._master.\2oot, 'app/views', 'layouts', \1MasterAction._master.\2s');
+      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
+      const layoutModuleAbs = path.join(MasterAction._master.root, 'app/views', 'layouts', 'master.js');
       const stylesPath = '/app/assets/stylesheets/output.css';
       const pageTag = `home-${action}-page`;
 
@@ -402,7 +402,7 @@ class MasterAction{
     <root-layout>
       <${pageTag}></${pageTag}>
     </root-layout>
-    <script type="module" src="/app/views/layouts\1MasterAction._master.\2s"></script>
+    <script type="module" src="/app/views/layouts/master.js"></script>
     <script type="module" src="/app/views/${controller}/${action}/page.js"></script>
   </body>
 </html>`;
@@ -565,15 +565,15 @@ class MasterAction{
 
       // SECURITY FIX: Never use Host header from request (open redirect vulnerability)
       // Use configured hostname instead
-      const configuredHost =\1MasterAction._master.\2nv?.server?.hostname || 'localhost';
-      const httpsPort =\1MasterAction._master.\2nv?.server?.httpsPort || 443;
+      const configuredHost = MasterAction._master.env?.server?.hostname || 'localhost';
+      const httpsPort = MasterAction._master.env?.server?.httpsPort || 443;
       const port = httpsPort === 443 ? '' : `:${httpsPort}`;
 
       // Validate configured host exists
       if (!configuredHost || configuredHost === 'localhost') {
         logger.error({
           code: 'MC_CONFIG_MISSING_HOSTNAME',
-          message: 'requireHTTPS called but no hostname configured in\1MasterAction._master.\2nv.server.hostname'
+          message: 'requireHTTPS called but no hostname configured in MasterAction._master.env.server.hostname'
         });
         this.returnError(500, 'Server misconfiguration');
         return false;
@@ -613,7 +613,7 @@ module.exports = MasterAction;
 // Use setImmediate to register after master is fully loaded
 setImmediate(() => {
 	const master = require('./MasterControl');
-	if (master &&\1MasterAction._master.\2xtendController) {
-	\1MasterAction._master.\2xtendController(MasterAction);
+	if (master && master.extendController) {
+		master.extendController(MasterAction);
 	}
 });

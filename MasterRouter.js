@@ -533,7 +533,7 @@ class MasterRouter {
     
     load(rr){ // load the the router
 
-            loadScopedListClasses();
+            loadScopedListClasses.call(this);
             var $that = this;
             var requestObject = Object.create(rr);
             requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '').toLowerCase();
