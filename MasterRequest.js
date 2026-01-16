@@ -335,6 +335,12 @@ class MasterRequest{
       request.on('end', () => {
             if (errorOccurred) return;
 
+            // Handle empty body (GET requests, etc.)
+            if (buffer.trim() === '') {
+                func({});
+                return;
+            }
+
             try {
                 var buff = JSON.parse(buffer);
                 func(buff);
