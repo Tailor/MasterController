@@ -290,6 +290,8 @@ class MasterRequest{
 
           buffer += decoder.end();
           var buff = qs.parse(buffer);
+          // Preserve raw body for signature verification
+          buff._rawBody = buffer;
           func(buff);
       });
 
@@ -343,6 +345,10 @@ class MasterRequest{
 
             try {
                 var buff = JSON.parse(buffer);
+                // IMPORTANT: Preserve raw body for webhook signature verification
+                // Many webhook providers (Stripe, GitHub, Shopify, etc.) require the
+                // exact raw body string to verify HMAC signatures
+                buff._rawBody = buffer;
                 func(buff);
             } catch (e) {
                 // Security: Don't fallback to qs.parse to avoid prototype pollution
