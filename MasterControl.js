@@ -67,6 +67,7 @@ class MasterControl {
     _hstsMaxAge = 31536000 // 1 year default
     _hstsIncludeSubDomains = true
     _hstsPreload = false
+    _viewEngine = null // Pluggable view engine (MasterView, EJS, Pug, etc.)
 
     #loadTransientListClasses(name, params){
         Object.defineProperty(this.requestList, name, {
@@ -124,35 +125,127 @@ class MasterControl {
         }
     }
 
+    /**
+     * Initialize prototype pollution protection
+     * SECURITY: Prevents malicious modification of Object/Array prototypes
+     */
+    _initPrototypePollutionProtection() {
+        // Only freeze in production to allow for easier debugging in development
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        if (isProduction) {
+            // Freeze prototypes to prevent prototype pollution attacks
+            try {
+                Object.freeze(Object.prototype);
+                Object.freeze(Array.prototype);
+                Object.freeze(Function.prototype);
+
+                logger.info({
+                    code: 'MC_SECURITY_PROTOTYPE_FROZEN',
+                    message: 'Prototypes frozen in production mode for security'
+                });
+            } catch (err) {
+                logger.warn({
+                    code: 'MC_SECURITY_FREEZE_FAILED',
+                    message: 'Failed to freeze prototypes',
+                    error: err.message
+                });
+            }
+        }
+
+        // Add prototype pollution detection utility
+        this._detectPrototypePollution = (obj) => {
+            if (!obj || typeof obj !== 'object') {
+                return false;
+            }
+
+            const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
+
+            for (const key of dangerousKeys) {
+                if (key in obj) {
+                    logger.error({
+                        code: 'MC_SECURITY_PROTOTYPE_POLLUTION',
+                        message: `Prototype pollution detected: ${key} in object`,
+                        severity: 'CRITICAL'
+                    });
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        console.log('[MasterControl] Prototype pollution protection initialized');
+    }
+
     // extends class methods to be used inside of the view class using the THIS keyword
     extendView( name, element){
         element = new element();
-        var $that = this;
-        var propertyNames = Object.getOwnPropertyNames( element.__proto__);
+        const propertyNames = Object.getOwnPropertyNames(element.__proto__);
         this.viewList[name] = {};
-        for(var i in propertyNames){
-            if(propertyNames[i] !== "constructor"){
-                if (propertyNames.hasOwnProperty(i)) {
-                    $that.viewList[name][propertyNames[i]] = element[propertyNames[i]];
-                }
+
+        // Fixed: Use for...of instead of for...in for array iteration
+        // Filter out 'constructor' and iterate efficiently
+        for (const propName of propertyNames) {
+            if (propName !== "constructor") {
+                this.viewList[name][propName] = element[propName];
             }
-        };
+        }
     }
 
     // extends class methods to be used inside of the controller class using the THIS keyword
     extendController(element){
         element = new element();
-        var $that = this;
-        var propertyNames = Object.getOwnPropertyNames( element.__proto__);
-        for(var i in propertyNames){
-            if(propertyNames[i] !== "constructor"){
-                if (propertyNames.hasOwnProperty(i)) {
-                    $that.controllerList[propertyNames[i]] = element[propertyNames[i]];
-                }
+        const propertyNames = Object.getOwnPropertyNames(element.__proto__);
+
+        // Fixed: Use for...of instead of for...in for array iteration
+        // Filter out 'constructor' and iterate efficiently
+        for (const propName of propertyNames) {
+            if (propName !== "constructor") {
+                this.controllerList[propName] = element[propName];
             }
-        };
+        }
     }
-    
+
+    /**
+     * Register a view engine (MasterView, React, EJS, Pug, etc.)
+     * This allows for pluggable view rendering
+     *
+     * @param {Object|Function} ViewEngine - View engine class or instance
+     * @param {Object} options - Configuration options for the view engine
+     * @returns {MasterControl} - Returns this for chaining
+     *
+     * @example
+     * // Use MasterView (official view engine)
+     * const MasterView = require('masterview');
+     * master.useView(MasterView, { ssr: true });
+     *
+     * @example
+     * // Use EJS adapter
+     * const EJSAdapter = require('./adapters/ejs');
+     * master.useView(EJSAdapter);
+     */
+    useView(ViewEngine, options = {}) {
+        if (typeof ViewEngine === 'function') {
+            this._viewEngine = new ViewEngine(options);
+        } else {
+            this._viewEngine = ViewEngine;
+        }
+
+        // Let the view engine register itself
+        if (this._viewEngine && this._viewEngine.register) {
+            this._viewEngine.register(this);
+        }
+
+        logger.info({
+            code: 'MC_INFO_VIEW_ENGINE_REGISTERED',
+            message: 'View engine registered',
+            engine: ViewEngine.name || 'Custom'
+        });
+
+        return this;
+    }
+
     /*
     Services are created each time they are requested. 
     It gets a new instance of the injected object, on each request of this object. 
@@ -299,6 +392,9 @@ class MasterControl {
         try {
             var $that = this;
 
+            // SECURITY: Initialize prototype pollution protection
+            this._initPrototypePollutionProtection();
+
             // AUTO-LOAD internal framework modules
             // These are required for the framework to function and are loaded transparently
             const internalModules = {
@@ -313,10 +409,11 @@ class MasterControl {
                 'MasterCors': './MasterCors',
                 'SessionSecurity': './security/SessionSecurity',
                 'MasterSocket': './MasterSocket',
-                'MasterHtml': './MasterHtml',
-                'MasterTemplate': './MasterTemplate',
-                'MasterTools': './MasterTools',
-                'TemplateOverwrite': './TemplateOverwrite'
+                'MasterTools': './MasterTools'
+                // View modules removed - use master.useView(MasterView) instead
+                // 'MasterHtml': './MasterHtml',
+                // 'MasterTemplate': './MasterTemplate',
+                // 'TemplateOverwrite': './TemplateOverwrite'
             };
 
             // Explicit module registration (prevents circular dependency issues)
@@ -331,8 +428,8 @@ class MasterControl {
                 'cors': { path: './MasterCors', exportName: 'MasterCors' },
                 'socket': { path: './MasterSocket', exportName: 'MasterSocket' },
                 'tempdata': { path: './MasterTemp', exportName: 'MasterTemp' },
-                'overwrite': { path: './TemplateOverwrite', exportName: 'TemplateOverwrite' },
                 'session': { path: './security/SessionSecurity', exportName: 'MasterSessionSecurity' }
+                // 'overwrite' removed - will be provided by view engine (master.useView())
             };
 
             for (const [name, config] of Object.entries(moduleRegistry)) {
@@ -354,13 +451,12 @@ class MasterControl {
             // Legacy code uses master.sessions (plural), new API uses master.session (singular)
             $that.sessions = $that.session;
 
-            // Load view and controller extensions (these extend prototypes, not master instance)
+            // Load controller extensions (these extend prototypes, not master instance)
             try {
                 require('./MasterAction');
                 require('./MasterActionFilters');
-                require('./MasterHtml');
-                require('./MasterTemplate');
                 require('./MasterTools');
+                // View extensions (MasterHtml, MasterTemplate) removed - use master.useView() instead
             } catch (e) {
                 console.error('[MasterControl] Failed to load extensions:', e.message);
             }
@@ -734,9 +830,14 @@ class MasterControl {
         });
 
         // 4. Load Scoped Services (per request - always needed)
+        // Cache keys for performance (computed once, not on every request)
+        const scopedKeys = Object.keys($that._scopedList);
+
         $that.pipeline.use(async (ctx, next) => {
-            for (var key in $that._scopedList) {
-                var className = $that._scopedList[key];
+            // Fixed: Use cached keys with direct array iteration (faster & safer)
+            for (let i = 0; i < scopedKeys.length; i++) {
+                const key = scopedKeys[i];
+                const className = $that._scopedList[key];
                 $that.requestList[key] = new className();
             }
             await next();

@@ -444,6 +444,60 @@ class UsersController {
 
 ## Views and Templates
 
+MasterController v1.3+ uses a **pluggable view architecture**, allowing you to choose any template engine (MasterView, EJS, Pug, React SSR, etc.) or build your own adapter.
+
+### Quick Start with MasterView
+
+MasterView is the official view engine with built-in SSR support:
+
+```bash
+npm install masterview
+```
+
+```javascript
+// config/initializers/config.js
+const master = require('mastercontroller');
+const MasterView = require('masterview');
+
+// Register view engine
+master.useView(MasterView, {
+    ssr: true,  // Enable server-side rendering
+    layoutPath: 'app/views/layouts/master.html'
+});
+
+// Rest of your config...
+master.startMVC('config');
+```
+
+### Controller Usage (Same for All View Engines)
+
+```javascript
+class HomeController {
+    index(obj) {
+        // Render view with layout
+        this.returnView({
+            title: 'Home',
+            message: 'Welcome!'
+        });
+    }
+
+    partial(obj) {
+        // Render partial (no layout)
+        this.returnPartialView('shared/header', { user: 'John' });
+    }
+
+    raw(obj) {
+        // Render raw HTML file
+        this.returnViewWithoutEngine('static/page.html');
+    }
+
+    api(obj) {
+        // Return JSON (works with any view engine)
+        this.returnJson({ status: 'ok', data: [] });
+    }
+}
+```
+
 ### View Structure
 
 ```
@@ -451,50 +505,81 @@ app/
   views/
     layouts/
       master.html          # Main layout
+    home/
+      index.html           # Home index view
+      about.html           # Home about view
     users/
       index.html           # Users index view
       show.html            # Users show view
 ```
 
-### Layout (master.html)
+### Alternative View Engines
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{title}}</title>
-</head>
-<body>
-    <header>
-        <h1>My App</h1>
-    </header>
+#### Using EJS
 
-    <main>
-        {{body}}  <!-- View content inserted here -->
-    </main>
-
-    <footer>
-        &copy; 2025
-    </footer>
-</body>
-</html>
+```bash
+npm install ejs
 ```
 
-### View (users/index.html)
+```javascript
+const EJSView = {
+    register(master) {
+        master.controllerList.returnView = async function(data, location) {
+            const html = await ejs.renderFile(viewPath, data);
+            this.__response.end(html);
+        };
+    }
+};
 
-```html
-<h2>{{title}}</h2>
-
-<ul>
-{{#each users}}
-    <li>{{this}}</li>
-{{/each}}
-</ul>
+master.useView(EJSView);
 ```
 
-### Template Syntax
+See [MasterView Examples](https://github.com/yourorg/masterview/tree/master/examples) for EJS, Pug, and React SSR adapters.
 
-MasterController uses Handlebars-style templates:
+#### Using Pug
+
+```bash
+npm install pug
+```
+
+```javascript
+const PugView = {
+    register(master) {
+        master.controllerList.returnView = function(data, location) {
+            const html = pug.renderFile(viewPath, data);
+            this.__response.end(html);
+        };
+    }
+};
+
+master.useView(PugView);
+```
+
+#### Using React SSR
+
+```bash
+npm install react react-dom
+```
+
+```javascript
+const ReactSSRView = {
+    register(master) {
+        master.controllerList.returnView = function(data, location) {
+            const Component = require(componentPath);
+            const html = ReactDOMServer.renderToString(
+                React.createElement(Component, data)
+            );
+            this.__response.end(wrapInHTML(html, data));
+        };
+    }
+};
+
+master.useView(ReactSSRView);
+```
+
+### MasterView Template Syntax
+
+MasterView uses `{{...}}` syntax similar to Handlebars:
 
 ```html
 <!-- Variables -->
@@ -504,22 +589,11 @@ MasterController uses Handlebars-style templates:
 <!-- HTML escaping (automatic) -->
 {{description}}
 
-<!-- Conditionals -->
-{{#if isAdmin}}
-    <a href="/admin">Admin Panel</a>
-{{/if}}
-
-{{#unless isGuest}}
-    <p>Welcome back!</p>
-{{/unless}}
-
-<!-- Loops -->
-{{#each items}}
-    <div>{{this.name}}</div>
-{{/each}}
+<!-- Raw HTML (use sparingly, XSS risk) -->
+{{{htmlContent}}}
 
 <!-- Partials -->
-{{> header}}
+{{html.renderPartial('shared/header', {user: currentUser})}}
 ```
 
 ---

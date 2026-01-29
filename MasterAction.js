@@ -3,16 +3,13 @@
 
 var fileserver = require('fs');
 var toolClass =  require('./MasterTools');
-var tempClass =  require('./MasterTemplate');
-// Templating helpers
-var temp = new tempClass();
 var tools = new toolClass();
+// View templating removed - handled by view engine (e.g., MasterView)
 
 // Node utils
 var path = require('path');
 
-// Vanilla Web Components SSR runtime (LinkeDOM) - executes connectedCallback() and upgrades
-const compileWebComponentsHTML = require('./ssr/runtime-ssr.cjs');
+// SSR runtime removed - handled by view engine
 
 // Enhanced error handling
 const { handleTemplateError, sendErrorResponse } = require('./error/MasterBackendErrorHandler');
@@ -35,22 +32,7 @@ class MasterAction{
 		return MasterAction.__masterCache;
 	}
 
-	getView(location, data){
-		var actionUrl =  MasterAction._master.root + location;
-		const fileResult = safeReadFile(fileserver, actionUrl);
-
-		if (!fileResult.success) {
-			const error = handleTemplateError(fileResult.error.originalError, actionUrl, data);
-			throw error;
-		}
-
-		try {
-			return temp.htmlBuilder(fileResult.content, data);
-		} catch (error) {
-			const mcError = handleTemplateError(error, actionUrl, data);
-			throw mcError;
-		}
-	}
+	// getView() removed - handled by view engine (register via master.useView())
 
 
 	returnJson(data){
@@ -76,52 +58,7 @@ class MasterAction{
 		}
 	}
 
-	// location starts from the view folder. Ex: partialViews/fileName.html
-	returnPartialView(location, data){
-		// SECURITY: Validate path to prevent traversal attacks
-		if (!location || location.includes('..') || location.includes('~') || path.isAbsolute(location)) {
-			logger.warn({
-				code: 'MC_SECURITY_PATH_TRAVERSAL',
-				message: 'Path traversal attempt blocked in returnPartialView',
-				path: location
-			});
-			this.returnError(400, 'Invalid path');
-			return '';
-		}
-
-		const actionUrl = path.resolve(MasterAction._master.root, location);
-
-		// SECURITY: Ensure resolved path is within app root
-		if (!actionUrl.startsWith(MasterAction._master.root)) {
-			logger.warn({
-				code: 'MC_SECURITY_PATH_TRAVERSAL',
-				message: 'Path traversal blocked in returnPartialView',
-				requestedPath: location,
-				resolvedPath: actionUrl
-			});
-			this.returnError(403, 'Forbidden');
-			return '';
-		}
-
-		try {
-			const getAction = fileserver.readFileSync(actionUrl, 'utf8');
-			if (MasterAction._master.overwrite.isTemplate){
-				return MasterAction._master.overwrite.templateRender( data, "returnPartialView");
-			}
-			else{
-				return temp.htmlBuilder(getAction, data);
-			}
-		} catch (error) {
-			logger.error({
-				code: 'MC_ERR_PARTIAL_VIEW',
-				message: 'Failed to read partial view',
-				path: location,
-				error: error.message
-			});
-			this.returnError(404, 'View not found');
-			return '';
-		}
-	}
+	// returnPartialView() removed - handled by view engine (register via master.useView())
 
 	redirectBack(fallback){
 		if(fallback === undefined){
@@ -202,154 +139,13 @@ class MasterAction{
 		MasterAction._master.router._call(requestObj);
 	}
 	
-	// this will allow static pages without master view
-	returnViewWithoutMaster(location, data){
-		var masterView = null;
-		this.params = this.params === undefined ? {} : this.params;
-		this.params = tools.combineObjects(data, this.params);
-		var func = MasterAction._master.viewList;
-        this.params = tools.combineObjects(this.params, func);
-    // Prefer page.js module if present (no legacy .html file)
-    try {
-      const controller = this.__currentRoute.toController;
-      const action = this.__currentRoute.toAction;
-      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
-      if (fileserver.existsSync(pageModuleAbs)) {
-        if (this._renderPageModule(controller, action, data)) { return; }
-      }
-    } catch (_) {}
+	// returnViewWithoutMaster() removed - handled by view engine (register via master.useView())
 
-		var actionUrl = (location === undefined) ? this.__currentRoute.root + "/app/views/" +  this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" : MasterAction._master.root + location;
-		var actionView = fileserver.readFileSync(actionUrl, 'utf8');
-		if (MasterAction._master.overwrite.isTemplate){
-			masterView = MasterAction._master.overwrite.templateRender(data, "returnViewWithoutMaster");
-		}
-		else{
-			masterView = temp.htmlBuilder(actionView, data);
-		}
-		if (!this.__requestObject.response._headerSent) {
-			const send = (htmlOut) => {
-				try {
-					this.__requestObject.response.writeHead(200, {'Content-Type': 'text/html'});
-					this.__requestObject.response.end(htmlOut);
-				} catch (e) {
-					// Fallback in case of double send
-				}
-			};
-			try {
-				Promise.resolve(compileWebComponentsHTML(masterView))
-					.then(send)
-					.catch(() => send(masterView));
-			} catch (_) {
-				send(masterView);
-			}
-		}
-	}
+	// returnViewWithoutEngine() removed - handled by view engine (register via master.useView())
 
-	returnViewWithoutEngine(location){
-		// SECURITY: Validate path to prevent traversal attacks
-		if (!location || location.includes('..') || location.includes('~') || path.isAbsolute(location)) {
-			logger.warn({
-				code: 'MC_SECURITY_PATH_TRAVERSAL',
-				message: 'Path traversal attempt blocked in returnViewWithoutEngine',
-				path: location
-			});
-			this.returnError(400, 'Invalid path');
-			return;
-		}
+	// returnReact() removed - handled by view engine (register via master.useView())
 
-		const actionUrl = path.resolve(MasterAction._master.root, location);
-
-		// SECURITY: Ensure resolved path is within app root
-		if (!actionUrl.startsWith(MasterAction._master.root)) {
-			logger.warn({
-				code: 'MC_SECURITY_PATH_TRAVERSAL',
-				message: 'Path traversal blocked in returnViewWithoutEngine',
-				requestedPath: location,
-				resolvedPath: actionUrl
-			});
-			this.returnError(403, 'Forbidden');
-			return;
-		}
-
-		try {
-			const masterView = fileserver.readFileSync(actionUrl, 'utf8');
-			if (!this.__requestObject.response._headerSent) {
-				this.__requestObject.response.writeHead(200, {'Content-Type': 'text/html'});
-				this.__requestObject.response.end(masterView);
-			}
-		} catch (error) {
-			logger.error({
-				code: 'MC_ERR_VIEW_READ',
-				message: 'Failed to read view file',
-				path: location,
-				error: error.message
-			});
-			this.returnError(404, 'View not found');
-		}
-	}
-
-	returnReact(data, location){
-
-			var masterView = null;
-			data = data === undefined ? {} : data;
-			this.params = this.params === undefined ? {} : this.params;
-			this.params = tools.combineObjects(data, this.params);
-			var func = MasterAction._master.viewList;
-			this.params = tools.combineObjects(this.params, func);
-			var html = MasterAction._master.reactView.compile(this.__currentRoute.toController, this.__currentRoute.toAction, this.__currentRoute.root);
-
-	}
-
-	returnView(data, location){
-
-		var masterView = null;
-		data = data === undefined ? {} : data;
-		this.params = this.params === undefined ? {} : this.params;
-        this.params = tools.combineObjects(data, this.params);
-        var func = MasterAction._master.viewList;
-        this.params = tools.combineObjects(this.params, func);
-    // Prefer page.js module if present (no legacy .html file)
-    try {
-      const controller = this.__currentRoute.toController;
-      const action = this.__currentRoute.toAction;
-      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
-      if (fileserver.existsSync(pageModuleAbs)) {
-        if (this._renderPageModule(controller, action, data)) { return; }
-      }
-    } catch (_) {}
-
-		var viewUrl = (location === undefined || location === "" || location === null) ? this.__currentRoute.root + "/app/views/" + this.__currentRoute.toController + "/" +  this.__currentRoute.toAction + ".html" : MasterAction._master.root + location;
-		var viewFile = fileserver.readFileSync(viewUrl,'utf8');
-		var masterFile = fileserver.readFileSync(this.__currentRoute.root + "/app/views/layouts/master.html", 'utf8');
-		if (MasterAction._master.overwrite.isTemplate){
-			masterView = MasterAction._master.overwrite.templateRender(this.params, "returnView");
-		}
-		else{
-			var childView = temp.htmlBuilder(viewFile, this.params);
-			this.params.yield = childView;
-			masterView = temp.htmlBuilder(masterFile, this.params);
-		}
-		
-		if (!this.__response._headerSent) {
-			const send = (htmlOut) => {
-				try {
-					this.__response.writeHead(200, {'Content-Type': 'text/html'});
-					this.__response.end(htmlOut);
-				} catch (e) {
-					// Fallback in case of double send
-				}
-			};
-			try {
-				Promise.resolve(compileWebComponentsHTML(masterView))
-					.then(send)
-					.catch(() => send(masterView));
-			} catch (_) {
-				send(masterView);
-			}
-		}
-		
-	}
+	// returnView() removed - handled by view engine (register via master.useView())
 
 	close(response, code, content, end){
 		response.writeHead(code, content.type);
@@ -381,58 +177,9 @@ class MasterAction{
 		return false;
 	}
 
-  // Render using a page.js Web Component module when present
-  _renderPageModule(controller, action, data) {
-    try {
-      const pageModuleAbs = path.join(MasterAction._master.root, 'app/views', controller, action, 'page.js');
-      const layoutModuleAbs = path.join(MasterAction._master.root, 'app/views', 'layouts', 'master.js');
-      const stylesPath = '/app/assets/stylesheets/output.css';
-      const pageTag = `home-${action}-page`;
+  // _renderPageModule() removed - handled by view engine (register via master.useView())
 
-      const htmlDoc =
-`<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>${controller}/${action}</title>
-    <link rel="stylesheet" href="${stylesPath}"/>
-  </head>
-  <body class="geist-variable antialiased">
-    <root-layout>
-      <${pageTag}></${pageTag}>
-    </root-layout>
-    <script type="module" src="/app/views/layouts/master.js"></script>
-    <script type="module" src="/app/views/${controller}/${action}/page.js"></script>
-  </body>
-</html>`;
-
-      const send = (htmlOut) => {
-        try {
-          const res = this.__response || (this.__requestObject && this.__requestObject.response);
-          if (res && !res._headerSent) {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(htmlOut);
-          }
-        } catch (_) {}
-      };
-
-      Promise
-        .resolve(require('./ssr/runtime-ssr.cjs')(htmlDoc, [layoutModuleAbs, pageModuleAbs]))
-        .then(send)
-        .catch(() => send(htmlDoc));
-    } catch (e) {
-      // Fallback to legacy view if something goes wrong
-      console.warn('[SSR] _renderPageModule failed:', e && e.message);
-      return false;
-    }
-    return true;
-  }
-
-  // Delegate to standard Enhance-based SSR only
-  returnWebComponent(data) {
-    this.returnView(data);
-  }
+  // returnWebComponent() removed - handled by view engine (register via master.useView())
 
   // ==================== Security Methods ====================
 

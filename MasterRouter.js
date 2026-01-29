@@ -121,32 +121,33 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
             }
 
             if(routeList.length > 0){
-                // loop through routes
-                for(var item in routeList){
+                // FIXED: Use for...of instead of for...in for array iteration
+                // This prevents prototype pollution and improves performance
+                for(const route of routeList){
                     // Store current route for error handling
                     currentRouteBeingProcessed = {
-                        path: routeList[item].path,
-                        toController: routeList[item].toController,
-                        toAction: routeList[item].toAction,
-                        type: routeList[item].type
+                        path: route.path,
+                        toController: route.toController,
+                        toAction: route.toAction,
+                        type: route.type
                     };
 
                     try {
-                        requestObject.toController = routeList[item].toController;
-                        requestObject.toAction = routeList[item].toAction;
+                        requestObject.toController = route.toController;
+                        requestObject.toAction = route.toAction;
 
                         // FIX: Create a clean copy of params for each route test to prevent parameter pollution
                         // This prevents parameters from non-matching routes from accumulating in requestObject.params
                         var testParams = Object.assign({}, requestObject.params);
-                        var pathObj = normalizePaths(requestObject.pathName, routeList[item].path, testParams);
+                        var pathObj = normalizePaths(requestObject.pathName, route.path, testParams);
 
                         // if we find the route that matches the request
-                        if(pathObj.requestPath === pathObj.routePath && routeList[item].type === requestObject.type){
+                        if(pathObj.requestPath === pathObj.routePath && route.type === requestObject.type){
                             // Only commit the extracted params if this route actually matches
                             requestObject.params = testParams;
 
                             // call Constraint
-                            if(typeof routeList[item].constraint === "function"){
+                            if(typeof route.constraint === "function"){
 
                                 var newObj = {};
                                 //tools.combineObjects(newObj, this._master.controllerList);
@@ -163,7 +164,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
 
                                 // Wrap constraint execution with error handling
                                 try {
-                                    routeList[item].constraint.call(newObj, requestObject);
+                                    route.constraint.call(newObj, requestObject);
                                 } catch(constraintError) {
                                     const routeError = handleRoutingError(
                                         requestObject.pathName,
@@ -238,10 +239,10 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
 };
 
 var loadScopedListClasses = function(){
-    for (var key in this._master._scopedList) {
-        var className =  this._master._scopedList[key];
+    // FIXED: Use Object.entries() for safe iteration (prevents prototype pollution)
+    for (const [key, className] of Object.entries(this._master._scopedList)) {
         this._master.requestList[key] = new className();
-    };
+    }
 };
 
 
@@ -397,25 +398,19 @@ class MasterRouter {
     }
 
     findMimeType(fileExt){
-        if(fileExt){
-            var type = undefined;
-            var mime = this.mimeTypes;
-            for(var i in mime) {
-
-                if("." + i === fileExt){
-                    type = mime[i];
-                }
-            }
-            if(type === undefined){
-                return false;
-            }
-            else{
-                return type;
-            }
-        }
-        else{
+        if(!fileExt){
             return false;
         }
+
+        // FIXED: O(1) direct lookup instead of O(n) loop
+        // Remove leading dot if present for consistent lookup
+        const ext = fileExt.startsWith('.') ? fileExt.slice(1) : fileExt;
+
+        // Direct object access - constant time complexity
+        const type = this.mimeTypes[ext];
+
+        // Return the MIME type or false if not found
+        return type || false;
     }
 
     _call(requestObject){
