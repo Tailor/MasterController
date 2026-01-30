@@ -401,12 +401,10 @@ class MasterControl {
             const internalModules = {
                 'MasterPipeline': './MasterPipeline',
                 'MasterTimeout': './MasterTimeout',
-                'MasterErrorRenderer': './error/MasterErrorRenderer',
                 'MasterAction': './MasterAction',
                 'MasterActionFilters': './MasterActionFilters',
                 'MasterRouter': './MasterRouter',
                 'MasterRequest': './MasterRequest',
-                'MasterError': './error/MasterError',
                 'MasterCors': './MasterCors',
                 'SessionSecurity': './security/SessionSecurity',
                 'MasterSocket': './MasterSocket',
@@ -422,8 +420,6 @@ class MasterControl {
             const moduleRegistry = {
                 'pipeline': { path: './MasterPipeline', exportName: 'MasterPipeline' },
                 'timeout': { path: './MasterTimeout', exportName: 'MasterTimeout' },
-                'errorRenderer': { path: './error/MasterErrorRenderer', exportName: 'MasterErrorRenderer' },
-                'error': { path: './error/MasterError', exportName: 'MasterError' },
                 'router': { path: './MasterRouter', exportName: 'MasterRouter' },
                 'request': { path: './MasterRequest', exportName: 'MasterRequest' },
                 'cors': { path: './MasterCors', exportName: 'MasterCors' },
@@ -1041,8 +1037,6 @@ class MasterControl {
             const modulePathMap = {
                 'MasterPipeline': './MasterPipeline',
                 'MasterTimeout': './MasterTimeout',
-                'MasterErrorRenderer': './error/MasterErrorRenderer',
-                'MasterError': './error/MasterError',
                 'MasterAction': './MasterAction',
                 'MasterActionFilters': './MasterActionFilters',
                 'MasterRouter': './MasterRouter',
