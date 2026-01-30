@@ -89,7 +89,9 @@ const ROUTER_CONFIG = {
                 const sanitizedValue = sanitizeRouteParam(paramName, paramValue);
 
                 requestParams[paramName] = sanitizedValue;
-                routePathList[i] = sanitizedValue;
+                // FIX: Use requestItem (original value) not sanitizedValue for route matching
+                // The route pattern should match against the actual request path
+                routePathList[i] = requestItem;
             }
         }
     }
@@ -915,7 +917,9 @@ class MasterRouter {
             }
 
             const $that = this;
-            const requestObject = Object.create(rr);
+            // FIX: Use direct reference instead of Object.create() to preserve request/response objects
+            // Object.create() puts properties on prototype, causing undefined access issues
+            const requestObject = rr;
 
             // CRITICAL FIX: Load scoped services into request-specific context
             // Pass requestObject so scoped services are stored per-request, not globally
