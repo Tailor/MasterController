@@ -408,9 +408,21 @@ function validateIdentifier(name, type) {
         throw new TypeError(`${type} name must be a non-empty string`);
     }
 
-    // Must be valid JavaScript identifier
-    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
-        throw new Error(`Invalid ${type} name: ${name}. Must be a valid identifier.`);
+    // Controllers can have forward slashes for nested structures (e.g., "api/health")
+    // Actions must be simple identifiers
+    if (type === 'controller') {
+        // Split on slash and validate each segment
+        const segments = name.split('/');
+        for (const segment of segments) {
+            if (!segment || !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(segment)) {
+                throw new Error(`Invalid ${type} name: ${name}. Each segment must be a valid identifier.`);
+            }
+        }
+    } else {
+        // Actions must be simple identifiers (no slashes)
+        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
+            throw new Error(`Invalid ${type} name: ${name}. Must be a valid identifier.`);
+        }
     }
 }
 
