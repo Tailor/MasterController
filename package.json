@@ -1,6 +1,6 @@
 {
   "name": "mastercontroller",
-  "version": "1.3.12",
+  "version": "1.3.13",
   "description": "Fortune 500 ready Node.js MVC framework with enterprise security, monitoring, and horizontal scaling",
   "main": "MasterControl.js",
   "license": "MIT",
