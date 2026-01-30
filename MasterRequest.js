@@ -26,7 +26,20 @@ class MasterRequest{
      if(options){
         this.options = {};
         this.options.disableFormidableMultipartFormData = options.disableFormidableMultipartFormData === null? false : options.disableFormidableMultipartFormData;
-        this.options.formidable = options.formidable === null? {}: options.formidable;
+
+        // CRITICAL FIX: Add file upload limits to prevent DoS attacks
+        // Default formidable configuration with security limits
+        this.options.formidable = {
+            maxFiles: 10,                          // CRITICAL: Limit number of files per request
+            maxFileSize: 50 * 1024 * 1024,        // CRITICAL: 50MB per file (was unlimited)
+            maxTotalFileSize: 100 * 1024 * 1024,  // CRITICAL: 100MB total for all files
+            maxFields: 1000,                       // Limit number of fields
+            maxFieldsSize: 20 * 1024 * 1024,      // 20MB for all fields combined
+            allowEmptyFiles: false,                // Reject empty file uploads
+            minFileSize: 1,                        // Minimum 1 byte
+            ...(options.formidable || {})          // Allow user overrides
+        };
+
         // Body size limits (DoS protection)
         this.options.maxBodySize = options.maxBodySize || 10 * 1024 * 1024; // 10MB default
         this.options.maxJsonSize = options.maxJsonSize || 1 * 1024 * 1024;  // 1MB default for JSON
@@ -74,6 +87,7 @@ class MasterRequest{
                                 // Track uploaded files for cleanup on error
                                 const uploadedFiles = [];
                                 let uploadAborted = false;
+                                let totalUploadedSize = 0; // CRITICAL: Track total upload size
 
                                 $that.form.on('field', function(field, value) {
                                     $that.parsedURL.formData.fields[field] = value;
@@ -87,6 +101,30 @@ class MasterRequest{
                                 $that.form.on('file', function(field, file) {
                                     file.extension = file.name === undefined ? path.extname(file.originalFilename) : path.extname(file.name);
 
+                                    // CRITICAL: Track total uploaded size across all files
+                                    totalUploadedSize += file.size || 0;
+
+                                    // CRITICAL: Enforce maxTotalFileSize limit
+                                    const maxTotalSize = $that.options.formidable.maxTotalFileSize || 100 * 1024 * 1024;
+                                    if (totalUploadedSize > maxTotalSize) {
+                                        uploadAborted = true;
+                                        console.error(`[MasterRequest] Total upload size (${totalUploadedSize} bytes) exceeds limit (${maxTotalSize} bytes)`);
+
+                                        // Cleanup all uploaded files
+                                        uploadedFiles.forEach(f => {
+                                            if (f.filepath) {
+                                                try {
+                                                    $that.deleteFileBuffer(f.filepath);
+                                                } catch (err) {
+                                                    console.error('[MasterRequest] Cleanup failed:', err.message);
+                                                }
+                                            }
+                                        });
+
+                                        reject(new Error(`Total upload size exceeds limit (${maxTotalSize} bytes)`));
+                                        return;
+                                    }
+
                                     if(Array.isArray($that.parsedURL.formData.files[field])){
                                         $that.parsedURL.formData.files[field].push(file);
                                     }
@@ -94,6 +132,9 @@ class MasterRequest{
                                         $that.parsedURL.formData.files[field] = [];
                                         $that.parsedURL.formData.files[field].push(file);
                                     }
+
+                                    // CRITICAL: Log file upload for security audit trail
+                                    console.log(`[MasterRequest] File uploaded: ${file.originalFilename || file.name} (${file.size} bytes)`);
                                 });
 
                                 $that.form.on('error', function(err) {

@@ -238,10 +238,14 @@ const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.maste
         }
 };
 
-var loadScopedListClasses = function(){
+// CRITICAL FIX: Race condition - Store scoped services in context instead of shared requestList
+// Previously, concurrent requests would overwrite each other's services in the shared requestList object
+// This caused unpredictable behavior and data corruption in production environments
+var loadScopedListClasses = function(context){
     // FIXED: Use Object.entries() for safe iteration (prevents prototype pollution)
     for (const [key, className] of Object.entries(this._master._scopedList)) {
-        this._master.requestList[key] = new className();
+        // Store scoped services in the context object (request-specific) instead of shared requestList
+        context[key] = new className();
     }
 };
 
@@ -419,8 +423,11 @@ class MasterRouter {
          const requestId = `${Date.now()}-${Math.random()}`;
          performanceTracker.start(requestId, requestObject);
 
-         tools.combineObjects(this._master.requestList, requestObject);
-         requestObject = this._master.requestList;
+         // CRITICAL FIX: Create a request-specific context instead of using shared requestList
+         // This prevents race conditions where concurrent requests overwrite each other's services
+         const requestContext = Object.create(this._master.requestList);
+         tools.combineObjects(requestContext, requestObject);
+         requestObject = requestContext;
          var Control = null;
 
          try{
@@ -528,9 +535,12 @@ class MasterRouter {
     
     load(rr){ // load the the router
 
-            loadScopedListClasses.call(this);
             var $that = this;
             var requestObject = Object.create(rr);
+
+            // CRITICAL FIX: Load scoped services into request-specific context
+            // Pass requestObject so scoped services are stored per-request, not globally
+            loadScopedListClasses.call(this, requestObject);
             requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '').toLowerCase();
         
             var _loadEmit = new EventEmitter();

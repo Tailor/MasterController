@@ -10,6 +10,7 @@ var fs = require('fs');
 var url = require('url');
 var path = require('path');
 var globSearch = require("glob");
+var crypto = require('crypto'); // CRITICAL FIX: For ETag generation
 
 // Enhanced error handling - setup global handlers
 const { setupGlobalErrorHandlers } = require('./error/MasterErrorMiddleware');
@@ -779,26 +780,107 @@ class MasterControl {
                         }
                     }
 
-                    // Read and serve the file
-                    fs.readFile(finalPath, function(err, data) {
-                        if (err) {
+                    // CRITICAL FIX: Stream large files instead of reading into memory
+                    // Files >1MB are streamed to prevent memory exhaustion and improve performance
+                    const STREAM_THRESHOLD = 1 * 1024 * 1024; // 1MB
+                    const fileSize = stats.isDirectory() ? fs.statSync(finalPath).size : stats.size;
+                    const ext = path.extname(finalPath);
+                    const mimeType = $that.router.findMimeType(ext);
+
+                    // CRITICAL FIX: Generate ETag for caching (based on file stats)
+                    // ETag format: "size-mtime" (weak ETag for better performance)
+                    const fileStats = stats.isDirectory() ? fs.statSync(finalPath) : stats;
+                    const etag = `W/"${fileStats.size}-${fileStats.mtime.getTime()}"`;
+
+                    // CRITICAL FIX: Check If-None-Match header for 304 Not Modified
+                    const clientETag = ctx.request.headers['if-none-match'];
+                    if (clientETag === etag) {
+                        // File hasn't changed, return 304 Not Modified
+                        logger.debug({
+                            code: 'MC_STATIC_304',
+                            message: 'Returning 304 Not Modified',
+                            path: finalPath,
+                            etag: etag
+                        });
+                        ctx.response.statusCode = 304;
+                        ctx.response.setHeader('ETag', etag);
+                        ctx.response.end();
+                        return;
+                    }
+
+                    // Set common headers for both streaming and buffered responses
+                    ctx.response.setHeader('Content-Type', mimeType || 'application/octet-stream');
+                    ctx.response.setHeader('X-Content-Type-Options', 'nosniff');
+                    ctx.response.setHeader('Content-Length', fileSize);
+
+                    // CRITICAL FIX: Add caching headers
+                    ctx.response.setHeader('ETag', etag);
+                    ctx.response.setHeader('Last-Modified', fileStats.mtime.toUTCString());
+
+                    // Cache-Control based on file type
+                    const cacheableExtensions = ['.js', '.css', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.eot', '.ico'];
+                    const isCacheable = cacheableExtensions.includes(ext.toLowerCase());
+
+                    if (isCacheable) {
+                        // PERFORMANCE: Cache static assets for 1 year (immutable pattern)
+                        // Use versioned URLs (e.g., app.v123.js) for cache-busting
+                        ctx.response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                    } else {
+                        // SECURITY: Dynamic content should revalidate
+                        ctx.response.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+                    }
+
+                    if (fileSize > STREAM_THRESHOLD) {
+                        // PERFORMANCE: Stream large files (>1MB) to avoid memory issues
+                        logger.debug({
+                            code: 'MC_STATIC_STREAMING',
+                            message: 'Streaming large static file',
+                            path: finalPath,
+                            size: fileSize
+                        });
+
+                        const readStream = fs.createReadStream(finalPath);
+
+                        readStream.on('error', (err) => {
                             logger.error({
-                                code: 'MC_ERR_FILE_READ',
-                                message: 'Error reading static file',
+                                code: 'MC_ERR_STREAM_READ',
+                                message: 'Error streaming static file',
                                 path: finalPath,
                                 error: err.message
                             });
-                            ctx.response.statusCode = 500;
-                            ctx.response.setHeader('Content-Type', 'text/plain');
-                            ctx.response.end('Internal Server Error');
-                        } else {
-                            const ext = path.extname(finalPath);
-                            const mimeType = $that.router.findMimeType(ext);
-                            ctx.response.setHeader('Content-Type', mimeType || 'application/octet-stream');
-                            ctx.response.setHeader('X-Content-Type-Options', 'nosniff');
-                            ctx.response.end(data);
-                        }
-                    });
+
+                            // Only send error if headers not sent
+                            if (!ctx.response.headersSent) {
+                                ctx.response.statusCode = 500;
+                                ctx.response.setHeader('Content-Type', 'text/plain');
+                                ctx.response.end('Internal Server Error');
+                            } else {
+                                // Connection already started, just close it
+                                ctx.response.end();
+                            }
+                        });
+
+                        // Pipe the file stream to the response
+                        readStream.pipe(ctx.response);
+
+                    } else {
+                        // PERFORMANCE: Small files (<1MB) can be buffered for better caching
+                        fs.readFile(finalPath, function(err, data) {
+                            if (err) {
+                                logger.error({
+                                    code: 'MC_ERR_FILE_READ',
+                                    message: 'Error reading static file',
+                                    path: finalPath,
+                                    error: err.message
+                                });
+                                ctx.response.statusCode = 500;
+                                ctx.response.setHeader('Content-Type', 'text/plain');
+                                ctx.response.end('Internal Server Error');
+                            } else {
+                                ctx.response.end(data);
+                            }
+                        });
+                    }
                 });
 
                 return; // Terminal - don't call next()
