@@ -1,6 +1,27 @@
 // version 0.0.3 - robust origin handling (all envs), creds-safe reflection, function origins, extended Vary
 
-	// todo - res.setHeader('Access-Control-Request-Method', '*');
+const { logger } = require('./error/MasterErrorLogger');
+
+// HTTP Status Code Constants
+const HTTP_STATUS = {
+	NO_CONTENT: 204,
+	BAD_REQUEST: 400
+};
+
+// CORS Header Name Constants
+const CORS_HEADERS = {
+	ALLOW_ORIGIN: 'Access-Control-Allow-Origin',
+	ALLOW_METHODS: 'Access-Control-Allow-Methods',
+	ALLOW_HEADERS: 'Access-Control-Allow-Headers',
+	ALLOW_CREDENTIALS: 'Access-Control-Allow-Credentials',
+	MAX_AGE: 'Access-Control-Max-Age',
+	EXPOSE_HEADERS: 'Access-Control-Expose-Headers',
+	REQUEST_HEADERS: 'Access-Control-Request-Headers',
+	REQUEST_METHOD: 'Access-Control-Request-Method',
+	VARY: 'Vary'
+};
+
+// todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
 
 	// Lazy-load master to avoid circular dependency (Google-style lazy initialization)
@@ -16,7 +37,10 @@ class MasterCors{
 			this.options = options;
 		}
 		else{
-			this._master.error.log("cors options missing", "warn");
+			logger.warn({
+				code: 'MC_CORS_OPTIONS_MISSING',
+				message: 'CORS options missing'
+			});
 		}
 
 		// Auto-register with pipeline if available
@@ -32,7 +56,15 @@ class MasterCors{
 			this.response = params.response;
 			this.request = params.request;
 			// Always signal that response may vary by Origin and requested headers/method
-			try { this.response.setHeader('Vary', 'Origin, Access-Control-Request-Headers, Access-Control-Request-Method'); } catch(_) {}
+			try {
+				this.response.setHeader('Vary', 'Origin, Access-Control-Request-Headers, Access-Control-Request-Method');
+			} catch(error) {
+				logger.warn({
+					code: 'MC_CORS_VARY_HEADER_FAILED',
+					message: 'Failed to set Vary header',
+					error: error.message
+				});
+			}
 			this.configureOrigin();
 			this.configureMethods()
 			this.configureAllowedHeaders();
@@ -41,7 +73,10 @@ class MasterCors{
 			this.configureMaxAge();
 		}
 		else{
-			this._master.error.log("cors response and requests missing", "warn");
+			logger.warn({
+				code: 'MC_CORS_PARAMS_MISSING',
+				message: 'CORS response and request params missing'
+			});
 		}
 	}
 
@@ -63,7 +98,7 @@ class MasterCors{
 
 			if(this.options.origin === true){
 				// If credentials are enabled, reflect request origin per spec
-				var requestOrigin = this.request.headers.origin;
+				const requestOrigin =this.request.headers.origin;
 				if (this.options.credentials === true && requestOrigin) {
 					this.setHeader('access-control-allow-origin', requestOrigin);
 				} else {
@@ -76,9 +111,9 @@ class MasterCors{
 				this.removeHeader('access-control-allow-origin');
 			}
 				
-			if(this.options.origin.constructor === Array){
+			if(Array.isArray(this.options.origin)){
 				// Get the origin from the incoming request
-				var requestOrigin = this.request.headers.origin;
+				const requestOrigin =this.request.headers.origin;
 				
 				// Check if the request origin is in our allowed list
 				if(requestOrigin && this.options.origin.includes(requestOrigin)){
@@ -90,15 +125,22 @@ class MasterCors{
 			// Function predicate support: (origin, req) => boolean|string
 			if (typeof this.options.origin === 'function'){
 				try {
-					var requestOrigin = this.request.headers.origin;
-					var res = this.options.origin(requestOrigin, this.request);
+					const requestOrigin = this.request.headers.origin;
+					const res = this.options.origin(requestOrigin, this.request);
 					if (res === true && requestOrigin){
 						this.setHeader('access-control-allow-origin', requestOrigin);
 					}
 					else if (typeof res === 'string' && res){
 						this.setHeader('access-control-allow-origin', res);
 					}
-				} catch(_) {}
+				} catch(error) {
+					logger.error({
+						code: 'MC_CORS_ORIGIN_FUNCTION_ERROR',
+						message: 'Error in origin function predicate',
+						error: error.message,
+						stack: error.stack
+					});
+				}
 			}
 
 		}
@@ -106,16 +148,16 @@ class MasterCors{
 
 	configureMethods(){
 		if(this.options.methods){
-			if(this.options.methods.constructor === Array){
-				var elements = this.options.methods.join(", ");
+			if(Array.isArray(this.options.methods)){
+				const elements =this.options.methods.join(", ");
 				this.setHeader('access-control-allow-methods', elements);
 			}
 		}
 	}
 
 	configureAllowedHeaders(){
-		var requestheader = this.request.headers["access-control-request-headers"];
-		var $that = this;
+		const requestheader =this.request.headers["access-control-request-headers"];
+		const $that =this;
 		if(this.options.allowedHeaders){
 
 			if($that.options.allowedHeaders === true){
@@ -135,8 +177,8 @@ class MasterCors{
 				this.setHeader("access-control-allow-headers", $that.options.allowedHeaders);
 			}
 				
-			if($that.options.allowedHeaders.constructor === Array){
-				var elements = $that.options.allowedHeaders.join(", ");
+			if(Array.isArray($that.options.allowedHeaders)){
+				const elements =$that.options.allowedHeaders.join(", ");
 				$that.request.headers['access-control-allow-headers'] = elements;
 				this.setHeader("access-control-allow-headers", elements);
 			}
@@ -158,8 +200,8 @@ class MasterCors{
 				this.setHeader('access-control-expose-headers', this.options.exposeHeaders);
 			}
 				
-			if(this.options.exposeHeaders.constructor === Array){
-				var elements = this.options.exposeHeaders.join(", ");
+			if(Array.isArray(this.options.exposeHeaders)){
+				const elements =this.options.exposeHeaders.join(", ");
 				this.setHeader('access-control-expose-headers', elements);
 			}
 
@@ -187,7 +229,7 @@ class MasterCors{
 	 * Handles both preflight OPTIONS requests and regular requests
 	 */
 	middleware() {
-		var $that = this;
+		const $that =this;
 
 		return async (ctx, next) => {
 			// Handle preflight OPTIONS request

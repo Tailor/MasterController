@@ -1,16 +1,28 @@
 // MasterControl - by Alexander rich
 // version 1.0.252
 
-var url = require('url');
-var fileserver = require('fs');
-var http = require('http');
-var https = require('https');
-var tls = require('tls');
-var fs = require('fs');
-var url = require('url');
-var path = require('path');
-var globSearch = require("glob");
-var crypto = require('crypto'); // CRITICAL FIX: For ETag generation
+const url = require('url');
+const fileserver = require('fs');
+const http = require('http');
+const https = require('https');
+const tls = require('tls');
+const fs = require('fs');
+const path = require('path');
+const globSearch = require("glob");
+const crypto = require('crypto'); // CRITICAL FIX: For ETag generation
+
+// HTTP Status Code Constants
+const HTTP_STATUS = {
+    OK: 200,
+    MOVED_PERMANENTLY: 301,
+    FOUND: 302,
+    NOT_MODIFIED: 304,
+    BAD_REQUEST: 400,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    PAYLOAD_TOO_LARGE: 413,
+    INTERNAL_ERROR: 500
+};
 
 // Enhanced error handling - setup global handlers
 const { setupGlobalErrorHandlers } = require('./error/MasterErrorMiddleware');
@@ -176,7 +188,10 @@ class MasterControl {
             return false;
         };
 
-        console.log('[MasterControl] Prototype pollution protection initialized');
+        logger.info({
+            code: 'MC_INFO_PROTOTYPE_PROTECTION',
+            message: 'Prototype pollution protection initialized'
+        });
     }
 
     // extends class methods to be used inside of the view class using the THIS keyword
@@ -291,7 +306,7 @@ class MasterControl {
 
         // Enhanced: Support both relative (to master.root) and absolute paths
         // If folderLocation is absolute, use it directly; otherwise join with master.root
-        var rootFolderLocation;
+        let rootFolderLocation;
         if (path.isAbsolute(folderLocation)) {
             // Absolute path provided - use it directly
             rootFolderLocation = path.join(folderLocation, innerFolder);
@@ -301,16 +316,20 @@ class MasterControl {
         }
 
         // Structure is always: {rootFolderLocation}/config/initializers/config.js
-        var configPath = path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
+        const configPath =path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
         if(fs.existsSync(configPath)){
             require(configPath);
         }else{
-            this.error.log(`Cannot find config file at ${configPath}`, "error");
+            logger.error({
+                code: 'MC_ERR_CONFIG_NOT_FOUND',
+                message: 'Cannot find config file',
+                path: configPath
+            });
         }
 
         // Structure is always: {rootFolderLocation}/config/routes.js
-        var routePath = path.join(rootFolderLocation, 'config', 'routes.js');
-        var routeObject = {
+        const routePath =path.join(rootFolderLocation, 'config', 'routes.js');
+        const routeObject ={
             isComponent : true,
             root : rootFolderLocation
         }
@@ -318,7 +337,11 @@ class MasterControl {
         if(fs.existsSync(routePath)){
             require(routePath);
         }else{
-            this.error.log(`Cannot find routes file at ${routePath}`, "error");
+            logger.error({
+                code: 'MC_ERR_ROUTES_NOT_FOUND',
+                message: 'Cannot find routes file',
+                path: routePath
+            });
         }
     }
 
@@ -335,7 +358,7 @@ class MasterControl {
 
         if(settings.httpPort || settings.requestTimeout){
             this.server.timeout = settings.requestTimeout;
-            var host = settings.hostname || settings.host || settings.http;
+            const host =settings.hostname || settings.host || settings.http;
             if(host){
                 this.server.listen(settings.httpPort, host);
             }else{
@@ -391,7 +414,7 @@ class MasterControl {
     // sets up https or http server protocals
     setupServer(type, credentials ){
         try {
-            var $that = this;
+            const $that = this;
 
             // SECURITY: Initialize prototype pollution protection
             this._initPrototypePollutionProtection();
@@ -547,7 +570,7 @@ class MasterControl {
      * @security CRITICAL: Always provide allowedHosts in production to prevent open redirect attacks
      */
     startHttpToHttpsRedirect(redirectPort, bindHost, allowedHosts = []){
-        var $that = this;
+        const $that = this;
 
         // Security warning if no hosts specified
         if (allowedHosts.length === 0) {
@@ -558,8 +581,8 @@ class MasterControl {
 
         return http.createServer(function (req, res) {
             try{
-                var host = req.headers['host'] || '';
-                var hostname = host.split(':')[0]; // Remove port number
+                const host = req.headers['host'] || '';
+                const hostname = host.split(':')[0]; // Remove port number
 
                 // CRITICAL SECURITY: Validate host header to prevent open redirect attacks
                 if (allowedHosts.length > 0) {
@@ -707,7 +730,7 @@ class MasterControl {
      * This includes: static files, body parsing, scoped services, routing, error handling
      */
     _registerCoreMiddleware(){
-        var $that = this;
+        const $that = this;
 
         // 1. Static File Serving (with path traversal protection)
         $that.pipeline.use(async (ctx, next) => {
@@ -750,17 +773,17 @@ class MasterControl {
                     return;
                 }
 
-                // Check if file exists
-                fs.exists(resolvedPath, function (exist) {
-                    if (!exist) {
-                        ctx.response.statusCode = 404;
-                        ctx.response.setHeader('Content-Type', 'text/plain');
-                        ctx.response.end('Not Found');
-                        return;
-                    }
+                // Check if file exists (use synchronous check for better performance in middleware)
+                if (!fs.existsSync(resolvedPath)) {
+                    ctx.response.statusCode = 404;
+                    ctx.response.setHeader('Content-Type', 'text/plain');
+                    ctx.response.end('Not Found');
+                    return;
+                }
 
-                    // Get file stats
-                    let finalPath = resolvedPath;
+                // Get file stats
+                let finalPath = resolvedPath;
+                try {
                     const stats = fs.statSync(resolvedPath);
 
                     // If directory, try to serve index.html
@@ -877,7 +900,19 @@ class MasterControl {
                             }
                         });
                     }
-                });
+                } catch (error) {
+                    // Handle file stat errors
+                    logger.error({
+                        code: 'MC_ERR_FILE_STAT',
+                        message: 'Error accessing static file',
+                        path: resolvedPath,
+                        error: error.message
+                    });
+                    ctx.response.statusCode = 500;
+                    ctx.response.setHeader('Content-Type', 'text/plain');
+                    ctx.response.end('Internal Server Error');
+                    return;
+                }
 
                 return; // Terminal - don't call next()
             }
@@ -968,7 +1003,7 @@ class MasterControl {
     }
 
     async serverRun(req, res){
-        var $that = this;
+        const $that = this;
         console.log("path", `${req.method} ${req.url}`);
 
         // Create request context for middleware pipeline
@@ -1016,7 +1051,7 @@ class MasterControl {
         var rootFolderLocation = path.join(this.root, foldername);
 
         // Structure is always: {rootFolderLocation}/routes.js
-        var routePath = path.join(rootFolderLocation, 'routes.js');
+        const routePath =path.join(rootFolderLocation, 'routes.js');
         var route = {
             isComponent : false,
             root : `${this.root}`
@@ -1025,14 +1060,18 @@ class MasterControl {
         if(fs.existsSync(routePath)){
             require(routePath);
         }else{
-            this.error.log(`Cannot find routes file at ${routePath}`, "error");
+            logger.error({
+                code: 'MC_ERR_ROUTES_NOT_FOUND',
+                message: 'Cannot find routes file',
+                path: routePath
+            });
         }
     }
     
     
     // builds and calls all the required tools to have master running completely
     addInternalTools(requiredList){
-        if(requiredList.constructor === Array){
+        if(Array.isArray(requiredList)){
             // Map module names to their new organized paths
             const modulePathMap = {
                 'MasterPipeline': './MasterPipeline',

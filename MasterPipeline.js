@@ -3,6 +3,11 @@
 
 const { logger } = require('./error/MasterErrorLogger');
 
+// HTTP Status Code Constants
+const HTTP_STATUS = {
+    INTERNAL_ERROR: 500
+};
+
 class MasterPipeline {
     constructor() {
         this.middleware = [];
@@ -214,7 +219,7 @@ class MasterPipeline {
                 });
 
                 if (!context.response.headersSent) {
-                    context.response.statusCode = 500;
+                    context.response.statusCode = HTTP_STATUS.INTERNAL_ERROR;
                     context.response.end('Internal Server Error');
                 }
                 return;
@@ -285,7 +290,11 @@ class MasterPipeline {
         folders.forEach(folder => {
             const dir = path.join(this._master.root, folder);
             if (!fs.existsSync(dir)) {
-                console.warn(`[Middleware] Folder not found: ${folder}`);
+                logger.warn({
+                    code: 'MC_MIDDLEWARE_FOLDER_NOT_FOUND',
+                    message: 'Middleware folder not found',
+                    folder: folder
+                });
                 return;
             }
 
@@ -305,16 +314,30 @@ class MasterPipeline {
                     }
                     // Pattern 2: module.exports = { register: (master) => {} }
                     else if (middleware.register && typeof middleware.register === 'function') {
-                        middleware.register(master);
+                        middleware.register(this._master);
                     }
                     else {
-                        console.warn(`[Middleware] Invalid export in ${folder}/${file}`);
+                        logger.warn({
+                            code: 'MC_MIDDLEWARE_INVALID_EXPORT',
+                            message: 'Invalid middleware export',
+                            file: `${folder}/${file}`
+                        });
                         return;
                     }
 
-                    console.log(`[Middleware] Loaded: ${folder}/${file}`);
+                    logger.info({
+                        code: 'MC_MIDDLEWARE_LOADED',
+                        message: 'Middleware loaded',
+                        file: `${folder}/${file}`
+                    });
                 } catch (err) {
-                    console.error(`[Middleware] Failed to load ${folder}/${file}:`, err.message);
+                    logger.error({
+                        code: 'MC_MIDDLEWARE_LOAD_FAILED',
+                        message: 'Failed to load middleware',
+                        file: `${folder}/${file}`,
+                        error: err.message,
+                        stack: err.stack
+                    });
                 }
             });
         });

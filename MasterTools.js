@@ -1,19 +1,67 @@
-// version 0.0.2
-var crypto = require('crypto');
+/**
+ * MasterTools - Utility toolkit for MasterController
+ *
+ * Provides essential utilities:
+ * - String manipulation (case conversion, path parsing)
+ * - Cryptography (AES-256 encryption, secure key generation)
+ * - File conversion (base64, Buffer, streaming)
+ * - Object utilities (merging, type checking)
+ * - Random ID generation
+ *
+ * @version 1.0.0 - FAANG-level refactor with security hardening
+ */
+
+const crypto = require('crypto');
+const { logger } = require('./error/MasterErrorLogger');
+
+// Configuration Constants
+const CRYPTO_CONFIG = {
+    ALGORITHM: 'aes-256-cbc',
+    IV_SIZE: 16,                    // 16 bytes for AES
+    KEY_SIZE: 256,                  // 256-bit key
+    HASH_ALGORITHM: 'sha256',
+    VALID_HASH_ALGORITHMS: ['sha256', 'sha512', 'sha384', 'md5', 'sha1']
+};
+
+const FILE_CONFIG = {
+    MAX_FILE_SIZE: 10 * 1024 * 1024,    // 10MB default
+    STREAM_THRESHOLD: 10 * 1024 * 1024,  // Use streaming for files > 10MB
+    MAX_PATH_LENGTH: 4096,               // Maximum file path length
+    CHUNK_SIZE: 64 * 1024                // 64KB chunks for streaming
+};
+
+const STRING_CONFIG = {
+    MAX_STRING_LENGTH: 1000000,      // 1MB string limit
+    MAX_WORD_ID_LENGTH: 1000,        // Maximum word ID length
+    BASE64_CHARSET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+};
 
 class MasterTools{
-    characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    characters = STRING_CONFIG.BASE64_CHARSET;
 
+    /**
+     * Check if value is a plain object literal (not Array, Date, etc.)
+     *
+     * @param {*} _obj - Value to check
+     * @returns {Boolean} True if plain object literal, false otherwise
+     *
+     * @example
+     * isObjLiteral({})              // true
+     * isObjLiteral({ a: 1 })        // true
+     * isObjLiteral([])              // false
+     * isObjLiteral(new Date())      // false
+     * isObjLiteral(null)            // false
+     */
     isObjLiteral(_obj) {
-        var _test  = _obj;
-        return (  typeof _obj !== 'object' || _obj === null ?
-                    false :  
+        let _test = _obj;
+        return (typeof _obj !== 'object' || _obj === null ?
+                    false :
                     (
                       (function () {
-                        while (!false) {
-                          if (  Object.getPrototypeOf( _test = Object.getPrototypeOf(_test)  ) === null) {
+                        while (true) {
+                          if (Object.getPrototypeOf(_test = Object.getPrototypeOf(_test)) === null) {
                             break;
-                          }      
+                          }
                         }
                         return Object.getPrototypeOf(_obj) === _test;
                       })()
@@ -21,84 +69,274 @@ class MasterTools{
                 );
     }
 
-    // this will remove everthing from back slash amount
+    /**
+     * Remove sections from the end of a delimited string
+     *
+     * @param {String} string - Input string to process
+     * @param {Number} amount - Number of sections to remove from end
+     * @param {String} [type='\\'] - Delimiter character (default: backslash)
+     * @returns {String} String with sections removed
+     * @throws {TypeError} If string is not a string
+     * @throws {Error} If amount is negative
+     *
+     * @example
+     * removeBackwardSlashSection('a\\b\\c\\d', 2, '\\')  // 'a\\b'
+     * removeBackwardSlashSection('a/b/c/d', 1, '/')      // 'a/b/c'
+     */
     removeBackwardSlashSection(string, amount, type){
+        // Input validation
+        if (typeof string !== 'string') {
+            throw new TypeError('Input must be a string');
+        }
+
+        if (typeof amount !== 'number' || amount < 0) {
+            throw new Error('Amount must be a non-negative number');
+        }
+
         type = type === undefined ? "\\" : type;
-        var stringArray =  string.split(type);
-        for(var i = 0; i < amount; i++){
+        const stringArray = string.split(type);
+        for(let i = 0; i < amount; i++){
             stringArray.pop();
         }
         return stringArray.join(type);
     }
 
-    // return only the number of back slash amount
+    /**
+     * Extract sections from the end of a delimited string
+     *
+     * @param {String} string - Input string to process
+     * @param {Number} amount - Number of sections to extract from end
+     * @param {String} [type='\\'] - Delimiter character (default: backslash)
+     * @returns {String} Extracted sections joined by delimiter
+     * @throws {TypeError} If string is not a string
+     * @throws {Error} If amount is negative
+     *
+     * @example
+     * getBackSlashBySection('a\\b\\c\\d', 2, '\\')  // 'c\\d'
+     * getBackSlashBySection('a/b/c/d', 1, '/')      // 'd'
+     */
     getBackSlashBySection(string, amount, type){
+        // Input validation
+        if (typeof string !== 'string') {
+            throw new TypeError('Input must be a string');
+        }
+
+        if (typeof amount !== 'number' || amount < 0) {
+            throw new Error('Amount must be a non-negative number');
+        }
+
         type = type === undefined ? "\\" : type;
-        var stringArray =  string.split(type);
-        var newStringArray = [];
-        for(var i = 0; i < amount; i++){
+        const stringArray = string.split(type);
+        const newStringArray = [];
+        for(let i = 0; i < amount; i++){
             newStringArray.unshift(stringArray.pop());
         }
         return newStringArray.join(type);
     }
 
+    /**
+     * Capitalize first letter of string
+     *
+     * @param {String} string - Input string
+     * @returns {String} String with first letter capitalized
+     * @throws {TypeError} If string is not a string
+     * @throws {Error} If string is empty
+     *
+     * @example
+     * firstLetterUppercase('hello')  // 'Hello'
+     * firstLetterUppercase('world')  // 'World'
+     */
     firstLetterUppercase(string){
+        if (typeof string !== 'string') {
+            throw new TypeError('Input must be a string');
+        }
+
+        if (string.length === 0) {
+            throw new Error('String cannot be empty');
+        }
+
         return string.charAt(0).toUpperCase() + string.slice(1);
-    };
-   
-    firstLetterlowercase(string){
-       return string.charAt(0).toLowerCase() + string.slice(1);
-    };
-   
-    encrypt(payload, secret){
-        // Generate random IV (16 bytes for AES)
-        const iv = crypto.randomBytes(16);
-
-        // Create 256-bit key from secret
-        const key = crypto.createHash('sha256').update(String(secret)).digest();
-
-        // Create cipher with AES-256-CBC
-        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-
-        // Encrypt payload
-        let encrypted = cipher.update(String(payload), 'utf8', 'hex');
-        encrypted += cipher.final('hex');
-
-        // Prepend IV to encrypted data (IV is not secret, needed for decryption)
-        return iv.toString('hex') + ':' + encrypted;
     }
 
+    /**
+     * Lowercase first letter of string
+     *
+     * @param {String} string - Input string
+     * @returns {String} String with first letter lowercased
+     * @throws {TypeError} If string is not a string
+     * @throws {Error} If string is empty
+     *
+     * @example
+     * firstLetterlowercase('Hello')  // 'hello'
+     * firstLetterlowercase('World')  // 'world'
+     */
+    firstLetterlowercase(string){
+        if (typeof string !== 'string') {
+            throw new TypeError('Input must be a string');
+        }
+
+        if (string.length === 0) {
+            throw new Error('String cannot be empty');
+        }
+
+        return string.charAt(0).toLowerCase() + string.slice(1);
+    }
+   
+    /**
+     * Encrypt data using AES-256-CBC with random IV
+     *
+     * @param {*} payload - Data to encrypt (will be converted to string)
+     * @param {String} secret - Encryption secret/password
+     * @returns {String} Encrypted data with IV prepended (format: "iv:encryptedData")
+     * @throws {TypeError} If secret is not provided
+     * @throws {Error} If encryption fails
+     *
+     * @example
+     * const encrypted = encrypt('sensitive data', 'mySecretKey123');
+     * // Returns: "a1b2c3...iv...:d4e5f6...encrypted..."
+     */
+    encrypt(payload, secret){
+        try {
+            // Input validation
+            if (!secret || typeof secret !== 'string') {
+                throw new TypeError('Secret must be a non-empty string');
+            }
+
+            if (secret.length < 8) {
+                logger.warn({
+                    code: 'MC_CRYPTO_WEAK_SECRET',
+                    message: 'Encryption secret is shorter than recommended (8+ characters)'
+                });
+            }
+
+            // Generate random IV (16 bytes for AES)
+            const iv = crypto.randomBytes(CRYPTO_CONFIG.IV_SIZE);
+
+            // Create 256-bit key from secret
+            const key = crypto.createHash(CRYPTO_CONFIG.HASH_ALGORITHM).update(String(secret)).digest();
+
+            // Create cipher with AES-256-CBC
+            const cipher = crypto.createCipheriv(CRYPTO_CONFIG.ALGORITHM, key, iv);
+
+            // Encrypt payload
+            let encrypted = cipher.update(String(payload), 'utf8', 'hex');
+            encrypted += cipher.final('hex');
+
+            // Prepend IV to encrypted data (IV is not secret, needed for decryption)
+            return iv.toString('hex') + ':' + encrypted;
+
+        } catch (error) {
+            logger.error({
+                code: 'MC_CRYPTO_ENCRYPT_ERROR',
+                message: 'Encryption failed',
+                error: error.message
+            });
+            throw new Error(`Encryption failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Decrypt AES-256-CBC encrypted data
+     *
+     * @param {String} encryption - Encrypted data with IV (format: "iv:encryptedData")
+     * @param {String} secret - Decryption secret/password (must match encryption secret)
+     * @returns {String} Decrypted plaintext data
+     * @throws {TypeError} If inputs are invalid
+     * @throws {Error} If decryption fails
+     *
+     * @example
+     * const encrypted = encrypt('sensitive data', 'mySecretKey123');
+     * const decrypted = decrypt(encrypted, 'mySecretKey123');
+     * // Returns: "sensitive data"
+     */
     decrypt(encryption, secret){
         try {
+            // Input validation
+            if (!encryption || typeof encryption !== 'string') {
+                throw new TypeError('Encrypted data must be a non-empty string');
+            }
+
+            if (!secret || typeof secret !== 'string') {
+                throw new TypeError('Secret must be a non-empty string');
+            }
+
             // Split IV and encrypted data
             const parts = encryption.split(':');
             if (parts.length !== 2) {
-                throw new Error('Invalid encrypted data format');
+                throw new Error('Invalid encrypted data format (expected "iv:encryptedData")');
             }
 
             const iv = Buffer.from(parts[0], 'hex');
             const encryptedData = parts[1];
 
+            // Validate IV size
+            if (iv.length !== CRYPTO_CONFIG.IV_SIZE) {
+                throw new Error(`Invalid IV size (expected ${CRYPTO_CONFIG.IV_SIZE} bytes, got ${iv.length})`);
+            }
+
             // Create 256-bit key from secret
-            const key = crypto.createHash('sha256').update(String(secret)).digest();
+            const key = crypto.createHash(CRYPTO_CONFIG.HASH_ALGORITHM).update(String(secret)).digest();
 
             // Create decipher
-            const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+            const decipher = crypto.createDecipheriv(CRYPTO_CONFIG.ALGORITHM, key, iv);
 
             // Decrypt
             let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
             decrypted += decipher.final('utf8');
 
             return decrypted;
+
         } catch (error) {
-            throw new Error('Decryption failed: ' + error.message);
+            logger.error({
+                code: 'MC_CRYPTO_DECRYPT_ERROR',
+                message: 'Decryption failed',
+                error: error.message
+            });
+            throw new Error(`Decryption failed: ${error.message}`);
         }
     }
     
-    generateRandomKey(hash){
-        var sha = crypto.createHash(hash);
-        sha.update(Math.random().toString());
-        return sha.digest('hex');
+    /**
+     * Generate cryptographically secure random key
+     *
+     * SECURITY FIX: Now uses crypto.randomBytes() instead of Math.random()
+     * for cryptographically secure random number generation
+     *
+     * @param {String} [hash='sha256'] - Hash algorithm (sha256, sha512, sha384, md5, sha1)
+     * @returns {String} Hex-encoded random key
+     * @throws {Error} If hash algorithm is invalid
+     *
+     * @example
+     * const key256 = generateRandomKey('sha256');  // 64 character hex string
+     * const key512 = generateRandomKey('sha512');  // 128 character hex string
+     */
+    generateRandomKey(hash = CRYPTO_CONFIG.HASH_ALGORITHM){
+        // Input validation
+        if (!CRYPTO_CONFIG.VALID_HASH_ALGORITHMS.includes(hash)) {
+            throw new Error(
+                `Invalid hash algorithm: ${hash}. ` +
+                `Valid options: ${CRYPTO_CONFIG.VALID_HASH_ALGORITHMS.join(', ')}`
+            );
+        }
+
+        try {
+            // CRITICAL SECURITY FIX: Use crypto.randomBytes() instead of Math.random()
+            // Math.random() is NOT cryptographically secure and must never be used for keys
+            const randomBytes = crypto.randomBytes(32); // 32 bytes = 256 bits of entropy
+
+            const sha = crypto.createHash(hash);
+            sha.update(randomBytes);
+            return sha.digest('hex');
+
+        } catch (error) {
+            logger.error({
+                code: 'MC_CRYPTO_KEY_GENERATION_ERROR',
+                message: 'Failed to generate random key',
+                hash,
+                error: error.message
+            });
+            throw new Error(`Key generation failed: ${error.message}`);
+        }
     }
 
     /**
@@ -117,9 +355,14 @@ class MasterTools{
      * const base64 = tools.fileToBase64('/path/to/file.jpg');
      */
     base64(){
-        console.warn('[DEPRECATED] MasterTools.base64() only works for TEXT strings, not binary files. Use Buffer.toString("base64") or tools.fileToBase64() instead. This method will be removed in v2.0.');
+        logger.warn({
+            code: 'MC_TOOLS_DEPRECATED_BASE64',
+            message: 'MasterTools.base64() is deprecated and only works for TEXT strings, not binary files',
+            recommendation: 'Use Buffer.toString("base64") or tools.fileToBase64() instead',
+            removal: 'This method will be removed in v2.0'
+        });
 
-        var $that = this;
+        const $that = this;
         return {
             encode: function(string){
 
@@ -547,75 +790,233 @@ class MasterTools{
         return mimeTypes[ext] || 'application/octet-stream';
     }
 
+    /**
+     * Combine object or array of objects into target object
+     *
+     * @param {Object|Array} data - Source object or array of objects
+     * @param {Object} objParams - Target object to merge into
+     * @returns {Object} Combined object
+     * @throws {TypeError} If objParams is not an object
+     *
+     * @example
+     * combineObjandArray({ a: 1, b: 2 }, {})           // { a: 1, b: 2 }
+     * combineObjandArray([{ a: 1 }, { b: 2 }], {})     // { a: 1, b: 2 }
+     */
     combineObjandArray(data, objParams){
+        // Input validation
+        if (!objParams || typeof objParams !== 'object') {
+            throw new TypeError('objParams must be an object');
+        }
+
+        if (!data) {
+            return objParams;
+        }
+
+        // Prototype pollution protection
+        const isSafeKey = (key) => {
+            return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+        };
 
         if(Array.isArray(data) === false){
             // if data is object
-            for (var key in data) {
-                if (data.hasOwnProperty(key)) {
+            for (const key in data) {
+                if (Object.prototype.hasOwnProperty.call(data, key) && isSafeKey(key)) {
                     objParams[key] = data[key];
                 }
-            };
+            }
         }
         else{
-            for(var y = 0; y < data.length; y++){
+            for(let y = 0; y < data.length; y++){
                 // inside array we have an object
-                for (var key in data[y]) {
-                    if (data[y].hasOwnProperty(key)) {
-                        objParams[key] = data[y][key];
+                if (data[y] && typeof data[y] === 'object') {
+                    for (const key in data[y]) {
+                        if (Object.prototype.hasOwnProperty.call(data[y], key) && isSafeKey(key)) {
+                            objParams[key] = data[y][key];
+                        }
                     }
-                };
+                }
             }
-        };
-    
-        return objParams;
-    };
+        }
 
+        return objParams;
+    }
+
+    /**
+     * Check if value is a function
+     *
+     * @param {*} obj - Value to check
+     * @returns {Boolean} True if value is a function
+     *
+     * @example
+     * isFunction(() => {})              // true
+     * isFunction(function() {})         // true
+     * isFunction({})                    // false
+     */
     isFunction(obj) {
         return !!(obj && obj.constructor && obj.call && obj.apply);
-    };
+    }
 
+    /**
+     * Merge source object properties into target object
+     *
+     * @param {Object} obj - Target object
+     * @param {Object} src - Source object to merge from
+     * @returns {Object} Merged object
+     * @throws {TypeError} If src is not an object
+     *
+     * @example
+     * combineObjects({ a: 1 }, { b: 2 })  // { a: 1, b: 2 }
+     */
     combineObjects(obj, src) {
-        if(obj){
-            for(var i in src){
+        // Input validation
+        if (!src || typeof src !== 'object') {
+            throw new TypeError('Source must be an object');
+        }
+
+        if(!obj || typeof obj !== 'object'){
+            return {};
+        }
+
+        // Prototype pollution protection
+        const isSafeKey = (key) => {
+            return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+        };
+
+        for(const i in src){
+            if (Object.prototype.hasOwnProperty.call(src, i) && isSafeKey(i)) {
                 obj[i] = src[i];
-            };
-            return obj;
+            }
         }
-        else{
-            return {}
-        }
+        return obj;
+    }
 
-    };
-
+    /**
+     * Generate random alphanumeric ID
+     *
+     * WARNING: Uses Math.random() which is NOT cryptographically secure.
+     * For secure keys, use generateRandomKey() instead.
+     *
+     * @param {Number} length - Length of ID to generate
+     * @returns {String} Random alphanumeric string
+     * @throws {TypeError} If length is not a number
+     * @throws {Error} If length is invalid
+     *
+     * @example
+     * makeWordId(8)   // 'aBcDeFgH'
+     * makeWordId(16)  // 'xYzAbCdEfGhIjKlM'
+     */
     makeWordId(length) {
-        var result           = '';
-        var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-        var charactersLength = characters.length;
-        for ( var i = 0; i < length; i++ ) {
+        // Input validation
+        if (typeof length !== 'number' || isNaN(length)) {
+            throw new TypeError('Length must be a number');
+        }
+
+        if (length <= 0 || length > STRING_CONFIG.MAX_WORD_ID_LENGTH) {
+            throw new Error(
+                `Length must be between 1 and ${STRING_CONFIG.MAX_WORD_ID_LENGTH}`
+            );
+        }
+
+        let result = '';
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        const charactersLength = characters.length;
+        for (let i = 0; i < length; i++) {
            result += characters.charAt(Math.floor(Math.random() * charactersLength));
         }
         return result;
-    };
+    }
     
+    /**
+     * Merge source object properties into target object prototype
+     *
+     * WARNING: Modifying prototypes can be dangerous. Use with caution.
+     *
+     * @param {Function} obj - Constructor function with prototype to modify
+     * @param {Object} src - Source object with properties to add to prototype
+     * @returns {Function} Modified constructor function
+     * @throws {TypeError} If obj is not a function or src is not an object
+     *
+     * @example
+     * function MyClass() {}
+     * combineObjectPrototype(MyClass, { method1: function() {} })
+     * // MyClass.prototype.method1 is now available
+     */
     combineObjectPrototype(obj, src) {
-        for(var i in src){
-            obj.prototype[i] = src[i];
-        };
-        return obj;
-    };
-
-    convertArrayToObject(obj, keyPath, value) {
-        var key = null;
-       var lastKeyIndex = keyPath.length-1;
-        for (var i = 0; i < lastKeyIndex; ++ i) {
-          key = keyPath[i];
-          if (!(key in obj))
-            obj[key] = {}
-          obj = obj[key];
+        // Input validation
+        if (typeof obj !== 'function') {
+            throw new TypeError('Object must be a constructor function');
         }
+
+        if (!src || typeof src !== 'object') {
+            throw new TypeError('Source must be an object');
+        }
+
+        // Prototype pollution protection
+        const isSafeKey = (key) => {
+            return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+        };
+
+        for(const i in src){
+            if (Object.prototype.hasOwnProperty.call(src, i) && isSafeKey(i)) {
+                obj.prototype[i] = src[i];
+            }
+        }
+        return obj;
+    }
+
+    /**
+     * Convert array path to nested object structure
+     *
+     * @param {Object} obj - Target object to modify
+     * @param {Array} keyPath - Array of keys representing path (e.g., ['a', 'b', 'c'])
+     * @param {*} value - Value to set at the path
+     * @returns {void}
+     * @throws {TypeError} If obj is not an object or keyPath is not an array
+     *
+     * @example
+     * const obj = {};
+     * convertArrayToObject(obj, ['user', 'name'], 'John')
+     * // obj is now: { user: { name: 'John' } }
+     */
+    convertArrayToObject(obj, keyPath, value) {
+        // Input validation
+        if (!obj || typeof obj !== 'object') {
+            throw new TypeError('Object must be an object');
+        }
+
+        if (!Array.isArray(keyPath) || keyPath.length === 0) {
+            throw new TypeError('keyPath must be a non-empty array');
+        }
+
+        // Prototype pollution protection
+        const isSafeKey = (key) => {
+            return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+        };
+
+        let key = null;
+        const lastKeyIndex = keyPath.length - 1;
+
+        for (let i = 0; i < lastKeyIndex; ++i) {
+            key = keyPath[i];
+
+            // Security check
+            if (!isSafeKey(key)) {
+                throw new Error(`Unsafe key in path: ${key}`);
+            }
+
+            if (!(key in obj)) {
+                obj[key] = {};
+            }
+            obj = obj[key];
+        }
+
+        // Security check for final key
+        if (!isSafeKey(keyPath[lastKeyIndex])) {
+            throw new Error(`Unsafe key in path: ${keyPath[lastKeyIndex]}`);
+        }
+
         obj[keyPath[lastKeyIndex]] = value;
-     };
+    }
     
     
 }
