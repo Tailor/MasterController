@@ -908,7 +908,32 @@ class MasterRouter {
                 throw new TypeError('Request object must have a valid response property');
             }
 
+            // Normalize pathName from various request object formats
             if (!rr.pathName || typeof rr.pathName !== 'string') {
+                // Try to extract pathName from standard HTTP request properties
+                if (rr.request.url) {
+                    // Handle full URL or path with query string (Node.js http, Express)
+                    try {
+                        // Try parsing as full URL first
+                        const url = new URL(rr.request.url, `http://${rr.request.headers?.host || 'localhost'}`);
+                        rr.pathName = url.pathname;
+                    } catch (e) {
+                        // Fallback: treat as relative path, strip query string
+                        rr.pathName = rr.request.url.split('?')[0];
+                    }
+                } else if (rr.request.path) {
+                    // Express-style request.path
+                    rr.pathName = rr.request.path;
+                } else if (rr.request.pathname) {
+                    // Alternative property name
+                    rr.pathName = rr.request.pathname;
+                } else {
+                    throw new TypeError('Request object must have a valid path (url, path, pathname, or pathName property)');
+                }
+            }
+
+            // Validate that we now have a valid pathName
+            if (typeof rr.pathName !== 'string') {
                 throw new TypeError('Request object must have a valid pathName');
             }
 
