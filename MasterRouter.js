@@ -763,16 +763,36 @@ class MasterRouter {
              try{
                  Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterlowercase(requestObject.toController)}Controller`));
              }catch(e){
+                 // Check if this is a "file not found" error vs a loading error
+                 const isModuleNotFound = e.code === 'MODULE_NOT_FOUND' &&
+                     e.message.includes(`${tools.firstLetterlowercase(requestObject.toController)}Controller`);
+
+                 if (!isModuleNotFound) {
+                     // Controller file exists but has an error (syntax error, bad require, etc.)
+                     // Surface the actual error
+                     throw e;
+                 }
+
+                 // Try uppercase variant
                  try{
                      Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterUppercase(requestObject.toController)}Controller`));
                  }catch(e2){
-                     // Controller not found - handle error
+                     // Check if this is also a "file not found" error
+                     const isModuleNotFound2 = e2.code === 'MODULE_NOT_FOUND' &&
+                         e2.message.includes(`${tools.firstLetterUppercase(requestObject.toController)}Controller`);
+
+                     if (!isModuleNotFound2) {
+                         // Controller file exists but has an error - surface it
+                         throw e2;
+                     }
+
+                     // Controller truly not found - show generic error
                      const error = handleControllerError(
                          new Error(`Controller not found: ${requestObject.toController}Controller`),
                          requestObject.toController,
                          requestObject.toAction,
                          requestObject.pathName,
-                         currentRoute.routeDef // Pass route definition
+                         currentRoute.routeDef
                      );
 
                      sendErrorResponse(requestObject.response, error, requestObject.pathName);
