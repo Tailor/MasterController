@@ -650,6 +650,8 @@ function handleRoutingError(requestPath, routes = [], errorContext = null) {
  */
 function findSimilarRoutes(requestPath, routes) {
   if (!routes || routes.length === 0) return [];
+  // Skip similarity search for long/malicious paths — they won't match any route
+  if (!requestPath || requestPath.length > 200) return [];
 
   const { levenshteinDistance } = require('./MasterErrorHandler');
 
