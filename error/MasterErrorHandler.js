@@ -75,7 +75,8 @@ const ERROR_CODES = {
  * Levenshtein distance for "Did you mean?" suggestions
  */
 function levenshteinDistance(str1, str2) {
-  // Guard against extremely long strings (e.g. malicious bot requests)
+  // Guard against non-strings (objects, regex, undefined) and extremely long paths
+  if (typeof str1 !== 'string' || typeof str2 !== 'string') return Infinity;
   if (str1.length > 200 || str2.length > 200) return Infinity;
   const len1 = str1.length;
   const len2 = str2.length;
