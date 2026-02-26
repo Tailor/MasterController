@@ -805,11 +805,12 @@ class MasterRouter {
 
              tools.combineObjectPrototype(Control, this._master.controllerList);
              Control.prototype.__namespace = Control.name;
-             Control.prototype.__requestObject = requestObject;
-             Control.prototype.__currentRoute = currentRoute;
-             Control.prototype.__response = requestObject.response;
-             Control.prototype.__request = requestObject.request;
              const control = new Control(requestObject);
+             // Set request-specific state on INSTANCE (not prototype) for concurrency safety
+             control.__requestObject = requestObject;
+             control.__currentRoute = currentRoute;
+             control.__response = requestObject.response;
+             control.__request = requestObject.request;
              const _callEmit = new EventEmitter();
 
              _callEmit.once(EVENT_NAMES.CONTROLLER, function(){
@@ -837,7 +838,16 @@ class MasterRouter {
                             // and no response was sent yet (e.g., overridden returnJson pattern)
                             if (returnValue !== undefined && returnValue !== null
                                 && !requestObject.response.headersSent && !requestObject.response._headerSent) {
-                                const json = JSON.stringify(returnValue);
+                                const seen = new WeakSet();
+                                const json = JSON.stringify(returnValue, (key, value) => {
+                                    if (typeof value === 'object' && value !== null) {
+                                        if (seen.has(value)) {
+                                            return '[Circular Reference]';
+                                        }
+                                        seen.add(value);
+                                    }
+                                    return value;
+                                });
                                 requestObject.response.writeHead(200, {
                                     'Content-Type': 'application/json',
                                     'Content-Length': Buffer.byteLength(json, 'utf8')
@@ -880,7 +890,21 @@ class MasterRouter {
 
              // check if before function is avaliable and wait for it to return
              if(control.__hasBeforeAction(control, requestObject)){
-                 control.__callBeforeAction(control, requestObject, _callEmit);
+                 control.__callBeforeAction(control, requestObject, _callEmit)
+                     .catch((error) => {
+                         if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
+                             const mcError = handleControllerError(
+                                 error,
+                                 requestObject.toController,
+                                 requestObject.toAction,
+                                 requestObject.pathName,
+                                 currentRoute.routeDef
+                             );
+                             sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                         }
+                         performanceTracker.end(requestId);
+                         _callEmit.removeAllListeners();
+                     });
              }else{
                 _callEmit.emit("controller");
              }

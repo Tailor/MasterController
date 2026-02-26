@@ -235,6 +235,7 @@ class MasterCors{
 			// Handle preflight OPTIONS request
 			if (ctx.type === 'options') {
 				$that.load({ request: ctx.request, response: ctx.response });
+				ctx.request.resume();
 				ctx.response.statusCode = 204;
 				ctx.response.end();
 				return; // Terminal - don't call next()

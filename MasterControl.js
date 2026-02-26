@@ -490,7 +490,7 @@ class MasterControl {
             if(type === "http"){
                 $that.serverProtocol = "http";
                 const server = http.createServer(async function(req, res) {
-                    $that.serverRun(req, res);
+                    await $that.serverRun(req, res);
                 });
                 // Set server immediately so config can access it
                 $that.server = server;
@@ -534,7 +534,7 @@ class MasterControl {
                     if(credentials.honorCipherOrder === undefined){ credentials.honorCipherOrder = true; }
                     if(!credentials.ALPNProtocols){ credentials.ALPNProtocols = ['h2', 'http/1.1']; }
                     const server = https.createServer(credentials, async function(req, res) {
-                        $that.serverRun(req, res);
+                        await $that.serverRun(req, res);
                     });
                     // Set server immediately so config can access it
                     $that.server = server;
@@ -1006,25 +1006,23 @@ class MasterControl {
         const $that = this;
         console.log("path", `${req.method} ${req.url}`);
 
-        // Create request context for middleware pipeline
-        const parsedUrl = url.parse(req.url);
-        const pathname = parsedUrl.pathname;
-        const ext = path.parse(pathname).ext;
-
-        const context = {
-            request: req,
-            response: res,
-            requrl: url.parse(req.url, true),
-            pathName: pathname.replace(/^\/|\/$/g, '').toLowerCase(),
-            type: req.method.toLowerCase(),
-            params: {},
-            state: {},       // User-defined state shared across middleware
-            master: $that,   // Access to framework instance
-            isStatic: ext !== '' // Is this a static file request?
-        };
-
-        // Execute middleware pipeline
         try {
+            const parsedUrl = url.parse(req.url);
+            const pathname = parsedUrl.pathname;
+            const ext = path.parse(pathname).ext;
+
+            const context = {
+                request: req,
+                response: res,
+                requrl: url.parse(req.url, true),
+                pathName: pathname.replace(/^\/|\/$/g, '').toLowerCase(),
+                type: req.method.toLowerCase(),
+                params: {},
+                state: {},
+                master: $that,
+                isStatic: ext !== ''
+            };
+
             await $that.pipeline.execute(context);
         } catch (error) {
             console.error('Pipeline execution failed:', error);
