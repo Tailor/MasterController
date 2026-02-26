@@ -146,25 +146,10 @@ class MasterControl {
         // Only freeze in production to allow for easier debugging in development
         const isProduction = process.env.NODE_ENV === 'production';
 
-        if (isProduction) {
-            // Freeze prototypes to prevent prototype pollution attacks
-            try {
-                Object.freeze(Object.prototype);
-                Object.freeze(Array.prototype);
-                Object.freeze(Function.prototype);
-
-                logger.info({
-                    code: 'MC_SECURITY_PROTOTYPE_FROZEN',
-                    message: 'Prototypes frozen in production mode for security'
-                });
-            } catch (err) {
-                logger.warn({
-                    code: 'MC_SECURITY_FREEZE_FAILED',
-                    message: 'Failed to freeze prototypes',
-                    error: err.message
-                });
-            }
-        }
+        // NOTE: Prototype freezing was removed. Freezing Object.prototype/Array.prototype/
+        // Function.prototype breaks third-party libraries (e.g., long, mysql2) that define
+        // properties on their prototypes after framework init. Prototype pollution protection
+        // is handled via input validation in MasterValidator.js instead.
 
         // Add prototype pollution detection utility
         this._detectPrototypePollution = (obj) => {
