@@ -832,7 +832,18 @@ class MasterRouter {
 
                     // Execute action
                     Promise.resolve(wrappedAction.call(control, requestObject))
-                        .then(() => {
+                        .then((returnValue) => {
+                            // Auto-send return value as JSON if controller returned data
+                            // and no response was sent yet (e.g., overridden returnJson pattern)
+                            if (returnValue !== undefined && returnValue !== null
+                                && !requestObject.response.headersSent && !requestObject.response._headerSent) {
+                                const json = JSON.stringify(returnValue);
+                                requestObject.response.writeHead(200, {
+                                    'Content-Type': 'application/json',
+                                    'Content-Length': Buffer.byteLength(json, 'utf8')
+                                });
+                                requestObject.response.end(json);
+                            }
                             performanceTracker.end(requestId);
                             // MEMORY LEAK FIX: Clean up event listeners
                             _callEmit.removeAllListeners();
