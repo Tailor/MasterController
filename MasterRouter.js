@@ -124,14 +124,18 @@ const ROUTER_CONFIG = {
         return paramValue;
     }
 
+    // Fast path: skip expensive regex checks for simple alphanumeric values
+    if (/^[a-zA-Z0-9_-]+$/.test(paramValue)) {
+        return paramValue;
+    }
+
     // Check for path traversal attempts
     const pathCheck = detectPathTraversal(paramValue);
     if (!pathCheck.safe) {
         logger.warn({
             code: 'MC_SECURITY_PATH_TRAVERSAL',
             message: 'Path traversal attempt detected in route parameter',
-            param: paramName,
-            value: paramValue
+            context: { param: paramName, value: paramValue }
         });
 
         // Remove dangerous content
@@ -144,8 +148,7 @@ const ROUTER_CONFIG = {
         logger.warn({
             code: 'MC_SECURITY_SQL_INJECTION',
             message: 'SQL injection attempt detected in route parameter',
-            param: paramName,
-            value: paramValue
+            context: { param: paramName, value: paramValue }
         });
 
         // Escape to prevent injection
@@ -158,8 +161,7 @@ const ROUTER_CONFIG = {
         logger.warn({
             code: 'MC_SECURITY_COMMAND_INJECTION',
             message: 'Command injection attempt detected in route parameter',
-            param: paramName,
-            value: paramValue
+            context: { param: paramName, value: paramValue }
         });
 
         // Remove dangerous characters
@@ -810,7 +812,7 @@ class MasterRouter {
              const control = new Control(requestObject);
              const _callEmit = new EventEmitter();
 
-             _callEmit.on(EVENT_NAMES.CONTROLLER, function(){
+             _callEmit.once(EVENT_NAMES.CONTROLLER, function(){
                 try {
                     control.next = function(){
                         control.__callAfterAction(control, requestObject);
@@ -959,6 +961,11 @@ class MasterRouter {
 
             if (!rr.type || typeof rr.type !== 'string') {
                 throw new TypeError('Request object must have a valid type (HTTP method)');
+            }
+
+            // Skip route processing for OPTIONS requests already handled by CORS middleware
+            if (rr.type.toLowerCase() === 'options' && (rr.response.headersSent || rr.response._headerSent)) {
+                return;
             }
 
             const $that = this;
