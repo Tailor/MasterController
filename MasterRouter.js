@@ -37,7 +37,9 @@ const HTTP_METHODS = {
     GET: 'get',
     POST: 'post',
     PUT: 'put',
+    PATCH: 'patch',
     DELETE: 'delete',
+    HEAD: 'head',
     OPTIONS: 'options'
 };
 
@@ -239,7 +241,10 @@ const ROUTER_CONFIG = {
                         const pathObj = normalizePaths(requestObject.pathName, route.path, testParams);
 
                         // if we find the route that matches the request
-                        if(pathObj.requestPath === pathObj.routePath && route.type === requestObject.type){
+                        // HEAD requests match GET routes per HTTP spec (RFC 9110 §9.3.2)
+                        const methodMatches = route.type === requestObject.type
+                            || (requestObject.type === HTTP_METHODS.HEAD && route.type === HTTP_METHODS.GET);
+                        if(pathObj.requestPath === pathObj.routePath && methodMatches){
                             // Only commit the extracted params if this route actually matches
                             requestObject.params = testParams;
 
