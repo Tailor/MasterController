@@ -853,7 +853,12 @@ class MasterRouter {
                                     }
                                     return value;
                                 });
-                                requestObject.response.writeHead(200, {
+                                // Use status field from return value as HTTP status code if it's a valid 4xx/5xx code
+                                const httpStatus = (returnValue && typeof returnValue.status === 'number' && returnValue.status >= 400 && returnValue.status <= 599)
+                                    ? returnValue.status
+                                    : 200;
+
+                                requestObject.response.writeHead(httpStatus, {
                                     'Content-Type': 'application/json',
                                     'Content-Length': Buffer.byteLength(json, 'utf8')
                                 });

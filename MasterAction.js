@@ -109,7 +109,12 @@ class MasterAction{
 				return;
 			}
 
-			this.__response.writeHead(HTTP_STATUS.OK, {
+			// Use status field from data as HTTP status code if it's a valid 4xx/5xx code
+			const httpStatus = (data && typeof data.status === 'number' && data.status >= 400 && data.status <= 599)
+				? data.status
+				: HTTP_STATUS.OK;
+
+			this.__response.writeHead(httpStatus, {
 				'Content-Type': 'application/json',
 				'Content-Length': byteSize
 			});
