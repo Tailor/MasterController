@@ -115,8 +115,10 @@ class MasterPipeline {
             if (this._pathMatches(requestPath, path)) {
                 // Execute branch pipeline
                 await branch.execute(ctx);
-                // After branch completes, continue main pipeline
-                await next();
+                // Stop if response already sent (e.g., auth rejection)
+                if (!ctx.response.headersSent && !ctx.response.writableEnded) {
+                    await next();
+                }
             } else {
                 // Skip branch, continue main pipeline
                 await next();
