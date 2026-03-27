@@ -816,6 +816,7 @@ class MasterRouter {
              control.__currentRoute = currentRoute;
              control.__response = requestObject.response;
              control.__request = requestObject.request;
+             control.state = requestObject.state || {};
              const _callEmit = new EventEmitter();
 
              _callEmit.once(EVENT_NAMES.CONTROLLER, function(){

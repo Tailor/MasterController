@@ -268,7 +268,7 @@ Middleware receives a context object:
         formData: {},       // POST body data
         periodId: '123'     // Route parameters (e.g., /period/:periodId)
     },
-    state: {},              // Custom state to share between middleware
+    state: {},              // Custom state shared between middleware and controllers (this.state)
     master: master,         // Framework instance
     isStatic: false         // Is this a static file request?
 }
@@ -718,10 +718,30 @@ console.log(JSON.stringify(snapshot));
 
 ### Use Cases
 
-**Share data between middleware and controllers:**
+**Share data between middleware and controllers via `state`:**
+```javascript
+// In middleware — set state on ctx
+master.pipeline.use(async (ctx, next) => {
+    const token = ctx.request.headers.authorization?.replace('Bearer ', '');
+    ctx.state.user = await validateToken(token);
+    ctx.state.requestStart = Date.now();
+    await next();
+});
+
+// In controller — access state via this.state
+async index() {
+    const user = this.state.user;       // Set by auth middleware
+    const start = this.state.requestStart;
+    return this.returnJson({ user, loadTime: Date.now() - start });
+}
+```
+
+`this.state` in controllers is the same object reference as `ctx.state` in middleware — mutations in either direction are shared within the request lifecycle.
+
+**Share data using temp (key-value store):**
 ```javascript
 // In middleware
-master.use(async (ctx, next) => {
+master.pipeline.use(async (ctx, next) => {
     ctx.temp.add('requestStart', Date.now());
     await next();
     const duration = Date.now() - ctx.temp.get('requestStart');
