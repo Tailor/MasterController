@@ -957,37 +957,9 @@ class MasterControl {
             await next();
         });
 
-        // 5. Routing (TERMINAL - always needed)
-        $that.pipeline.run(async (ctx) => {
-            // Attach pipeline state to raw request object so it survives even if
-            // config/load creates a new requestObject without copying ctx.state
-            ctx.request.__pipelineState = ctx.state;
-            // Load config/load which triggers routing
-            require(`${$that.root}/config/load`)(ctx);
-        });
-
-        // 6. Global Error Handler
-        $that.pipeline.useError(async (error, ctx, next) => {
-            logger.error({
-                code: 'MC_ERR_PIPELINE',
-                message: 'Error in middleware pipeline',
-                error: error.message,
-                stack: error.stack,
-                path: ctx.request.url,
-                method: ctx.type
-            });
-
-            if (!ctx.response.headersSent) {
-                ctx.response.statusCode = 500;
-                ctx.response.setHeader('Content-Type', 'application/json');
-                ctx.response.end(JSON.stringify({
-                    error: 'Internal Server Error',
-                    message: process.env.NODE_ENV === 'production'
-                        ? 'An error occurred'
-                        : error.message
-                }));
-            }
-        });
+        // 5. Routing and Error Handler are registered in start() so that user
+        // middleware (auth, logging, etc.) registered between setupServer() and
+        // start() runs BEFORE the terminal routing middleware.
     }
 
     async serverRun(req, res){
@@ -1031,6 +1003,41 @@ class MasterControl {
             this.serverSettings(this._pendingServerSettings);
             this._pendingServerSettings = null;
         }
+
+        // Register terminal routing and error handler LAST so that user middleware
+        // (auth, logging, etc.) registered between setupServer() and start() runs first
+        const $that = this;
+
+        // Terminal routing middleware
+        $that.pipeline.run(async (ctx) => {
+            // Attach pipeline state to raw request object so it survives even if
+            // config/load creates a new requestObject without copying ctx.state
+            ctx.request.__pipelineState = ctx.state;
+            require(`${$that.root}/config/load`)(ctx);
+        });
+
+        // Global error handler
+        $that.pipeline.useError(async (error, ctx, next) => {
+            logger.error({
+                code: 'MC_ERR_PIPELINE',
+                message: 'Error in middleware pipeline',
+                error: error.message,
+                stack: error.stack,
+                path: ctx.request.url,
+                method: ctx.type
+            });
+
+            if (!ctx.response.headersSent) {
+                ctx.response.statusCode = 500;
+                ctx.response.setHeader('Content-Type', 'application/json');
+                ctx.response.end(JSON.stringify({
+                    error: 'Internal Server Error',
+                    message: process.env.NODE_ENV === 'production'
+                        ? 'An error occurred'
+                        : error.message
+                }));
+            }
+        });
     }
 
     startMVC(foldername){
