@@ -959,6 +959,9 @@ class MasterControl {
 
         // 5. Routing (TERMINAL - always needed)
         $that.pipeline.run(async (ctx) => {
+            // Attach pipeline state to raw request object so it survives even if
+            // config/load creates a new requestObject without copying ctx.state
+            ctx.request.__pipelineState = ctx.state;
             // Load config/load which triggers routing
             require(`${$that.root}/config/load`)(ctx);
         });
