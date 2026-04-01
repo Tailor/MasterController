@@ -82,11 +82,13 @@ class SessionSecurity {
       }
 
       // Save session on response
-      const originalEnd = res.end;
-      res.end = (...args) => {
-        this._saveSession(req);
-        originalEnd.apply(res, args);
-      };
+      if (typeof res?.end === 'function') {
+        const originalEnd = res.end;
+        res.end = (...args) => {
+          this._saveSession(req);
+          originalEnd.apply(res, args);
+        };
+      }
 
       next();
     };
@@ -221,10 +223,11 @@ class SessionSecurity {
    * Generate fingerprint for session hijacking detection
    */
   _generateFingerprint(req) {
+    const headers = req?.headers || {};
     const components = [
-      req.headers['user-agent'] || '',
-      req.headers['accept-language'] || '',
-      req.connection.remoteAddress || '',
+      headers['user-agent'] || '',
+      headers['accept-language'] || '',
+      req?.connection?.remoteAddress || '',
       // Don't include Accept-Encoding (changes too often)
     ];
 
@@ -271,7 +274,9 @@ class SessionSecurity {
       options.push(`SameSite=${this.sameSite}`);
     }
 
-    res.setHeader('Set-Cookie', options.join('; '));
+    if (typeof res?.setHeader === 'function') {
+      res.setHeader('Set-Cookie', options.join('; '));
+    }
   }
 
   /**
@@ -292,7 +297,9 @@ class SessionSecurity {
         options.push(`Domain=${this.domain}`);
       }
 
-      res.setHeader('Set-Cookie', options.join('; '));
+      if (typeof res?.setHeader === 'function') {
+        res.setHeader('Set-Cookie', options.join('; '));
+      }
 
       req.session = null;
       req.sessionId = null;
@@ -512,7 +519,7 @@ class MasterSessionSecurity {
    * @returns {String|null} - Cookie value or null
    */
   getCookie(request, name) {
-    const cookies = request.headers.cookie;
+    const cookies = request?.headers?.cookie;
     if (!cookies) return null;
 
     const match = cookies.match(new RegExp(`${name}=([^;]+)`));
@@ -561,7 +568,9 @@ class MasterSessionSecurity {
       cookieOptions.push('SameSite=Lax');
     }
 
-    response.setHeader('Set-Cookie', cookieOptions.join('; '));
+    if (typeof response?.setHeader === 'function') {
+      response.setHeader('Set-Cookie', cookieOptions.join('; '));
+    }
   }
 
   /**
@@ -581,7 +590,9 @@ class MasterSessionSecurity {
       cookieOptions.push(`Domain=${options.domain}`);
     }
 
-    response.setHeader('Set-Cookie', cookieOptions.join('; '));
+    if (typeof response?.setHeader === 'function') {
+      response.setHeader('Set-Cookie', cookieOptions.join('; '));
+    }
   }
 }
 
