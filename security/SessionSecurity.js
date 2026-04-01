@@ -238,7 +238,7 @@ class SessionSecurity {
    * Parse session cookie from request
    */
   _parseCookie(req) {
-    const cookies = req.headers.cookie;
+    const cookies = req?.headers?.cookie;
     if (!cookies) return null;
 
     const match = cookies.match(new RegExp(`${this.cookieName}=([^;]+)`));
