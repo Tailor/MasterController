@@ -98,6 +98,15 @@ class MasterErrorLogger {
         this._dispatch(summary);
       }
       this._recentErrors.set(code, { count: 1, firstSeen: now, lastSeen: now });
+
+      // Prevent unbounded growth — evict stale entries
+      if (this._recentErrors.size > 100) {
+        for (const [key, val] of this._recentErrors) {
+          if ((now - val.lastSeen) > this.options.dedupeWindowMs) {
+            this._recentErrors.delete(key);
+          }
+        }
+      }
     }
 
     const entry = this._formatLogEntry(data, level);
