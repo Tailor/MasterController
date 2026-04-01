@@ -172,7 +172,14 @@ function extractUserCodeContext(stack) {
 function setupGlobalErrorHandlers() {
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
-    console.error('[MasterController] Uncaught Exception:', error);
+    // EPIPE/stream errors from logging itself — do not recurse
+    if (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED') {
+      try { process.stderr.write(`[MasterController] Stream error suppressed: ${error.code}\n`); } catch (_) {}
+      return;
+    }
+
+    // Use stderr.write instead of console.error to avoid EPIPE recursion
+    try { process.stderr.write(`[MasterController] Uncaught Exception: ${error.message}\n`); } catch (_) {}
 
     // Extract context from stack trace
     const context = extractUserCodeContext(error.stack);
@@ -181,34 +188,33 @@ function setupGlobalErrorHandlers() {
     let enhancedMessage = `Uncaught exception: ${error.message}`;
 
     if (context && context.triggeringFile) {
-      enhancedMessage += `\n\n🔍 Error Location: ${context.triggeringFile.location}`;
+      enhancedMessage += `\n\nError Location: ${context.triggeringFile.location}`;
     }
 
     if (context && context.userFiles.length > 0) {
-      enhancedMessage += `\n\n📂 Your Code Involved:`;
+      enhancedMessage += `\n\nYour Code Involved:`;
       context.userFiles.forEach((file, i) => {
-        if (i < 3) { // Show first 3 user files
+        if (i < 3) {
           enhancedMessage += `\n   ${i + 1}. ${file.location}`;
         }
       });
     }
 
     if (context && context.frameworkFiles.length > 0) {
-      enhancedMessage += `\n\n🔧 Framework Files Involved:`;
+      enhancedMessage += `\n\nFramework Files Involved:`;
       context.frameworkFiles.forEach((file, i) => {
-        if (i < 2) { // Show first 2 framework files
+        if (i < 2) {
           enhancedMessage += `\n   ${i + 1}. ${file.location}`;
         }
       });
     }
 
-    console.error(enhancedMessage);
+    try { process.stderr.write(enhancedMessage + '\n'); } catch (_) {}
 
     logger.fatal({
       code: 'MC_ERR_UNCAUGHT_EXCEPTION',
       message: enhancedMessage,
       originalError: error,
-      stack: error.stack,
       context: context
     });
 
@@ -220,7 +226,7 @@ function setupGlobalErrorHandlers() {
 
   // Handle unhandled promise rejections
   process.on('unhandledRejection', (reason, promise) => {
-    console.error('[MasterController] Unhandled Rejection:', reason);
+    try { process.stderr.write(`[MasterController] Unhandled Rejection: ${reason}\n`); } catch (_) {}
 
     // Extract context from stack trace if available
     const context = reason?.stack ? extractUserCodeContext(reason.stack) : null;
@@ -229,27 +235,26 @@ function setupGlobalErrorHandlers() {
     let enhancedMessage = `Unhandled promise rejection: ${reason}`;
 
     if (context && context.triggeringFile) {
-      enhancedMessage += `\n\n🔍 Error Location: ${context.triggeringFile.location}`;
+      enhancedMessage += `\n\nError Location: ${context.triggeringFile.location}`;
     }
 
     if (context && context.userFiles.length > 0) {
-      enhancedMessage += `\n\n📂 Your Code Involved:`;
+      enhancedMessage += `\n\nYour Code Involved:`;
       context.userFiles.forEach((file, i) => {
-        if (i < 3) { // Show first 3 user files
+        if (i < 3) {
           enhancedMessage += `\n   ${i + 1}. ${file.location}`;
         }
       });
     }
 
     if (enhancedMessage !== `Unhandled promise rejection: ${reason}`) {
-      console.error(enhancedMessage);
+      try { process.stderr.write(enhancedMessage + '\n'); } catch (_) {}
     }
 
     logger.error({
       code: 'MC_ERR_UNHANDLED_REJECTION',
       message: enhancedMessage,
       originalError: reason,
-      stack: reason?.stack,
       context: context
     });
   });
@@ -257,7 +262,7 @@ function setupGlobalErrorHandlers() {
   // Handle warnings
   process.on('warning', (warning) => {
     if (isDevelopment) {
-      console.warn('[MasterController] Warning:', warning);
+      try { process.stderr.write(`[MasterController] Warning: ${warning.message}\n`); } catch (_) {}
     }
 
     logger.warn({

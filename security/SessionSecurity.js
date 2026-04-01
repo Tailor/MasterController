@@ -36,18 +36,25 @@ class SessionSecurity {
    * Session middleware
    */
   middleware() {
-    return async (req, res, next) => {
+    const self = this;
+
+    // Return pipeline-compatible (ctx, next) middleware.
+    // MasterPipeline.execute() calls handler(ctx, next), not handler(req, res, next).
+    return async (ctx, next) => {
+      const req = ctx.request;
+      const res = ctx.response;
+
       // Parse session from cookie
-      const sessionId = this._parseCookie(req);
+      const sessionId = self._parseCookie(req);
 
       if (sessionId) {
         // Load existing session
         const session = sessionStore.get(sessionId);
 
-        if (session && this._isSessionValid(session, req)) {
+        if (session && self._isSessionValid(session, req)) {
           // Check if session needs regeneration
-          if (this._shouldRegenerate(session)) {
-            req.session = await this._regenerateSession(sessionId, session, res);
+          if (self._shouldRegenerate(session)) {
+            req.session = await self._regenerateSession(sessionId, session, res);
           } else {
             // Use existing session
             req.session = session.data;
@@ -57,9 +64,9 @@ class SessionSecurity {
             session.lastAccess = Date.now();
 
             // Extend expiry if rolling
-            if (this.rolling) {
-              session.expiry = Date.now() + this.maxAge;
-              this._setCookie(res, sessionId);
+            if (self.rolling) {
+              session.expiry = Date.now() + self.maxAge;
+              self._setCookie(res, sessionId);
             }
           }
         } else {
@@ -74,24 +81,24 @@ class SessionSecurity {
           }
 
           // Create new session
-          req.session = await this._createSession(req, res);
+          req.session = await self._createSession(req, res);
         }
       } else {
         // No session cookie, create new session
-        req.session = await this._createSession(req, res);
+        req.session = await self._createSession(req, res);
       }
 
       // Save session on response
       if (typeof res?.end === 'function') {
         const originalEnd = res.end;
         res.end = (...args) => {
-          this._saveSession(req);
+          self._saveSession(req);
           originalEnd.apply(res, args);
         };
       }
 
       if (typeof next === 'function') {
-        next();
+        await next();
       }
     };
   }

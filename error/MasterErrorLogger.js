@@ -32,12 +32,14 @@ class MasterErrorLogger {
       file: options.file || null,
       sampleRate: options.sampleRate || 1.0, // Log 100% by default
       maxFileSize: options.maxFileSize || 10 * 1024 * 1024, // 10MB
+      dedupeWindowMs: options.dedupeWindowMs || 5000, // Suppress duplicate errors within 5s
       ...options
     };
 
     this.backends = [];
     this.errorCount = 0;
     this.sessionId = this._generateSessionId();
+    this._recentErrors = new Map(); // code -> { count, firstSeen, lastSeen }
 
     // Setup default backends
     if (this.options.console) {
@@ -76,18 +78,47 @@ class MasterErrorLogger {
       return;
     }
 
-    const entry = this._formatLogEntry(data, level);
+    // Deduplicate repeated errors within the window
+    const code = data.code || 'UNKNOWN';
+    if (level >= LOG_LEVELS.ERROR) {
+      const now = Date.now();
+      const recent = this._recentErrors.get(code);
+      if (recent && (now - recent.firstSeen) < this.options.dedupeWindowMs) {
+        recent.count++;
+        recent.lastSeen = now;
+        return; // Suppress duplicate
+      }
+      // Flush summary of previous burst if there was one
+      if (recent && recent.count > 1) {
+        const summary = this._formatLogEntry({
+          code: code,
+          message: `Suppressed ${recent.count - 1} duplicate entries of ${code} (${recent.lastSeen - recent.firstSeen}ms window)`,
+          level: LOG_LEVELS.WARN
+        }, LOG_LEVELS.WARN);
+        this._dispatch(summary);
+      }
+      this._recentErrors.set(code, { count: 1, firstSeen: now, lastSeen: now });
+    }
 
-    // Send to all backends
+    const entry = this._formatLogEntry(data, level);
+    this._dispatch(entry);
+    this.errorCount++;
+  }
+
+  /**
+   * Dispatch entry to all backends
+   */
+  _dispatch(entry) {
     this.backends.forEach(backend => {
       try {
         backend(entry);
       } catch (error) {
-        console.error('[MasterErrorLogger] Backend failed:', error.message);
+        // Avoid console methods that can trigger EPIPE recursion
+        if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_DESTROYED') {
+          try { process.stderr.write(`[MasterErrorLogger] Backend failed: ${error.message}\n`); } catch (_) {}
+        }
       }
     });
-
-    this.errorCount++;
   }
 
   /**
@@ -117,28 +148,39 @@ class MasterErrorLogger {
    * Format log entry with metadata
    */
   _formatLogEntry(data, level) {
-    return {
+    const entry = {
       timestamp: new Date().toISOString(),
       sessionId: this.sessionId,
       level: LOG_LEVEL_NAMES[level],
       code: data.code || 'UNKNOWN',
-      message: data.message || 'No message provided',
-      component: data.component || null,
-      file: data.file || null,
-      line: data.line || null,
-      route: data.route || null,
-      context: data.context || {},
-      stack: data.stack || null,
-      originalError: data.originalError ? {
-        message: data.originalError.message,
-        stack: data.originalError.stack
-      } : null,
-      environment: process.env.NODE_ENV || 'development',
-      nodeVersion: process.version,
-      platform: process.platform,
-      memory: process.memoryUsage(),
-      uptime: process.uptime()
+      message: data.message || 'No message provided'
     };
+
+    // Only include optional fields when they have values
+    if (data.component) entry.component = data.component;
+    if (data.file) entry.file = data.file;
+    if (data.line) entry.line = data.line;
+    if (data.route) entry.route = data.route;
+    if (data.context && Object.keys(data.context).length > 0) entry.context = data.context;
+
+    // Include stack once — prefer originalError.stack to avoid duplication
+    if (data.originalError) {
+      entry.stack = data.originalError.stack || data.stack || null;
+    } else if (data.stack) {
+      entry.stack = data.stack;
+    }
+
+    entry.environment = process.env.NODE_ENV || 'development';
+
+    // Only include memory/system info on ERROR and FATAL
+    if (level >= LOG_LEVELS.ERROR) {
+      entry.memory = process.memoryUsage();
+      entry.nodeVersion = process.version;
+      entry.platform = process.platform;
+      entry.uptime = process.uptime();
+    }
+
+    return entry;
   }
 
   /**
@@ -156,24 +198,26 @@ class MasterErrorLogger {
     const color = levelColors[entry.level] || '';
     const reset = '\x1b[0m';
 
-    const logFn = entry.level === 'DEBUG' || entry.level === 'INFO' ? console.log :
-                  entry.level === 'WARN' ? console.warn : console.error;
+    // Use process.stdout/stderr.write directly to avoid EPIPE recursion
+    // through console.log -> broken pipe -> uncaughtException -> logger -> console.log
+    const stream = (entry.level === 'DEBUG' || entry.level === 'INFO') ? process.stdout : process.stderr;
 
-    logFn(
-      `${color}[${entry.timestamp}] [${entry.level}]${reset} ${entry.code}:`,
-      entry.message
-    );
+    try {
+      stream.write(`${color}[${entry.timestamp}] [${entry.level}]${reset} ${entry.code}: ${entry.message}\n`);
 
-    if (entry.component) {
-      logFn(`  Component: ${entry.component}`);
-    }
+      if (entry.component) {
+        stream.write(`  Component: ${entry.component}\n`);
+      }
 
-    if (entry.file) {
-      logFn(`  File: ${entry.file}${entry.line ? `:${entry.line}` : ''}`);
-    }
+      if (entry.file) {
+        stream.write(`  File: ${entry.file}${entry.line ? `:${entry.line}` : ''}\n`);
+      }
 
-    if (entry.stack && process.env.NODE_ENV !== 'production') {
-      logFn(`  Stack: ${entry.stack}`);
+      if (entry.stack && process.env.NODE_ENV !== 'production') {
+        stream.write(`  Stack: ${entry.stack}\n`);
+      }
+    } catch (err) {
+      // If the stream is broken (EPIPE), silently drop — do not recurse
     }
   }
 
