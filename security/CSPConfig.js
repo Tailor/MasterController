@@ -95,7 +95,8 @@ class CSPConfig {
   middleware() {
     return (req, res, next) => {
       if (!this.enabled) {
-        return next();
+        if (typeof next === 'function') next();
+        return;
       }
 
       // Generate nonce for this request if needed
@@ -111,7 +112,7 @@ class CSPConfig {
       const headerName = this.reportOnly ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
       res.setHeader(headerName, headerValue);
 
-      next();
+      if (typeof next === 'function') next();
     };
   }
 

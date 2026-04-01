@@ -318,7 +318,8 @@ class RedisCSRFStore {
             message: 'CSRF check skipped - no session ID',
             path: ctx.request.url
           });
-          return await next();
+          if (typeof next === 'function') return await next();
+          return;
         }
 
         // Skip CSRF check for safe methods
@@ -326,7 +327,8 @@ class RedisCSRFStore {
         if (ignoreMethods.includes(method)) {
           // Ensure token exists for this session
           await self.get(sessionId);
-          return await next();
+          if (typeof next === 'function') return await next();
+          return;
         }
 
         // Get token from request (header or body)
@@ -373,7 +375,7 @@ class RedisCSRFStore {
         }
 
         // Token valid, continue pipeline
-        await next();
+        if (typeof next === 'function') await next();
 
       } catch (error) {
         logger.error({

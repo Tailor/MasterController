@@ -74,7 +74,8 @@ class SecurityMiddleware {
    */
   securityHeadersMiddleware(req, res, next) {
     if (!this.headersEnabled) {
-      return next();
+      if (typeof next === 'function') next();
+      return;
     }
 
     // Apply standard security headers
@@ -96,7 +97,7 @@ class SecurityMiddleware {
       }
     }
 
-    next();
+    if (typeof next === 'function') next();
   }
 
   /**
@@ -104,7 +105,8 @@ class SecurityMiddleware {
    */
   corsMiddleware(req, res, next) {
     if (!this.corsEnabled) {
-      return next();
+      if (typeof next === 'function') next();
+      return;
     }
 
     const origin = req.headers.origin;
@@ -125,7 +127,7 @@ class SecurityMiddleware {
       return;
     }
 
-    next();
+    if (typeof next === 'function') next();
   }
 
   /**
@@ -133,7 +135,8 @@ class SecurityMiddleware {
    */
   rateLimitMiddleware(req, res, next) {
     if (!this.rateLimitEnabled) {
-      return next();
+      if (typeof next === 'function') next();
+      return;
     }
 
     const identifier = this._getClientIdentifier(req);
@@ -209,7 +212,7 @@ class SecurityMiddleware {
     res.setHeader('X-RateLimit-Remaining', remaining);
     res.setHeader('X-RateLimit-Reset', new Date(resetTime).toISOString());
 
-    next();
+    if (typeof next === 'function') next();
   }
 
   /**
@@ -217,13 +220,15 @@ class SecurityMiddleware {
    */
   csrfMiddleware(req, res, next) {
     if (!this.csrfEnabled) {
-      return next();
+      if (typeof next === 'function') next();
+      return;
     }
 
     // Skip CSRF for safe methods
     const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
     if (safeMethods.includes(req.method)) {
-      return next();
+      if (typeof next === 'function') next();
+      return;
     }
 
     // Get CSRF token from request
@@ -291,7 +296,7 @@ class SecurityMiddleware {
     }
 
     // Token valid, continue
-    next();
+    if (typeof next === 'function') next();
   }
 
   /**
@@ -489,7 +494,7 @@ function pipelineSecurityHeaders(options = {}) {
     instance.securityHeadersMiddleware(ctx.request, ctx.response, oldNext);
 
     // Continue pipeline if next was called
-    if (nextCalled) {
+    if (nextCalled && typeof next === 'function') {
       await next();
     }
   };
@@ -504,7 +509,7 @@ function pipelineCors(options = {}) {
     instance.corsMiddleware(ctx.request, ctx.response, oldNext);
 
     // CORS might terminate for OPTIONS - check if response ended
-    if (!ctx.response.writableEnded && nextCalled) {
+    if (!ctx.response.writableEnded && nextCalled && typeof next === 'function') {
       await next();
     }
   };
@@ -519,7 +524,7 @@ function pipelineRateLimit(options = {}) {
     instance.rateLimitMiddleware(ctx.request, ctx.response, oldNext);
 
     // Rate limit might terminate - check if response ended
-    if (!ctx.response.writableEnded && nextCalled) {
+    if (!ctx.response.writableEnded && nextCalled && typeof next === 'function') {
       await next();
     }
   };
@@ -534,7 +539,7 @@ function pipelineCsrf(options = {}) {
     instance.csrfMiddleware(ctx.request, ctx.response, oldNext);
 
     // CSRF might terminate - check if response ended
-    if (!ctx.response.writableEnded && nextCalled) {
+    if (!ctx.response.writableEnded && nextCalled && typeof next === 'function') {
       await next();
     }
   };

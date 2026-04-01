@@ -483,7 +483,7 @@ class MasterTimeout {
 
         return async (ctx, next) => {
             if (!$that.enabled) {
-                await next();
+                if (typeof next === 'function') await next();
                 return;
             }
 
@@ -493,7 +493,7 @@ class MasterTimeout {
                 requestId = $that.startTracking(ctx);
                 ctx.requestId = requestId;
 
-                await next();
+                if (typeof next === 'function') await next();
             } catch (err) {
                 // Stop tracking on error (with error handling)
                 if (requestId) {

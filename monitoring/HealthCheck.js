@@ -55,7 +55,8 @@ class HealthCheck {
 
       // Only handle health check endpoint
       if (requestPath !== self.options.endpoint) {
-        return await next();
+        if (typeof next === 'function') return await next();
+        return;
       }
 
       // Log health check request
@@ -226,7 +227,8 @@ class HealthCheck {
       const requestPath = req.url.split('?')[0];
 
       if (requestPath !== self.options.endpoint) {
-        return next();
+        if (typeof next === 'function') return next();
+        return;
       }
 
       try {

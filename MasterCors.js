@@ -243,7 +243,7 @@ class MasterCors{
 
 			// Regular request - apply CORS headers
 			$that.load({ request: ctx.request, response: ctx.response });
-			await next();
+			if (typeof next === 'function') await next();
 		};
 	}
 }

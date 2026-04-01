@@ -163,7 +163,7 @@ class SecurityEnforcement {
 			SecurityEnforcement._applySecurityHeaders(ctx.response);
 
 			// Continue to next middleware
-			await next();
+			if (typeof next === 'function') await next();
 		};
 	}
 

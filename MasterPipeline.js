@@ -116,12 +116,12 @@ class MasterPipeline {
                 // Execute branch pipeline
                 await branch.execute(ctx);
                 // Stop if response already sent (e.g., auth rejection)
-                if (!ctx.response.headersSent && !ctx.response.writableEnded) {
+                if (!ctx.response.headersSent && !ctx.response.writableEnded && typeof next === 'function') {
                     await next();
                 }
             } else {
                 // Skip branch, continue main pipeline
-                await next();
+                if (typeof next === 'function') await next();
             }
         };
 

@@ -902,7 +902,7 @@ class MasterControl {
                 return; // Terminal - don't call next()
             }
 
-            await next(); // Not static, continue pipeline
+            if (typeof next === 'function') await next(); // Not static, continue pipeline
         });
 
         // 2. Timeout Tracking (optional - disabled by default until init)
@@ -924,7 +924,7 @@ class MasterControl {
                 ctx.params.formData = params.formData;
             }
 
-            await next();
+            if (typeof next === 'function') await next();
         });
 
         // 4. Load Scoped Services (per request - always needed)
@@ -938,7 +938,7 @@ class MasterControl {
                 const className = $that._scopedList[key];
                 $that.requestList[key] = new className();
             }
-            await next();
+            if (typeof next === 'function') await next();
         });
 
         // 4. HSTS Header (if enabled for HTTPS)
@@ -954,7 +954,7 @@ class MasterControl {
                 }
                 ctx.response.setHeader('Strict-Transport-Security', hstsValue);
             }
-            await next();
+            if (typeof next === 'function') await next();
         });
 
         // 5. Routing and Error Handler are registered in start() so that user

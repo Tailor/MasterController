@@ -441,7 +441,7 @@ class RedisRateLimiter {
         }
 
         // Request allowed, continue pipeline
-        await next();
+        if (typeof next === 'function') await next();
 
       } catch (error) {
         logger.error({
@@ -451,7 +451,7 @@ class RedisRateLimiter {
         });
 
         // On error, allow request (fail open)
-        await next();
+        if (typeof next === 'function') await next();
       }
     };
   }

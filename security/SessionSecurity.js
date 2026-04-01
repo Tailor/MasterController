@@ -90,7 +90,9 @@ class SessionSecurity {
         };
       }
 
-      next();
+      if (typeof next === 'function') {
+        next();
+      }
     };
   }
 

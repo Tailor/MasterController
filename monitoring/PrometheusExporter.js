@@ -142,7 +142,7 @@ class PrometheusExporter {
 
       try {
         // Continue pipeline
-        await next();
+        if (typeof next === 'function') await next();
 
         // Record metrics on success
         const duration = (Date.now() - startTime) / 1000; // Convert to seconds
