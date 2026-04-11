@@ -7,7 +7,7 @@
  * CSS injection, iframe attacks, form hijacking, meta tag injection
  */
 
-const { logger } = require('../error/MasterErrorLogger');
+import { logger } from '../error/MasterErrorLogger.js';
 
 // Dangerous HTML tags that should be removed
 const DANGEROUS_TAGS = [
@@ -415,8 +415,7 @@ function safeInnerHTML(element, html) {
   return sanitizer.safeSetInnerHTML(element, html, { strict: true });
 }
 
-module.exports = {
-  MasterSanitizer,
+export { MasterSanitizer,
   sanitizer,
   sanitizeUserHTML,
   sanitizeTemplateHTML,
@@ -425,5 +424,4 @@ module.exports = {
   safeInnerHTML,
   DANGEROUS_TAGS,
   DANGEROUS_ATTRIBUTES,
-  DANGEROUS_PROTOCOLS
-};
+  DANGEROUS_PROTOCOLS };

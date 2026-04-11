@@ -1,8 +1,12 @@
 {
   "name": "mastercontroller",
-  "version": "1.3.38",
+  "version": "2.0.0",
   "description": "Fortune 500 ready Node.js MVC framework with enterprise security, monitoring, and horizontal scaling",
-  "main": "MasterControl.js",
+  "type": "module",
+  "exports": {
+    ".": "./MasterControl.js",
+    "./package.json": "./package.json"
+  },
   "license": "MIT",
   "homepage": "https://github.com/Tailor/MasterController#readme",
   "repository": {
@@ -32,8 +36,17 @@
     "production-ready"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
+  "files": [
+    "*.js",
+    "security/**/*.js",
+    "monitoring/**/*.js",
+    "error/**/*.js",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint *.js **/*.js --fix",

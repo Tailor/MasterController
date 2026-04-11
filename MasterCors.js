@@ -1,6 +1,6 @@
 // version 0.0.3 - robust origin handling (all envs), creds-safe reflection, function origins, extended Vary
 
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
 
 // HTTP Status Code Constants
 const HTTP_STATUS = {
@@ -24,12 +24,9 @@ const CORS_HEADERS = {
 // todo - res.setHeader('Access-Control-Request-Method', '*');
 class MasterCors{
 
-	// Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-	get _master() {
-		if (!this.__masterCache) {
-			this.__masterCache = require('./MasterControl');
-		}
-		return this.__masterCache;
+	constructor(master) {
+		// Constructor injection (replaces previous lazy require pattern)
+		this._master = master;
 	}
 
 	init(options){
@@ -248,4 +245,4 @@ class MasterCors{
 	}
 }
 
-module.exports = { MasterCors };
+export { MasterCors };

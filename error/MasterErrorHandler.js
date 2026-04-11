@@ -4,7 +4,7 @@
  * Version: 1.0.0
  */
 
-const path = require('path');
+import path from 'node:path';
 
 // ANSI color codes for terminal output
 const colors = {
@@ -480,11 +480,9 @@ class MasterControllerError extends Error {
 }
 
 // Export utilities
-module.exports = {
-  MasterControllerError,
+export { MasterControllerError,
   ERROR_CODES,
   findSimilarStrings,
   levenshteinDistance,
   getRelativePath,
-  extractLineNumber
-};
+  extractLineNumber };

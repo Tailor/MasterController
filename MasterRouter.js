@@ -1,19 +1,21 @@
 // version 0.0.250
 
-const toolClass =  require('./MasterTools');
-const EventEmitter = require("events");
-const path = require('path');
+import toolClass from './MasterTools.js';
+import EventEmitter from 'node:events';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 // REMOVED: Global currentRoute (race condition bug) - now stored in requestObject
 const tools = new toolClass();
 
 // Enhanced error handling
-const { handleRoutingError, handleControllerError, sendErrorResponse } = require('./error/MasterBackendErrorHandler');
-const { logger } = require('./error/MasterErrorLogger');
-const { performanceTracker, errorHandlerMiddleware } = require('./error/MasterErrorMiddleware');
+import { handleRoutingError, handleControllerError, sendErrorResponse } from './error/MasterBackendErrorHandler.js';
+import { logger } from './error/MasterErrorLogger.js';
+import { performanceTracker, errorHandlerMiddleware } from './error/MasterErrorMiddleware.js';
 
 // Security - Input validation and sanitization
-const { validator, detectPathTraversal, detectSQLInjection, detectCommandInjection } = require('./security/MasterValidator');
-const { escapeHTML } = require('./security/MasterSanitizer');
+import { validator, detectPathTraversal, detectSQLInjection, detectCommandInjection } from './security/MasterValidator.js';
+import { escapeHTML } from './security/MasterSanitizer.js';
+import fs from 'node:fs';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
@@ -483,12 +485,83 @@ class MasterRouter {
     _routes = {}
     _currentRoute = null // Instance property instead of global
 
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
+    constructor(master) {
+        // Constructor injection (replaces previous lazy require pattern)
+        this._master = master;
+        // Controller registry: pre-populated at startup by discoverControllers().
+        // Keyed by absolute file path. Eliminates per-request fs/require overhead
+        // and is required for Phase 4 (ESM) where sync require() doesn't exist.
+        this._controllers = new Map();
+    }
+
+    /**
+     * Pre-load all controllers from a route's controllers directory into the registry.
+     * Called from MasterControl.startMVC() during framework startup.
+     *
+     * Async because Phase 4 (ESM) will use `await import()`. In v1.x this still
+     * uses sync require() for backward compatibility.
+     *
+     * @param {String} routeRoot - Absolute path to a route root (e.g. master.root, or a component root)
+     * @returns {Promise<void>}
+     */
+    async discoverControllers(routeRoot) {
+
+        const controllersDir = path.join(routeRoot, 'app', 'controllers');
+        if (!fs.existsSync(controllersDir)) {
+            return; // No controllers in this route — silent skip (some component routes have none)
         }
-        return this.__masterCache;
+
+        const walk = async (dir) => {
+            const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    await walk(full);
+                } else if (entry.isFile() && entry.name.endsWith('.js')) {
+                    try {
+                        const mod = await import(pathToFileURL(full).href);
+                        const Control = mod.default ?? mod;
+                        if (Control && typeof Control === 'function') {
+                            this._controllers.set(full, Control);
+                        }
+                    } catch (err) {
+                        logger.error({
+                            code: 'MC_CONTROLLER_LOAD_FAILED',
+                            message: 'Failed to pre-load controller',
+                            file: full,
+                            error: err.message,
+                            stack: err.stack
+                        });
+                    }
+                }
+            }
+        };
+
+        await walk(controllersDir);
+    }
+
+    /**
+     * Resolve a controller class by name from the registry.
+     *
+     * The registry is populated at startup by discoverControllers(). In ESM
+     * there is no synchronous fallback — unknown controllers return null and
+     * the caller is responsible for raising an error.
+     *
+     * @private
+     * @param {String} routeRoot - Absolute path of the matching route root
+     * @param {String} controllerName - Lowercased controller name (without "Controller" suffix)
+     * @returns {Function|null} The controller class, or null if not found
+     */
+    _resolveController(routeRoot, controllerName) {
+        const lowerPath = path.join(routeRoot, 'app', 'controllers', `${tools.firstLetterlowercase(controllerName)}Controller.js`);
+        if (this._controllers.has(lowerPath)) {
+            return this._controllers.get(lowerPath);
+        }
+        const upperPath = path.join(routeRoot, 'app', 'controllers', `${tools.firstLetterUppercase(controllerName)}Controller.js`);
+        if (this._controllers.has(upperPath)) {
+            return this._controllers.get(upperPath);
+        }
+        return null;
     }
 
     /**
@@ -766,46 +839,22 @@ class MasterRouter {
          let Control = null;
 
          try{
-             // Try to load controller
-             try{
-                 Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterlowercase(requestObject.toController)}Controller`));
-             }catch(e){
-                 // Check if this is a "file not found" error vs a loading error
-                 const isModuleNotFound = e.code === 'MODULE_NOT_FOUND' &&
-                     e.message.includes(`${tools.firstLetterlowercase(requestObject.toController)}Controller`);
+             // Resolve controller from registry (pre-populated at startup),
+             // with sync require() fallback for v1.x compatibility.
+             Control = this._resolveController(currentRoute.root, requestObject.toController);
 
-                 if (!isModuleNotFound) {
-                     // Controller file exists but has an error (syntax error, bad require, etc.)
-                     // Surface the actual error
-                     throw e;
-                 }
+             if (!Control) {
+                 const error = handleControllerError(
+                     new Error(`Controller not found: ${requestObject.toController}Controller`),
+                     requestObject.toController,
+                     requestObject.toAction,
+                     requestObject.pathName,
+                     currentRoute.routeDef
+                 );
 
-                 // Try uppercase variant
-                 try{
-                     Control = require(path.join(currentRoute.root, 'app', 'controllers', `${tools.firstLetterUppercase(requestObject.toController)}Controller`));
-                 }catch(e2){
-                     // Check if this is also a "file not found" error
-                     const isModuleNotFound2 = e2.code === 'MODULE_NOT_FOUND' &&
-                         e2.message.includes(`${tools.firstLetterUppercase(requestObject.toController)}Controller`);
-
-                     if (!isModuleNotFound2) {
-                         // Controller file exists but has an error - surface it
-                         throw e2;
-                     }
-
-                     // Controller truly not found - show generic error
-                     const error = handleControllerError(
-                         new Error(`Controller not found: ${requestObject.toController}Controller`),
-                         requestObject.toController,
-                         requestObject.toAction,
-                         requestObject.pathName,
-                         currentRoute.routeDef
-                     );
-
-                     sendErrorResponse(requestObject.response, error, requestObject.pathName);
-                     performanceTracker.end(requestId);
-                     return;
-                 }
+                 sendErrorResponse(requestObject.response, error, requestObject.pathName);
+                 performanceTracker.end(requestId);
+                 return;
              }
 
              tools.combineObjectPrototype(Control, this._master.controllerList);
@@ -1061,4 +1110,4 @@ class MasterRouter {
     
 }
 
-module.exports = { MasterRouter };
+export { MasterRouter };

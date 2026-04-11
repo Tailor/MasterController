@@ -4,8 +4,10 @@
  * Version: 1.0.1
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import https from 'node:https';
+import http from 'node:http';
 
 // Log levels
 const LOG_LEVELS = {
@@ -368,8 +370,6 @@ function createLogRocketBackend(logRocketInstance) {
 function createWebhookBackend(webhookUrl) {
   return async (entry) => {
     try {
-      const https = require('https');
-      const http = require('http');
       const url = new URL(webhookUrl);
       const client = url.protocol === 'https:' ? https : http;
 
@@ -403,11 +403,9 @@ const logger = new MasterErrorLogger({
   sampleRate: parseFloat(process.env.MC_LOG_SAMPLE_RATE || '1.0')
 });
 
-module.exports = {
-  MasterErrorLogger,
+export { MasterErrorLogger,
   logger,
   LOG_LEVELS,
   createSentryBackend,
   createLogRocketBackend,
-  createWebhookBackend
-};
+  createWebhookBackend };

@@ -14,8 +14,21 @@
  * Returns: { status: 'healthy', uptime, memory, version, timestamp }
  */
 
-const os = require('os');
-const { logger } = require('../error/MasterErrorLogger');
+import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { logger } from '../error/MasterErrorLogger.js';
+import https from 'node:https';
+import http from 'node:http';
+
+// Resolve package.json version at module load time (replaces CJS require('../package.json'))
+const __pkgFilename = fileURLToPath(import.meta.url);
+const __pkgDir = path.dirname(path.dirname(__pkgFilename));
+let __pkgVersion = 'unknown';
+try {
+  __pkgVersion = JSON.parse(fs.readFileSync(path.join(__pkgDir, 'package.json'), 'utf8')).version;
+} catch (_) { /* ignore */ }
 
 class HealthCheck {
   constructor(options = {}) {
@@ -28,7 +41,7 @@ class HealthCheck {
     };
 
     this.startTime = Date.now();
-    this.version = options.version || require('../package.json').version;
+    this.version = options.version || __pkgVersion;
     this.customHealthChecks = [];
   }
 
@@ -313,8 +326,6 @@ function createRedisCheck(redis) {
 function createAPIHealthCheck(apiUrl) {
   return async () => {
     try {
-      const https = require('https');
-      const http = require('http');
 
       return new Promise((resolve) => {
         const client = apiUrl.startsWith('https') ? https : http;
@@ -340,10 +351,8 @@ function createAPIHealthCheck(apiUrl) {
   };
 }
 
-module.exports = {
-  HealthCheck,
+export { HealthCheck,
   healthCheck,
   createDatabaseCheck,
   createRedisCheck,
-  createAPIHealthCheck
-};
+  createAPIHealthCheck };

@@ -6,8 +6,8 @@
  * Provides: CSRF protection, Security headers, Rate limiting, CORS
  */
 
-const crypto = require('crypto');
-const { logger } = require('../error/MasterErrorLogger');
+import crypto from 'node:crypto';
+import { logger } from '../error/MasterErrorLogger.js';
 
 // Rate limiting store
 const rateLimitStore = new Map();
@@ -545,8 +545,7 @@ function pipelineCsrf(options = {}) {
   };
 }
 
-module.exports = {
-  SecurityMiddleware,
+export { SecurityMiddleware,
   security,
   securityHeaders,
   cors,
@@ -559,5 +558,4 @@ module.exports = {
   pipelineSecurityHeaders,
   pipelineCors,
   pipelineRateLimit,
-  pipelineCsrf
-};
+  pipelineCsrf };

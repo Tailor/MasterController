@@ -1,4 +1,7 @@
 # Security & Correctness Audit: Action System
+
+> **Note:** This is a historical security audit document. Code samples were originally written in CJS (`require`/`module.exports`). MasterController v2.0+ is ESM-only — replace `require('foo')` with `import x from 'foo'` and `module.exports = X` with `export default X` when applying any patterns from this document. The security analysis itself is unchanged.
+
 The problem: These security methods exist but aren't used by the form helpers and aren't enforced automatically
 
 **Files Audited:**

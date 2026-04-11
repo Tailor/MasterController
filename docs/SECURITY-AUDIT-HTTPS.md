@@ -4,6 +4,8 @@
 **Version:** v1.3.1
 **Auditor:** Security Review
 
+> **Note:** This audit predates the v2.0 ESM-only release. Code samples in this document use CJS (`require`/`module.exports`); in v2.0+ they should be `import`/`export`. The HTTPS/TLS security analysis is unchanged across versions.
+
 ---
 
 ## Executive Summary

@@ -3,7 +3,7 @@
  * Version: 1.0.1
  */
 
-const { MasterControllerError } = require('../error/MasterErrorHandler');
+import { MasterControllerError } from '../error/MasterErrorHandler.js';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
@@ -226,8 +226,6 @@ class PerformanceMonitor {
 // Singleton instance
 const monitor = new PerformanceMonitor();
 
-module.exports = {
-  PerformanceMonitor,
+export { PerformanceMonitor,
   monitor,
-  THRESHOLDS
-};
+  THRESHOLDS };

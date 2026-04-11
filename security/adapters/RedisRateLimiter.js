@@ -37,7 +37,7 @@
  * - Configurable block duration on limit exceed
  */
 
-const { logger } = require('../../error/MasterErrorLogger');
+import { logger } from '../../error/MasterErrorLogger.js';
 
 class RedisRateLimiter {
   constructor(redisClient, options = {}) {
@@ -457,6 +457,4 @@ class RedisRateLimiter {
   }
 }
 
-module.exports = {
-  RedisRateLimiter
-};
+export { RedisRateLimiter };

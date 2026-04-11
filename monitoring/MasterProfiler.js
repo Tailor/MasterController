@@ -10,7 +10,7 @@
  * - Detailed performance reports
  */
 
-const { logger } = require('../error/MasterErrorLogger');
+import { logger } from '../error/MasterErrorLogger.js';
 
 class MasterProfiler {
   constructor(options = {}) {
@@ -403,7 +403,5 @@ if (process.env.NODE_ENV === 'development') {
   }, 300000); // 5 minutes
 }
 
-module.exports = {
-  MasterProfiler,
-  profiler
-};
+export { MasterProfiler,
+  profiler };

@@ -4,10 +4,11 @@
  * Version: 1.0.0
  */
 
-const { MasterControllerError } = require('./MasterErrorHandler');
-const { logger } = require('./MasterErrorLogger');
-const path = require('path');
-const fs = require('fs');
+import { MasterControllerError } from './MasterErrorHandler.js';
+import { logger } from './MasterErrorLogger.js';
+import path from 'node:path';
+import fs from 'node:fs';
+import { levenshteinDistance } from './MasterErrorHandler.js';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
@@ -653,7 +654,6 @@ function findSimilarRoutes(requestPath, routes) {
   // Skip similarity search for long/malicious paths — they won't match any route
   if (!requestPath || requestPath.length > 200) return [];
 
-  const { levenshteinDistance } = require('./MasterErrorHandler');
 
   const similar = routes
     .map(route => ({
@@ -759,13 +759,11 @@ function sendErrorResponse(response, error, requestPath) {
   }
 }
 
-module.exports = {
-  BACKEND_ERROR_CODES,
+export { BACKEND_ERROR_CODES,
   render404Page,
   render500Page,
   handleControllerError,
   handleRoutingError,
   handleTemplateError,
   handleFileReadError,
-  sendErrorResponse
-};
+  sendErrorResponse };

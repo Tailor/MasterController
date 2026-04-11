@@ -9,7 +9,7 @@
  * - Memory alerts
  */
 
-const { logger } = require('../error/MasterErrorLogger');
+import { logger } from '../error/MasterErrorLogger.js';
 
 class MasterMemoryMonitor {
   constructor(options = {}) {
@@ -185,4 +185,4 @@ if (process.env.NODE_ENV === 'development') {
   memoryMonitor.start();
 }
 
-module.exports = { MasterMemoryMonitor, memoryMonitor };
+export { MasterMemoryMonitor, memoryMonitor };

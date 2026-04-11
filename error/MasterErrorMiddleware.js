@@ -3,8 +3,9 @@
  * Version: 1.0.1
  */
 
-const { handleControllerError, handleRoutingError, sendErrorResponse } = require('./MasterBackendErrorHandler');
-const { logger } = require('./MasterErrorLogger');
+import { handleControllerError, handleRoutingError, sendErrorResponse } from './MasterBackendErrorHandler.js';
+import { logger } from './MasterErrorLogger.js';
+import { handleFileReadError } from './MasterBackendErrorHandler.js';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
@@ -287,7 +288,6 @@ function safeReadFile(fs, filePath, encoding = 'utf8') {
       error: null
     };
   } catch (error) {
-    const { handleFileReadError } = require('./MasterBackendErrorHandler');
     const mcError = handleFileReadError(error, filePath);
 
     return {
@@ -400,13 +400,11 @@ function performanceMiddleware() {
 
 const performanceTracker = performanceMiddleware();
 
-module.exports = {
-  errorHandlerMiddleware,
+export { errorHandlerMiddleware,
   requestLoggerMiddleware,
   notFoundMiddleware,
   setupGlobalErrorHandlers,
   safeReadFile,
   safeFileExists,
   wrapController,
-  performanceTracker
-};
+  performanceTracker };

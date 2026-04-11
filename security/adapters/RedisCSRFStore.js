@@ -30,8 +30,8 @@
  * - Graceful degradation
  */
 
-const crypto = require('crypto');
-const { logger } = require('../../error/MasterErrorLogger');
+import crypto from 'node:crypto';
+import { logger } from '../../error/MasterErrorLogger.js';
 
 class RedisCSRFStore {
   constructor(redisClient, options = {}) {
@@ -425,6 +425,4 @@ class RedisCSRFStore {
   }
 }
 
-module.exports = {
-  RedisCSRFStore
-};
+export { RedisCSRFStore };

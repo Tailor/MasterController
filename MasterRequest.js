@@ -1,15 +1,15 @@
 
 // version 0.0.2
 
-const url = require('url');
-const StringDecoder = require('string_decoder').StringDecoder;
-const qs = require('qs');
-const formidable = require('formidable');
-const contentTypeManager = require("content-type");
-const path = require('path');
-const fs = require('fs');
-const fsPromises = require('fs').promises;
-const { logger } = require('./error/MasterErrorLogger');
+import url from 'node:url';
+import { StringDecoder } from 'node:string_decoder';
+import qs from 'qs';
+import { IncomingForm } from 'formidable';
+import contentTypeManager from 'content-type';
+import path from 'node:path';
+import fs from 'node:fs';
+import { promises as fsPromises } from 'node:fs';
+import { logger } from './error/MasterErrorLogger.js';
 
 // Content Type Constants
 const CONTENT_TYPES = {
@@ -52,12 +52,27 @@ class MasterRequest{
     response = {};
     __requestId = null;
 
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
-        }
-        return this.__masterCache;
+    constructor(master) {
+        // Constructor injection (replaces previous lazy require pattern)
+        this._master = master;
+
+        // Default options so the request parser works without an explicit init() call.
+        // Users can override via master.request.init({...}).
+        this.options = {
+            disableFormidableMultipartFormData: false,
+            formidable: {
+                maxFiles: SIZE_LIMITS.MAX_FILES,
+                maxFileSize: SIZE_LIMITS.MAX_FILE_SIZE,
+                maxTotalFileSize: SIZE_LIMITS.MAX_TOTAL_FILE_SIZE,
+                maxFields: SIZE_LIMITS.MAX_FIELDS,
+                maxFieldsSize: SIZE_LIMITS.MAX_FIELDS_SIZE,
+                allowEmptyFiles: false,
+                minFileSize: 1
+            },
+            maxBodySize: SIZE_LIMITS.MAX_BODY_SIZE,
+            maxJsonSize: SIZE_LIMITS.MAX_JSON_SIZE,
+            maxTextSize: SIZE_LIMITS.MAX_TEXT_SIZE
+        };
     }
 
    /**
@@ -185,7 +200,7 @@ class MasterRequest{
 
             const querydata = url.parse(requrl, true);
             $that.parsedURL.query = querydata.query;
-            $that.form = new formidable.IncomingForm($that.options.formidable);
+            $that.form = new IncomingForm($that.options.formidable);
             if(request.headers['content-type'] || request.headers['transfer-encoding'] ){
                     var contentType = contentTypeManager.parse(request);
                     switch(contentType.type){
@@ -944,4 +959,4 @@ class MasterRequest{
     }
 }
 
-module.exports = { MasterRequest };
+export { MasterRequest };

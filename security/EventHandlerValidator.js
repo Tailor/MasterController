@@ -8,8 +8,8 @@
  * - Malicious function calls
  */
 
-const { logger } = require('../error/MasterErrorLogger');
-const { MasterControllerError } = require('../error/MasterErrorHandler');
+import { logger } from '../error/MasterErrorLogger.js';
+import { MasterControllerError } from '../error/MasterErrorHandler.js';
 
 // Valid patterns for event handler expressions
 const VALID_PATTERNS = [
@@ -452,13 +452,11 @@ function createSafeHandler(handler, component) {
   };
 }
 
-module.exports = {
-  EventHandlerValidator,
+export { EventHandlerValidator,
   validator,
   validateHandler,
   validateEventAttribute,
   sanitizeHandler,
   createSafeHandler,
   VALID_PATTERNS,
-  DANGEROUS_PATTERNS
-};
+  DANGEROUS_PATTERNS };

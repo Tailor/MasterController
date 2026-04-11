@@ -36,7 +36,7 @@
  * - Connection pooling and retry logic
  */
 
-const { logger } = require('../../error/MasterErrorLogger');
+import { logger } from '../../error/MasterErrorLogger.js';
 
 class RedisSessionStore {
   constructor(redisClient, options = {}) {
@@ -471,6 +471,4 @@ class RedisSessionStore {
   }
 }
 
-module.exports = {
-  RedisSessionStore
-};
+export { RedisSessionStore };

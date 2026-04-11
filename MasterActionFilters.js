@@ -1,5 +1,5 @@
 // version 2.0 - FIXED: Instance-level filters, async support, multiple filters
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
 
 // HTTP Status Code Constants
 const HTTP_STATUS = {
@@ -14,10 +14,19 @@ class MasterActionFilters {
 	// Default filter timeout (5 seconds)
 	static DEFAULT_FILTER_TIMEOUT = 5000;
 
-	// Lazy-load master to avoid circular dependency (Google-style Singleton pattern)
+	// Master reference is set by MasterControl.setupServer() via bindMaster().
+	static __masterCache = null;
+
+	static bindMaster(master) {
+		MasterActionFilters.__masterCache = master;
+	}
+
 	static get _master() {
 		if (!MasterActionFilters.__masterCache) {
-			MasterActionFilters.__masterCache = require('./MasterControl');
+			throw new Error(
+				'MasterActionFilters._master accessed before MasterControl initialization. ' +
+				'Ensure master.start() / setupServer() runs before any controller logic.'
+			);
 		}
 		return MasterActionFilters.__masterCache;
 	}
@@ -681,12 +690,6 @@ class MasterActionFilters {
 	}
 }
 
-// Export and lazy register (prevents circular dependency - Spring/Angular pattern)
-module.exports = MasterActionFilters;
-
-setImmediate(() => {
-	const master = require('./MasterControl');
-	if (master && master.extendController) {
-		master.extendController(MasterActionFilters);
-	}
-});
+export default MasterActionFilters;
+// Self-registration with master.extendController() now happens explicitly in
+// MasterControl.setupServer() after bindMaster() has been called.

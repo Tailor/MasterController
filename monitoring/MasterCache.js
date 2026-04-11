@@ -10,7 +10,7 @@
  * - TTL support
  */
 
-const { logger } = require('../error/MasterErrorLogger');
+import { logger } from '../error/MasterErrorLogger.js';
 
 /**
  * LRU Cache with TTL support
@@ -393,8 +393,6 @@ setInterval(() => {
   });
 }, 300000);
 
-module.exports = {
-  MasterCache,
+export { MasterCache,
   LRUCache,
-  cache
-};
+  cache };

@@ -1,24 +1,24 @@
 
 // version 0.0.23
 
-const toolClass =  require('./MasterTools');
+import toolClass from './MasterTools.js';
 const tools = new toolClass();
 // View templating removed - handled by view engine (e.g., MasterView)
 
 // Node utils
-const path = require('path');
+import path from 'node:path';
 
 // SSR runtime removed - handled by view engine
 
 // Enhanced error handling
-const { handleTemplateError, sendErrorResponse } = require('./error/MasterBackendErrorHandler');
-const { safeReadFile } = require('./error/MasterErrorMiddleware');
-const { logger } = require('./error/MasterErrorLogger');
+import { handleTemplateError, sendErrorResponse } from './error/MasterBackendErrorHandler.js';
+import { safeReadFile } from './error/MasterErrorMiddleware.js';
+import { logger } from './error/MasterErrorLogger.js';
 
 // Security - CSRF, validation, sanitization
-const { generateCSRFToken, validateCSRFToken } = require('./security/SecurityMiddleware');
-const { validator, validateRequestBody, sanitizeObject } = require('./security/MasterValidator');
-const { sanitizeUserHTML, escapeHTML } = require('./security/MasterSanitizer');
+import { generateCSRFToken, validateCSRFToken } from './security/SecurityMiddleware.js';
+import { validator, validateRequestBody, sanitizeObject } from './security/MasterValidator.js';
+import { sanitizeUserHTML, escapeHTML } from './security/MasterSanitizer.js';
 
 // HTTP Status Code Constants
 const HTTP_STATUS = {
@@ -36,11 +36,21 @@ class MasterAction{
 	// Maximum response size (10MB default)
 	static MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
 
-	// Lazy-load master to avoid circular dependency
-	// Static getter ensures single instance (Singleton pattern - Google style)
+	// Master reference is set by MasterControl.setupServer() via bindMaster().
+	// User controllers extend MasterAction, so constructor injection isn't possible —
+	// we use a static class property set once at framework startup instead.
+	static __masterCache = null;
+
+	static bindMaster(master) {
+		MasterAction.__masterCache = master;
+	}
+
 	static get _master() {
 		if (!MasterAction.__masterCache) {
-			MasterAction.__masterCache = require('./MasterControl');
+			throw new Error(
+				'MasterAction._master accessed before MasterControl initialization. ' +
+				'Ensure master.start() / setupServer() runs before any controller logic.'
+			);
 		}
 		return MasterAction.__masterCache;
 	}
@@ -598,14 +608,7 @@ class MasterAction{
 
 }
 
-// Export for MasterControl and register after event loop (prevents circular dependency)
-// This is the Lazy Registration pattern used by Spring Framework, Angular, Google Guice
-module.exports = MasterAction;
-
-// Use setImmediate to register after master is fully loaded
-setImmediate(() => {
-	const master = require('./MasterControl');
-	if (master && master.extendController) {
-		master.extendController(MasterAction);
-	}
-});
+export default MasterAction;
+// Self-registration with master.extendController() now happens explicitly in
+// MasterControl.setupServer() after bindMaster() has been called.
+// (Removed: setImmediate(() => require('./MasterControl').extendController(MasterAction)))

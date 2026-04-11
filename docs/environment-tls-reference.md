@@ -1,5 +1,7 @@
 ## Environment TLS/SNI reference
 
+> **MasterController v2.0+ is ESM-only.** Configuration is loaded via `fs.readFileSync` + `JSON.parse` at startup, not via `require()`. The JSON file format itself is unchanged from v1.x.
+
 Place environment files at `config/environments/env.<environment>.json`.
 
 ### server section

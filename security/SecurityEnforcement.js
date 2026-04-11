@@ -1,12 +1,30 @@
 // version 1.0 - Automatic Security Enforcement
 // This middleware automatically enforces security best practices
-var master = require('../MasterControl');
-const { logger } = require('../error/MasterErrorLogger');
-const { validateCSRFToken } = require('./SecurityMiddleware');
-const { sanitizeObject } = require('./MasterValidator');
-const { sanitizeUserHTML } = require('./MasterSanitizer');
+import { logger } from '../error/MasterErrorLogger.js';
+import { validateCSRFToken } from './SecurityMiddleware.js';
+import { sanitizeObject } from './MasterValidator.js';
+import { sanitizeUserHTML } from './MasterSanitizer.js';
 
 class SecurityEnforcement {
+
+	// Master reference is set by MasterControl.setupServer() via bindMaster().
+	// This is a static class accessed via MasterAction-like pattern, so we use
+	// a static cache rather than constructor injection.
+	static __masterCache = null;
+
+	static bindMaster(master) {
+		SecurityEnforcement.__masterCache = master;
+	}
+
+	static get _master() {
+		if (!SecurityEnforcement.__masterCache) {
+			throw new Error(
+				'SecurityEnforcement._master accessed before MasterControl initialization. ' +
+				'Ensure master.start() / setupServer() runs before security checks.'
+			);
+		}
+		return SecurityEnforcement.__masterCache;
+	}
 
 	/**
 	 * Initialize automatic security enforcement
@@ -56,7 +74,7 @@ class SecurityEnforcement {
 	static middleware(config = {}) {
 		return async (ctx, next) => {
 			// 1. HTTPS Enforcement (Production only)
-			if (config.httpsOnly && master.environmentType === 'production') {
+			if (config.httpsOnly && SecurityEnforcement._master.environmentType === 'production') {
 				if (!SecurityEnforcement._isSecure(ctx.request)) {
 					logger.warn({
 						code: 'MC_SECURITY_HTTPS_REQUIRED',
@@ -65,9 +83,9 @@ class SecurityEnforcement {
 						ip: ctx.request.connection.remoteAddress
 					});
 
-					const configuredHost = master.env?.server?.hostname;
+					const configuredHost = SecurityEnforcement._master.env?.server?.hostname;
 					if (configuredHost && configuredHost !== 'localhost') {
-						const httpsPort = master.env?.server?.httpsPort || 443;
+						const httpsPort = SecurityEnforcement._master.env?.server?.httpsPort || 443;
 						const port = httpsPort === 443 ? '' : `:${httpsPort}`;
 						const httpsUrl = `https://${configuredHost}${port}${ctx.request.url}`;
 
@@ -235,7 +253,6 @@ class SecurityEnforcement {
 }
 
 // Export for use in config
-module.exports = SecurityEnforcement;
-
-// Also extend master object
-master.extend('securityEnforcement', SecurityEnforcement);
+export default SecurityEnforcement;
+// Self-registration with master.extend() now happens explicitly in
+// MasterControl.setupServer() after bindMaster() has been called.

@@ -6,8 +6,8 @@
  * Prevents: Session fixation, session hijacking, cookie theft
  */
 
-const crypto = require('crypto');
-const { logger } = require('../error/MasterErrorLogger');
+import crypto from 'node:crypto';
+import { logger } from '../error/MasterErrorLogger.js';
 
 // Session store (use Redis in production)
 const sessionStore = new Map();
@@ -425,7 +425,9 @@ const SESSION_BEST_PRACTICES = {
 
 // Create MasterController-compatible wrapper
 class MasterSessionSecurity {
-  constructor() {
+  constructor(master) {
+    // Constructor injection (replaces previous lazy require pattern)
+    this._master = master;
     this._instance = null;
     this._options = {};
   }
@@ -438,12 +440,9 @@ class MasterSessionSecurity {
     this._options = options;
     this._instance = new SessionSecurity(options);
 
-    // Lazy load master to avoid circular dependency
-    const master = require('../MasterControl');
-
     // Auto-register with pipeline if available
-    if (master.pipeline) {
-      master.pipeline.use(this._instance.middleware());
+    if (this._master && this._master.pipeline) {
+      this._master.pipeline.use(this._instance.middleware());
     }
 
     return this;
@@ -608,11 +607,9 @@ class MasterSessionSecurity {
 // Note: Auto-registration with MasterController happens in init() to avoid circular dependency
 // This is called when master.session.init() is invoked in config.js
 
-module.exports = {
-  SessionSecurity,
+export { SessionSecurity,
   MasterSessionSecurity,
   session,
   createSessionMiddleware,
   destroySession,
-  SESSION_BEST_PRACTICES
-};
+  SESSION_BEST_PRACTICES };

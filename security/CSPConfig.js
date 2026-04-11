@@ -6,7 +6,7 @@
  * Helps prevent XSS, clickjacking, and other code injection attacks
  */
 
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 /**
  * CSP Presets for different environments
@@ -308,13 +308,11 @@ function createProductionCDNCSP(options = {}) {
 const env = process.env.NODE_ENV || 'development';
 const csp = env === 'production' ? createProductionCSP() : createDevelopmentCSP();
 
-module.exports = {
-  CSPConfig,
+export { CSPConfig,
   csp,
   createDevelopmentCSP,
   createProductionCSP,
   createProductionCDNCSP,
   DEVELOPMENT_CSP,
   PRODUCTION_CSP,
-  PRODUCTION_CDN_CSP
-};
+  PRODUCTION_CDN_CSP };

@@ -2,6 +2,8 @@
 
 **Goal:** Enable automatic security enforcement in 5 minutes
 
+> **MasterController v2.0+ is ESM-only.** All examples below use `import` syntax. Your `package.json` must have `"type": "module"`. For CJS see v1.x docs.
+
 ---
 
 ## Step 1: Update config/initializers/config.js
@@ -10,8 +12,8 @@ Add these lines at the top of your config file:
 
 ```javascript
 // config/initializers/config.js
-var master = require('mastercontroller');
-const SecurityEnforcement = require('mastercontroller/security/SecurityEnforcement');
+import master from 'mastercontroller';
+import SecurityEnforcement from 'mastercontroller/security/SecurityEnforcement.js';
 
 // ===========================
 // AUTOMATIC SECURITY ENFORCEMENT

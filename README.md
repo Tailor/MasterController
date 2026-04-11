@@ -1,9 +1,12 @@
 # MasterController Framework
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
+[![ESM Only](https://img.shields.io/badge/ESM-only-blueviolet)](https://nodejs.org/api/esm.html)
 [![Fortune 500 Ready](https://img.shields.io/badge/Fortune%20500-Ready-success)](FORTUNE_500_UPGRADE.md)
 [![Security Hardened](https://img.shields.io/badge/Security-Hardened-blue)](security/README.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **⚠️ v2.0 is ESM-only.** MasterController v2.0+ ships as a pure ECMAScript Module package — no CommonJS support. If your app uses `require('mastercontroller')`, stay on the **v1.x** line (still maintained for security fixes) until you can migrate to `import master from 'mastercontroller'`. See the [Migrating from v1.x](#migrating-from-v1x) section.
 
 **Fortune 500 Production Ready** | Enterprise-grade Node.js MVC framework with security hardening, horizontal scaling, and production monitoring.
 
@@ -117,58 +120,163 @@ npm install --save-dev eslint prettier
 ```
 
 **Requirements:**
-- Node.js 18.0.0 or higher
+- Node.js 20.0.0 or higher
+- ESM only (your `package.json` must have `"type": "module"`)
 - Redis 5.0+ (for horizontal scaling features)
 
 ---
 
 ## Quickstart
 
-```javascript
-// server.js
-const master = require('mastercontroller');
+The smallest possible MasterController app — one route, one controller, one JSON response. Working code lives in [`examples/01-hello-world/`](examples/01-hello-world/).
 
-master.root = __dirname;
-master.environmentType = 'development'; // or process.env.NODE_ENV
+**`package.json`** — note `"type": "module"`:
 
-const server = master.setupServer('http'); // or 'https'
-
-// Load configuration (registers middleware, routes, DI services)
-require('./config/initializers/config');
-
-master.start(server);
+```json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mastercontroller": "^2.0.0"
+  }
+}
 ```
 
+**`server.js`** — entry point:
+
 ```javascript
-// config/initializers/config.js
-const master = require('mastercontroller');
-const cors = require('./cors.json');
+import master from 'mastercontroller';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+
+// Resolve __dirname in ESM (the standard pattern)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+master.root = __dirname;
+master.environmentType = process.env.NODE_ENV || 'development';
+
+const server = master.setupServer('http');
+
+// startMVC() loads ./app/routes.js AND pre-loads every controller in
+// ./app/controllers/. Both happen via dynamic ESM import, so the call is async.
+await master.startMVC('app');
+await master.start(server);
+
+server.listen(3000, '127.0.0.1', () => {
+  console.log('Listening on http://127.0.0.1:3000/');
+});
+```
+
+**`app/routes.js`** — route definitions, loaded once at startup:
+
+```javascript
+import master from 'mastercontroller';
+
+const router = master.router.start();
+router.route('/', 'api/hello#root', 'get');
+```
+
+**`app/controllers/api/helloController.js`** — a plain ES class, `export default`:
+
+```javascript
+export default class HelloController {
+  constructor(ctx) {
+    this._ctx = ctx;
+  }
+
+  // Action methods receive the request context object
+  root(ctx) {
+    ctx.response.writeHead(200, { 'Content-Type': 'application/json' });
+    ctx.response.end(JSON.stringify({ message: 'Hello from MasterController v2.0' }));
+  }
+}
+```
+
+**`config/environments/env.development.json`** — environment config (eagerly loaded at startup, no `require` involved):
+
+```json
+{
+  "server": {
+    "httpPort": 3000,
+    "hostname": "127.0.0.1",
+    "requestTimeout": 60000
+  }
+}
+```
+
+Run it:
+
+```bash
+npm install
+npm start
+# → Listening on http://127.0.0.1:3000/
+curl http://127.0.0.1:3000/
+# → {"message":"Hello from MasterController v2.0"}
+```
+
+### What changed in v2.0 (vs v1.x)
+
+| Concern | v1.x (CJS) | v2.0 (ESM) |
+|---|---|---|
+| Imports | `const master = require('mastercontroller')` | `import master from 'mastercontroller'` |
+| `__dirname` | available as global | `const __dirname = dirname(fileURLToPath(import.meta.url))` |
+| `master.startMVC(...)` | sync | **async** — must `await` |
+| `master.start(server)` | sync | **async** — must `await` |
+| `master.component(...)` | sync | **async** — must `await` |
+| Controller loading | lazy `require()` per request | pre-loaded into a registry at startup |
+| Circular deps | hidden via lazy `_master` getters | broken via constructor injection |
+| `config/load.js` | required for routing | optional — framework auto-routes if missing |
+| Controller exports | `module.exports = SomeClass` | `export default class SomeClass {}` |
+
+A more complete config example with CORS and sessions:
+
+```javascript
+// config/initializers/config.js — loaded by user code, not framework
+import master from 'mastercontroller';
+import corsConfig from './cors.json' with { type: 'json' };
 
 // Initialize CORS (auto-registers with pipeline)
-master.cors.init(cors);
+master.cors.init(corsConfig);
 
 // Initialize sessions (auto-registers with pipeline)
 master.session.init({
-    cookieName: 'mc_session',
-    maxAge: 3600000,
-    httpOnly: true,
-    secure: true,
-    sameSite: 'strict'
+  cookieName: 'mc_session',
+  maxAge: 3600000,
+  httpOnly: true,
+  secure: true,
+  sameSite: 'strict'
 });
 
 // Auto-discover custom middleware from middleware/ folder
-master.pipeline.discoverMiddleware('middleware');
+await master.pipeline.discoverMiddleware('middleware');
 
 // Configure server settings
 master.serverSettings({
-    httpPort: 3000,
-    hostname: '127.0.0.1',
-    requestTimeout: 60000
+  httpPort: 3000,
+  hostname: '127.0.0.1',
+  requestTimeout: 60000
 });
-
-// Register routes
-master.startMVC('config');
 ```
+
+---
+
+## Migrating from v1.x
+
+If you're upgrading an existing v1.x app to v2.0:
+
+1. **Add `"type": "module"` to your `package.json`.** Every `.js` file in your app is now interpreted as ESM.
+2. **Replace `require()` with `import`.** Add `.js` extensions to all relative imports — ESM requires explicit file extensions.
+3. **Replace `module.exports` with `export`.** Use `export default` for single-class exports, `export { ... }` for named exports.
+4. **`await` the framework lifecycle calls.** `master.startMVC(...)`, `master.start(...)`, and `master.component(...)` are now async. Wrap your top-level code in an `async function` or use top-level `await`.
+5. **Replace `__dirname`.** Use `dirname(fileURLToPath(import.meta.url))` (see Quickstart).
+6. **Bump Node to 20+** in your `engines` field.
+7. **Optional: simplify `config/load.js`.** The framework now auto-dispatches to the router if you don't have one. You only need `config/load.js` for custom logic like CORS preflight handling.
+
+If you can't migrate yet, **stay on v1.x** — it continues to receive security fixes.
 
 ---
 

@@ -11,8 +11,11 @@
  * @version 1.0.0 - FAANG-level refactor with security hardening
  */
 
-const crypto = require('crypto');
-const { logger } = require('./error/MasterErrorLogger');
+import crypto from 'node:crypto';
+import { logger } from './error/MasterErrorLogger.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { Transform } from 'node:stream';
 
 // Configuration Constants
 const CRYPTO_CONFIG = {
@@ -446,8 +449,6 @@ class MasterTools{
      * // Returns: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
      */
     fileToBase64(filePathOrFile, options = {}) {
-        const fs = require('fs');
-        const path = require('path');
 
         // Extract file path from formidable file object or use as-is
         const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
@@ -515,8 +516,6 @@ class MasterTools{
      * // { path: '/path/to/output.jpg', size: 51234, mimetype: 'image/jpeg' }
      */
     base64ToFile(base64String, outputPath, options = {}) {
-        const fs = require('fs');
-        const path = require('path');
 
         // Validate inputs
         if (!base64String || typeof base64String !== 'string') {
@@ -587,7 +586,6 @@ class MasterTools{
      * console.log(buffer.length);  // File size in bytes
      */
     fileToBuffer(filePathOrFile, options = {}) {
-        const fs = require('fs');
 
         const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
             ? filePathOrFile.filepath
@@ -713,8 +711,6 @@ class MasterTools{
      * });
      */
     async streamFileToBase64(filePathOrFile, options = {}) {
-        const fs = require('fs');
-        const { Transform } = require('stream');
 
         const filepath = typeof filePathOrFile === 'object' && filePathOrFile.filepath
             ? filePathOrFile.filepath
@@ -767,7 +763,6 @@ class MasterTools{
      * @private
      */
     _getMimeTypeFromPath(filepath) {
-        const path = require('path');
         const ext = path.extname(filepath).toLowerCase();
 
         const mimeTypes = {
@@ -1021,4 +1016,4 @@ class MasterTools{
     
 }
 
-module.exports = MasterTools;
+export default MasterTools;

@@ -1,5 +1,7 @@
 # Professional Timeout and Error Handling
 
+> **MasterController v2.0+ is ESM-only.** Examples in this document use `import` syntax. Your `package.json` must have `"type": "module"`.
+
 MasterController includes production-ready timeout tracking and error page rendering inspired by Rails and Django.
 
 ---

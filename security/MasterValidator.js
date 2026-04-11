@@ -12,9 +12,9 @@
  * - Header Injection
  */
 
-const { logger } = require('../error/MasterErrorLogger');
-const { escapeHTML } = require('./MasterSanitizer');
-const path = require('path');
+import { logger } from '../error/MasterErrorLogger.js';
+import { escapeHTML } from './MasterSanitizer.js';
+import path from 'node:path';
 
 // CRITICAL: DoS Protection - Maximum input length to prevent regex catastrophic backtracking
 // Prevents attackers from sending massive strings that cause regex to hang for minutes/hours
@@ -660,8 +660,15 @@ function detectCommandInjection(input) {
   return validator.detectCommandInjection(input);
 }
 
-module.exports = {
-  MasterValidator,
+function validateRequestBody(body, schema) {
+  return validator.validateRequestBody(body, schema);
+}
+
+function sanitizeObject(obj) {
+  return validator.sanitizeObject(obj);
+}
+
+export { MasterValidator,
   validator,
   validateString,
   validateInteger,
@@ -670,7 +677,8 @@ module.exports = {
   sanitizeSQL,
   sanitizeFilePath,
   validateRouteParams,
+  validateRequestBody,
+  sanitizeObject,
   detectSQLInjection,
   detectPathTraversal,
-  detectCommandInjection
-};
+  detectCommandInjection };

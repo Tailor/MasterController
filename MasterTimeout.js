@@ -13,7 +13,7 @@
  * @version 1.1.0 - FAANG-level refactor with production hardening
  */
 
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
 
 // Configuration Constants
 const TIMEOUT_CONFIG = {
@@ -32,7 +32,9 @@ const HTTP_STATUS = {
 };
 
 class MasterTimeout {
-    constructor() {
+    constructor(master) {
+        // Constructor injection (replaces previous lazy require pattern)
+        this._master = master;
         this.globalTimeout = TIMEOUT_CONFIG.DEFAULT_TIMEOUT;
         this.routeTimeouts = new Map();
         this.activeRequests = new Map();
@@ -56,14 +58,6 @@ class MasterTimeout {
         if (this.cleanupTimer.unref) {
             this.cleanupTimer.unref();
         }
-    }
-
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
-        }
-        return this.__masterCache;
     }
 
     /**
@@ -691,4 +685,4 @@ class MasterTimeout {
 }
 
 // Export for MasterControl to register (prevents circular dependency)
-module.exports = { MasterTimeout };
+export { MasterTimeout };

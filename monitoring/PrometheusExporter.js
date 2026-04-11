@@ -19,8 +19,8 @@
  *   npm install prom-client --save-optional
  */
 
-const os = require('os');
-const { logger } = require('../error/MasterErrorLogger');
+import os from 'node:os';
+import { logger } from '../error/MasterErrorLogger.js';
 
 class PrometheusExporter {
   constructor(options = {}) {
@@ -43,17 +43,29 @@ class PrometheusExporter {
     // Custom metrics storage
     this.customMetrics = new Map();
 
-    // Try to load prom-client if available (optional peer dependency)
+    // prom-client is loaded asynchronously via init() since ESM imports are async.
+    // Constructor stays synchronous; the promClient is null until init() completes.
+    this.promClient = null;
+  }
+
+  /**
+   * Asynchronously load the optional prom-client peer dependency.
+   * Call this after construction if you need advanced metrics.
+   * @returns {Promise<boolean>} true if prom-client was loaded
+   */
+  async init() {
+    if (this.promClient) return true;
     try {
-      this.promClient = require('prom-client');
+      const mod = await import('prom-client');
+      this.promClient = mod.default ?? mod;
       this._setupPromClient();
+      return true;
     } catch (e) {
-      // prom-client not installed, use simple implementation
-      this.promClient = null;
       logger.info({
         code: 'MC_PROMETHEUS_SIMPLE_MODE',
         message: 'Running Prometheus exporter in simple mode (install prom-client for advanced features)'
       });
+      return false;
     }
   }
 
@@ -410,7 +422,5 @@ const prometheusExporter = new PrometheusExporter({
   collectDefaultMetrics: true
 });
 
-module.exports = {
-  PrometheusExporter,
-  prometheusExporter
-};
+export { PrometheusExporter,
+  prometheusExporter };

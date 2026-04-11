@@ -1,6 +1,6 @@
 // version 0.1.0 - FAANG-level refactor with bug fixes and complete feature set
 
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
 
 // Configuration Constants
 const TEMP_CONFIG = {
@@ -30,12 +30,9 @@ class MasterTemp{
     temp = {};
     _reservedKeys = new Set(['temp', '_master', '__masterCache', '_reservedKeys', 'add', 'get', 'has', 'clear', 'clearAll', 'keys', 'size', 'isEmpty', 'toJSON']);
 
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
-        }
-        return this.__masterCache;
+    constructor(master) {
+        // Constructor injection (replaces previous lazy require pattern)
+        this._master = master;
     }
 
     /**
@@ -316,4 +313,4 @@ class MasterTemp{
     }
 }
 
-module.exports = { MasterTemp };
+export { MasterTemp };

@@ -1,7 +1,10 @@
 // MasterPipeline - Middleware Pipeline System
 // version 1.0
 
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // HTTP Status Code Constants
 const HTTP_STATUS = {
@@ -9,17 +12,13 @@ const HTTP_STATUS = {
 };
 
 class MasterPipeline {
-    constructor() {
+    constructor(master) {
         this.middleware = [];
         this.errorHandlers = [];
-    }
-
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
-        }
-        return this.__masterCache;
+        // Constructor injection: master is passed by MasterControl.setupServer()
+        // when it instantiates this class. Replaces the previous lazy require()
+        // pattern that was used to break circular dependencies.
+        this._master = master;
     }
 
     /**
@@ -279,17 +278,19 @@ class MasterPipeline {
     /**
      * Discover and load middleware from folders
      *
+     * Async because the body uses fs.promises and (in v2.0) await import().
+     * Callers should `await master.pipeline.discoverMiddleware('middleware')`.
+     *
      * @param {String|Object} options - Folder path or options object
+     * @returns {Promise<void>}
      */
-    discoverMiddleware(options) {
-        const fs = require('fs');
-        const path = require('path');
+    async discoverMiddleware(options) {
 
         const folders = typeof options === 'string'
             ? [options]
             : (options.folders || ['middleware']);
 
-        folders.forEach(folder => {
+        for (const folder of folders) {
             const dir = path.join(this._master.root, folder);
             if (!fs.existsSync(dir)) {
                 logger.warn({
@@ -297,25 +298,26 @@ class MasterPipeline {
                     message: 'Middleware folder not found',
                     folder: folder
                 });
-                return;
+                continue;
             }
 
-            const files = fs.readdirSync(dir)
+            const files = (await fs.promises.readdir(dir))
                 .filter(file => file.endsWith('.js'))
-                .sort(); // Alphabetical order
+                .sort();
 
-            files.forEach(file => {
+            for (const file of files) {
                 try {
                     const middlewarePath = path.join(dir, file);
-                    const middleware = require(middlewarePath);
+                    const mod = await import(pathToFileURL(middlewarePath).href);
+                    const middleware = mod.default ?? mod;
 
                     // Support two patterns:
-                    // Pattern 1: module.exports = async (ctx, next) => {}
+                    // Pattern 1: export default async (ctx, next) => {}
                     if (typeof middleware === 'function') {
                         this.use(middleware);
                     }
-                    // Pattern 2: module.exports = { register: (master) => {} }
-                    else if (middleware.register && typeof middleware.register === 'function') {
+                    // Pattern 2: export default { register: (master) => {} }
+                    else if (middleware && typeof middleware.register === 'function') {
                         middleware.register(this._master);
                     }
                     else {
@@ -324,7 +326,7 @@ class MasterPipeline {
                             message: 'Invalid middleware export',
                             file: `${folder}/${file}`
                         });
-                        return;
+                        continue;
                     }
 
                     logger.info({
@@ -341,8 +343,8 @@ class MasterPipeline {
                         stack: err.stack
                     });
                 }
-            });
-        });
+            }
+        }
     }
 
     /**
@@ -373,4 +375,4 @@ class MasterPipeline {
 }
 
 // Export for MasterControl to register (prevents circular dependency)
-module.exports = { MasterPipeline };
+export { MasterPipeline };

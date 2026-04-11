@@ -1,9 +1,10 @@
 // version 0.1.2
 
-const { Server } = require('socket.io');
-const fs = require('fs');
-const path = require('path');
-const { logger } = require('./error/MasterErrorLogger');
+import { Server } from 'socket.io';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { logger } from './error/MasterErrorLogger.js';
 
 // Socket Configuration Constants
 const SOCKET_CONFIG = {
@@ -117,12 +118,9 @@ const jsUcfirst = function(string){
  */
 class MasterSocket{
 
-    // Lazy-load master to avoid circular dependency (Google-style lazy initialization)
-    get _master() {
-        if (!this.__masterCache) {
-            this.__masterCache = require('./MasterControl');
-        }
-        return this.__masterCache;
+    constructor(master) {
+        // Constructor injection (replaces previous lazy require pattern)
+        this._master = master;
     }
 
     /**
@@ -410,15 +408,17 @@ class MasterSocket{
         if(controller){
             try{
                 // Try case-sensitive first (PascalCase), then fallback to camelCase for cross-platform compatibility
-                const moduleName = path.join(this._baseurl, 'app', 'sockets', controller + 'Socket');
+                const moduleName = path.join(this._baseurl, 'app', 'sockets', controller + 'Socket.js');
                 let BoardSocket;
                 try {
-                    BoardSocket = require(moduleName);
+                    const mod = await import(pathToFileURL(moduleName).href);
+                    BoardSocket = mod.default ?? mod;
                 } catch (e) {
                     // If PascalCase fails (Linux case-sensitive), try camelCase
-                    if (e.code === 'MODULE_NOT_FOUND') {
-                        const camelCaseModuleName = path.join(this._baseurl, 'app', 'sockets', controller.charAt(0).toLowerCase() + controller.slice(1) + 'Socket');
-                        BoardSocket = require(camelCaseModuleName);
+                    if (e.code === 'ERR_MODULE_NOT_FOUND' || e.code === 'MODULE_NOT_FOUND') {
+                        const camelCaseModuleName = path.join(this._baseurl, 'app', 'sockets', controller.charAt(0).toLowerCase() + controller.slice(1) + 'Socket.js');
+                        const mod = await import(pathToFileURL(camelCaseModuleName).href);
+                        BoardSocket = mod.default ?? mod;
                     } else {
                         throw e;
                     }
@@ -485,8 +485,7 @@ class MasterSocket{
     }
 }
 
-module.exports = { MasterSocket };
-
+export { MasterSocket };
 /**
  * Check if value is a plain object
  *

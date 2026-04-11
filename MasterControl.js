@@ -1,15 +1,30 @@
 // MasterControl - by Alexander rich
 // version 1.0.252
 
-const url = require('url');
-const fileserver = require('fs');
-const http = require('http');
-const https = require('https');
-const tls = require('tls');
-const fs = require('fs');
-const path = require('path');
-const globSearch = require("glob");
-const crypto = require('crypto'); // CRITICAL FIX: For ETag generation
+import url from 'node:url';
+import fileserver from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
+import tls from 'node:tls';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto'; // For ETag generation
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+import MasterAction from './MasterAction.js';
+import MasterActionFilters from './MasterActionFilters.js';
+import SecurityEnforcement from './security/SecurityEnforcement.js';
+import { MasterPipeline } from './MasterPipeline.js';
+import { MasterTimeout } from './MasterTimeout.js';
+import { MasterRouter } from './MasterRouter.js';
+import { MasterRequest } from './MasterRequest.js';
+import { MasterCors } from './MasterCors.js';
+import { MasterSocket } from './MasterSocket.js';
+import { MasterTemp } from './MasterTemp.js';
+import { MasterSessionSecurity } from './security/SessionSecurity.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // HTTP Status Code Constants
 const HTTP_STATUS = {
@@ -25,13 +40,13 @@ const HTTP_STATUS = {
 };
 
 // Enhanced error handling - setup global handlers
-const { setupGlobalErrorHandlers } = require('./error/MasterErrorMiddleware');
-const { logger } = require('./error/MasterErrorLogger');
+import { setupGlobalErrorHandlers } from './error/MasterErrorMiddleware.js';
+import { logger } from './error/MasterErrorLogger.js';
 
 // Security - Initialize security features
-const { security, securityHeaders } = require('./security/SecurityMiddleware');
-const { csp } = require('./security/CSPConfig');
-const { session } = require('./security/SessionSecurity');
+import { security, securityHeaders } from './security/SecurityMiddleware.js';
+import { csp } from './security/CSPConfig.js';
+import { session } from './security/SessionSecurity.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -91,7 +106,23 @@ class MasterControl {
     }
 
     get env(){
-        return require(`${this.root}/config/environments/env.${this.environmentType}.json`);
+        // Lazy-load on first access, then cache. Read with fs+JSON.parse instead
+        // of require() so this works identically in CJS and ESM (Phase 4).
+        if (this._envCache !== undefined) {
+            return this._envCache;
+        }
+        const envPath = `${this.root}/config/environments/env.${this.environmentType}.json`;
+        try {
+            this._envCache = JSON.parse(fs.readFileSync(envPath, 'utf8'));
+        } catch (err) {
+            logger.error({
+                code: 'MC_ENV_LOAD_FAILED',
+                message: `Failed to load environment config: ${envPath}`,
+                error: err.message
+            });
+            this._envCache = {};
+        }
+        return this._envCache;
     }
 
     /**
@@ -287,24 +318,21 @@ class MasterControl {
         }
     }
 
-    component(folderLocation, innerFolder){
+    async component(folderLocation, innerFolder){
 
         // Enhanced: Support both relative (to master.root) and absolute paths
-        // If folderLocation is absolute, use it directly; otherwise join with master.root
         let rootFolderLocation;
         if (path.isAbsolute(folderLocation)) {
-            // Absolute path provided - use it directly
             rootFolderLocation = path.join(folderLocation, innerFolder);
         } else {
-            // Relative path - join with master.root (original behavior)
             rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
         }
 
         // Structure is always: {rootFolderLocation}/config/initializers/config.js
-        const configPath =path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
-        if(fs.existsSync(configPath)){
-            require(configPath);
-        }else{
+        const configPath = path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
+        if (fs.existsSync(configPath)) {
+            await import(url.pathToFileURL(configPath).href);
+        } else {
             logger.error({
                 code: 'MC_ERR_CONFIG_NOT_FOUND',
                 message: 'Cannot find config file',
@@ -313,21 +341,24 @@ class MasterControl {
         }
 
         // Structure is always: {rootFolderLocation}/config/routes.js
-        const routePath =path.join(rootFolderLocation, 'config', 'routes.js');
-        const routeObject ={
-            isComponent : true,
-            root : rootFolderLocation
-        }
+        const routePath = path.join(rootFolderLocation, 'config', 'routes.js');
+        const routeObject = {
+            isComponent: true,
+            root: rootFolderLocation
+        };
         this.router.setup(routeObject);
-        if(fs.existsSync(routePath)){
-            require(routePath);
-        }else{
+        if (fs.existsSync(routePath)) {
+            await import(url.pathToFileURL(routePath).href);
+        } else {
             logger.error({
                 code: 'MC_ERR_ROUTES_NOT_FOUND',
                 message: 'Cannot find routes file',
                 path: routePath
             });
         }
+
+        // Pre-populate component controllers into the registry.
+        await this.router.discoverControllers(rootFolderLocation);
     }
 
 
@@ -404,67 +435,52 @@ class MasterControl {
             // SECURITY: Initialize prototype pollution protection
             this._initPrototypePollutionProtection();
 
-            // AUTO-LOAD internal framework modules
-            // These are required for the framework to function and are loaded transparently
-            const internalModules = {
-                'MasterPipeline': './MasterPipeline',
-                'MasterTimeout': './MasterTimeout',
-                'MasterAction': './MasterAction',
-                'MasterActionFilters': './MasterActionFilters',
-                'MasterRouter': './MasterRouter',
-                'MasterRequest': './MasterRequest',
-                'MasterCors': './MasterCors',
-                'SessionSecurity': './security/SessionSecurity',
-                'MasterSocket': './MasterSocket',
-                'MasterTools': './MasterTools'
-                // View modules removed - use master.useView(MasterView) instead
-                // 'MasterHtml': './MasterHtml',
-                // 'MasterTemplate': './MasterTemplate',
-                // 'TemplateOverwrite': './TemplateOverwrite'
-            };
+            // Construct child modules with explicit dependency injection.
+            // ESM imports are at the top of this file, so the previous dynamic
+            // require() loop is gone. Order doesn't matter — DI breaks any cycles.
+            $that.pipeline = new MasterPipeline($that);
+            $that.timeout = new MasterTimeout($that);
+            $that.router = new MasterRouter($that);
+            $that.request = new MasterRequest($that);
+            $that.cors = new MasterCors($that);
+            $that.socket = new MasterSocket($that);
+            $that.tempdata = new MasterTemp($that);
+            $that.session = new MasterSessionSecurity($that);
 
-            // Explicit module registration (prevents circular dependency issues)
-            // This is the Google-style dependency injection pattern
-            const moduleRegistry = {
-                'pipeline': { path: './MasterPipeline', exportName: 'MasterPipeline' },
-                'timeout': { path: './MasterTimeout', exportName: 'MasterTimeout' },
-                'router': { path: './MasterRouter', exportName: 'MasterRouter' },
-                'request': { path: './MasterRequest', exportName: 'MasterRequest' },
-                'cors': { path: './MasterCors', exportName: 'MasterCors' },
-                'socket': { path: './MasterSocket', exportName: 'MasterSocket' },
-                'tempdata': { path: './MasterTemp', exportName: 'MasterTemp' },
-                'session': { path: './security/SessionSecurity', exportName: 'MasterSessionSecurity' }
-                // 'overwrite' removed - will be provided by view engine (master.useView())
-            };
-
-            for (const [name, config] of Object.entries(moduleRegistry)) {
-                try {
-                    const module = require(config.path);
-                    const ClassConstructor = module[config.exportName] || module;
-
-                    if (ClassConstructor) {
-                        $that[name] = new ClassConstructor();
-                    } else {
-                        console.warn(`[MasterControl] Module ${name} does not export ${config.exportName}`);
+            // Bind master to static-based modules (MasterAction, MasterActionFilters)
+            // These can't use constructor injection because user controllers extend them.
+            // Register them as controller extensions immediately afterward (this previously
+            // happened inside setImmediate() inside each module — now explicit and synchronous).
+            try {
+                if (MasterAction && typeof MasterAction.bindMaster === 'function') {
+                    MasterAction.bindMaster($that);
+                    if (typeof $that.extendController === 'function') {
+                        $that.extendController(MasterAction);
                     }
-                } catch (e) {
-                    console.error(`[MasterControl] Failed to load ${name}:`, e.message);
                 }
+                if (MasterActionFilters && typeof MasterActionFilters.bindMaster === 'function') {
+                    MasterActionFilters.bindMaster($that);
+                    if (typeof $that.extendController === 'function') {
+                        $that.extendController(MasterActionFilters);
+                    }
+                }
+                if (SecurityEnforcement && typeof SecurityEnforcement.bindMaster === 'function') {
+                    SecurityEnforcement.bindMaster($that);
+                    if (typeof $that.extend === 'function') {
+                        $that.extend('securityEnforcement', SecurityEnforcement);
+                    }
+                }
+            } catch (e) {
+                console.error('[MasterControl] Failed to bind master to action modules:', e.message);
             }
 
             // BACKWARD COMPATIBILITY: Alias master.sessions → master.session (v1.3.4)
             // Legacy code uses master.sessions (plural), new API uses master.session (singular)
             $that.sessions = $that.session;
 
-            // Load controller extensions (these extend prototypes, not master instance)
-            try {
-                require('./MasterAction');
-                require('./MasterActionFilters');
-                require('./MasterTools');
-                // View extensions (MasterHtml, MasterTemplate) removed - use master.useView() instead
-            } catch (e) {
-                console.error('[MasterControl] Failed to load extensions:', e.message);
-            }
+            // Controller extension modules (MasterAction, MasterActionFilters)
+            // are imported at the top of this file. They register themselves explicitly
+            // via bindMaster() above. No additional require() needed.
 
             // Initialize global error handlers
             setupGlobalErrorHandlers();
@@ -994,7 +1010,7 @@ class MasterControl {
 
     } // end serverRun()
 
-    start(server){
+    async start(server){
         this.server = server;
 
         // Apply any pending server settings that were called before start()
@@ -1008,12 +1024,32 @@ class MasterControl {
         // (auth, logging, etc.) registered between setupServer() and start() runs first
         const $that = this;
 
-        // Terminal routing middleware
+        // Pre-load config/load module ONCE at startup. ESM dynamic import
+        // is async — start() is async to handle this.
+        let configLoadFn = null;
+        try {
+            const configLoadPath = `${$that.root}/config/load.js`;
+            const mod = await import(url.pathToFileURL(configLoadPath).href);
+            configLoadFn = mod.default ?? mod;
+        } catch (err) {
+            logger.warn({
+                code: 'MC_CONFIG_LOAD_NOT_FOUND',
+                message: `config/load.js not found or failed to load`,
+                error: err.message
+            });
+        }
+
+        // Terminal routing middleware.
+        // If the user provides config/load.js, we call it (legacy hook for CORS etc).
+        // Otherwise we dispatch to the router directly — v2.0 makes config/load.js
+        // optional so the simplest "hello world" works without it.
         $that.pipeline.run(async (ctx) => {
-            // Attach pipeline state to raw request object so it survives even if
-            // config/load creates a new requestObject without copying ctx.state
             ctx.request.__pipelineState = ctx.state;
-            require(`${$that.root}/config/load`)(ctx);
+            if (configLoadFn) {
+                configLoadFn(ctx);
+            } else if ($that.router && typeof $that.router.load === 'function') {
+                $that.router.load(ctx);
+            }
         });
 
         // Global error handler
@@ -1040,61 +1076,32 @@ class MasterControl {
         });
     }
 
-    startMVC(foldername){
+    async startMVC(foldername){
         var rootFolderLocation = path.join(this.root, foldername);
 
         // Structure is always: {rootFolderLocation}/routes.js
-        const routePath =path.join(rootFolderLocation, 'routes.js');
+        const routePath = path.join(rootFolderLocation, 'routes.js');
         var route = {
-            isComponent : false,
-            root : `${this.root}`
-        }
+            isComponent: false,
+            root: `${this.root}`
+        };
         this.router.setup(route);
-        if(fs.existsSync(routePath)){
-            require(routePath);
-        }else{
+        if (fs.existsSync(routePath)) {
+            await import(url.pathToFileURL(routePath).href);
+        } else {
             logger.error({
                 code: 'MC_ERR_ROUTES_NOT_FOUND',
                 message: 'Cannot find routes file',
                 path: routePath
             });
         }
+
+        // Pre-populate the controller registry so request-time lookup is a Map.get().
+        // Required for ESM since sync require() doesn't exist.
+        await this.router.discoverControllers(this.root);
     }
     
     
-    // builds and calls all the required tools to have master running completely
-    addInternalTools(requiredList){
-        if(Array.isArray(requiredList)){
-            // Map module names to their new organized paths
-            const modulePathMap = {
-                'MasterPipeline': './MasterPipeline',
-                'MasterTimeout': './MasterTimeout',
-                'MasterAction': './MasterAction',
-                'MasterActionFilters': './MasterActionFilters',
-                'MasterRouter': './MasterRouter',
-                'MasterRequest': './MasterRequest',
-                'MasterCors': './MasterCors',
-                'SessionSecurity': './security/SessionSecurity',
-                'MasterSocket': './MasterSocket',
-                'MasterHtml': './MasterHtml',
-                'MasterTemplate': './MasterTemplate',
-                'MasterTools': './MasterTools',
-                'TemplateOverwrite': './TemplateOverwrite'
-            };
-
-            for(var i = 0; i < requiredList.length; i++){
-                const moduleName = requiredList[i];
-                const modulePath = modulePathMap[moduleName] || './' + moduleName;
-                const module = require(modulePath);
-
-                // Special handling for SessionSecurity to avoid circular dependency
-                if (moduleName === 'SessionSecurity' && module.MasterSessionSecurity) {
-                    this.session = new module.MasterSessionSecurity();
-                }
-            }
-        }
-    }
-
     // will take the repsonse and request objetc and add to it
     async middleware(request, response){
         request.requrl = url.parse(request.url, true);
@@ -1105,8 +1112,11 @@ class MasterControl {
               'Content-Type': 'text/css'
             });
 
-            // get css file
-            fileserver.readFile(__dirname + request.requrl, 'utf8', function(err, data) {
+            // get css file — use this.root (absolute) instead of __dirname
+            // so this works in ESM where __dirname doesn't exist.
+            // Note: request.requrl is a parsed URL object; use .pathname for the string.
+            const cssPath = path.join(this.root, request.requrl.pathname || String(request.requrl));
+            fileserver.readFile(cssPath, 'utf8', function(err, data) {
               if (err) throw err;
               response.write(data, 'utf8');
               response.end();
@@ -1129,4 +1139,8 @@ class MasterControl {
     }
 };
 
-module.exports = new MasterControl();
+// Singleton default export. Users do `import master from 'mastercontroller'`.
+// The class itself is also exported as a named export for advanced use cases.
+const masterInstance = new MasterControl();
+export default masterInstance;
+export { MasterControl };
