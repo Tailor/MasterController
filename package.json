@@ -1,6 +1,6 @@
 {
   "name": "mastercontroller",
-  "version": "2.0.0",
+  "version": "2.0.001",
   "description": "Fortune 500 ready Node.js MVC framework with enterprise security, monitoring, and horizontal scaling",
   "type": "module",
   "exports": {
@@ -48,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/",
     "lint": "eslint *.js **/*.js --fix",
     "lint:check": "eslint *.js **/*.js",
     "format": "prettier --write \"**/*.js\"",

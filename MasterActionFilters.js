@@ -42,6 +42,35 @@ class MasterActionFilters {
 	}
 
 	/**
+	 * Ensure filter state is initialized on `this`.
+	 *
+	 * MasterControl.extendController() mixes filter methods onto user
+	 * controllers by copying functions off a prototype — it does NOT call
+	 * MasterActionFilters' constructor on the user controller instance.
+	 * As a result, a user controller calling `this.beforeAction(...)` for
+	 * the first time would throw "Cannot read properties of undefined
+	 * (reading 'push')" because `this._beforeActionFilters` was never set.
+	 *
+	 * This helper is idempotent and cheap enough to call from every method
+	 * that touches the filter arrays. It is the most robust fix because
+	 * fixing extendController to copy instance fields would re-introduce
+	 * the original module-level shared-state bug (every controller would
+	 * share the same array reference).
+	 * @private
+	 */
+	_ensureFilterInit() {
+		if (!this._beforeActionFilters) {
+			this._beforeActionFilters = [];
+		}
+		if (!this._afterActionFilters) {
+			this._afterActionFilters = [];
+		}
+		if (this._filterTimeout === undefined) {
+			this._filterTimeout = MasterActionFilters.DEFAULT_FILTER_TIMEOUT;
+		}
+	}
+
+	/**
 	 * Normalize action name by removing whitespace
 	 * @private
 	 * @param {string} action - Action name
@@ -191,6 +220,7 @@ class MasterActionFilters {
 	 * }, { priority: 10, name: 'loadUser' });
 	 */
 	beforeAction(actionlist, func, options = {}){
+		this._ensureFilterInit();
 		if (!this._validateFilterParams(actionlist, func, 'before')) {
 			return;
 		}
@@ -231,6 +261,7 @@ class MasterActionFilters {
 	 * }, { priority: 5, name: 'clearCache' });
 	 */
 	afterAction(actionlist, func, options = {}){
+		this._ensureFilterInit();
 		if (!this._validateFilterParams(actionlist, func, 'after')) {
 			return;
 		}
@@ -259,6 +290,7 @@ class MasterActionFilters {
 	 * @returns {boolean} True if matching filters exist
 	 */
 	__hasBeforeAction(obj, request){
+		this._ensureFilterInit();
 		const matchingFilters = this._findMatchingFilters(this._beforeActionFilters, obj, request);
 		return matchingFilters.length > 0;
 	}
@@ -274,6 +306,7 @@ class MasterActionFilters {
 	 * @throws {Error} If any filter fails
 	 */
 	async __callBeforeAction(obj, request, emitter) {
+		this._ensureFilterInit();
 		// Find all matching filters using optimized helper
 		const matchingFilters = this._findMatchingFilters(this._beforeActionFilters, obj, request);
 
@@ -339,6 +372,7 @@ class MasterActionFilters {
 	 * @returns {Promise<void>}
 	 */
 	async __callAfterAction(obj, request) {
+		this._ensureFilterInit();
 		// Find all matching filters using optimized helper
 		const matchingFilters = this._findMatchingFilters(this._afterActionFilters, obj, request);
 
@@ -456,6 +490,7 @@ class MasterActionFilters {
 	 * this.removeBeforeAction('index', myFilterFunction);
 	 */
 	removeBeforeAction(actionlist, func) {
+		this._ensureFilterInit();
 		const actions = Array.isArray(actionlist) ? actionlist : [actionlist];
 		const initialLength = this._beforeActionFilters.length;
 
@@ -481,6 +516,7 @@ class MasterActionFilters {
 	 * this.removeAfterAction('index', myFilterFunction);
 	 */
 	removeAfterAction(actionlist, func) {
+		this._ensureFilterInit();
 		const actions = Array.isArray(actionlist) ? actionlist : [actionlist];
 		const initialLength = this._afterActionFilters.length;
 
@@ -506,6 +542,7 @@ class MasterActionFilters {
 	 * this.clearFilters('before'); // Clear only before filters
 	 */
 	clearFilters(type) {
+		this._ensureFilterInit();
 		if (!type || type === 'before') {
 			this._beforeActionFilters = [];
 		}
@@ -523,6 +560,7 @@ class MasterActionFilters {
 	 * console.log(filters.before); // Array of before filters
 	 */
 	getRegisteredFilters(type) {
+		this._ensureFilterInit();
 		const result = {};
 
 		if (!type || type === 'before') {
@@ -560,6 +598,7 @@ class MasterActionFilters {
 	 * if (this.hasFilter('before', 'index', 'authCheck')) { ... }
 	 */
 	hasFilter(type, action, filterName) {
+		this._ensureFilterInit();
 		const filters = type === 'before' ? this._beforeActionFilters : this._afterActionFilters;
 		const normalizedAction = this._normalizeAction(action);
 
@@ -584,6 +623,7 @@ class MasterActionFilters {
 	 * this.setFilterEnabled('before', 'authCheck', false); // Disable filter
 	 */
 	setFilterEnabled(type, filterName, enabled) {
+		this._ensureFilterInit();
 		const filters = type === 'before' ? this._beforeActionFilters : this._afterActionFilters;
 		let found = false;
 
@@ -606,6 +646,7 @@ class MasterActionFilters {
 	 * @returns {number} Number of registered filters
 	 */
 	_getFilterCount(type) {
+		this._ensureFilterInit();
 		if (type === 'before') {
 			return this._beforeActionFilters.length;
 		}
@@ -633,6 +674,7 @@ class MasterActionFilters {
 	 * @returns {boolean} True if filter is registered
 	 */
 	_isFilterRegistered(type, callback) {
+		this._ensureFilterInit();
 		const filters = type === 'before' ? this._beforeActionFilters : this._afterActionFilters;
 		return filters.some(filter => filter.callBack === callback);
 	}
@@ -643,6 +685,7 @@ class MasterActionFilters {
 	 * @returns {number} Timeout in milliseconds
 	 */
 	_getFilterTimeout() {
+		this._ensureFilterInit();
 		return this._filterTimeout;
 	}
 
