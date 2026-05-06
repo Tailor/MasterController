@@ -219,10 +219,11 @@ function setupGlobalErrorHandlers() {
       context: context
     });
 
-    // Give logger time to write, then exit
-    setTimeout(() => {
-      process.exit(1);
-    }, 1000);
+    // Exit immediately. The previous 1s setTimeout meant a fatal startup error
+    // could be drowned out by "boot succeeded" messages firing in the same tick,
+    // and process managers couldn't tell the difference between a hung process
+    // and a crashing one. Sync stderr writes above are enough to surface the cause.
+    process.exit(1);
   });
 
   // Handle unhandled promise rejections

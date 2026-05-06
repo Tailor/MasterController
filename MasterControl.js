@@ -1013,6 +1013,52 @@ class MasterControl {
     async start(server){
         this.server = server;
 
+        // Crash immediately on fatal listen-time errors (EADDRINUSE, EACCES, etc.)
+        // so a port-in-use never silently turns into "boot succeeded".
+        //
+        // Why prependListener: a user might add their own server.on('error', ...)
+        // handler. If theirs runs first and just logs, Node treats the event as
+        // handled and uncaughtException never fires — the process keeps running
+        // with a non-listening server. Prepending guarantees we see the error
+        // first and decide whether it's fatal regardless of what the user added.
+        //
+        // Why a flag instead of removing the listener after listening: runtime
+        // errors (post-listen, e.g. a request handler throw) should NOT crash
+        // the process. The flag lets us distinguish "before listen" (fatal)
+        // from "after listen" (recoverable).
+        let __isListening = false;
+        server.once('listening', () => { __isListening = true; });
+        server.prependListener('error', (err) => {
+            if (__isListening) {
+                // Post-listen runtime error — log and let the application decide.
+                logger.error({
+                    code: 'MC_SERVER_RUNTIME_ERROR',
+                    message: `Server runtime error: ${err.message}`,
+                    error: err.code,
+                    stack: err.stack
+                });
+                return;
+            }
+            // Pre-listen error — fatal. Surface clearly and exit so process
+            // managers (PM2, systemd, Docker) know the boot failed.
+            const detail = err.code === 'EADDRINUSE'
+                ? `Port ${err.port} is already in use. Stop the other process or pick a different port.`
+                : err.code === 'EACCES'
+                ? `Permission denied binding port ${err.port} (ports < 1024 require root or CAP_NET_BIND_SERVICE).`
+                : err.message;
+            try {
+                process.stderr.write(`\n[MasterController] FATAL: server failed to start — ${err.code || 'unknown error'}\n  ${detail}\n\n`);
+            } catch (_) {}
+            logger.fatal({
+                code: 'MC_SERVER_LISTEN_FAILED',
+                message: `Server listen failed: ${err.code || err.message}`,
+                error: err.code,
+                detail: detail,
+                stack: err.stack
+            });
+            process.exit(1);
+        });
+
         // Apply any pending server settings that were called before start()
         if (this._pendingServerSettings) {
             console.log('[MasterControl] Applying pending server settings');
@@ -1026,18 +1072,27 @@ class MasterControl {
 
         // Pre-load config/load module ONCE at startup. ESM dynamic import
         // is async — start() is async to handle this.
+        //
+        // Distinguish "file doesn't exist" (legitimate skip in v2.0+ where
+        // config/load.js is optional) from "file exists but failed to load"
+        // (a real bug we must surface, not demote to a warning).
         let configLoadFn = null;
-        try {
-            const configLoadPath = `${$that.root}/config/load.js`;
-            const mod = await import(url.pathToFileURL(configLoadPath).href);
-            configLoadFn = mod.default ?? mod;
-        } catch (err) {
-            logger.warn({
-                code: 'MC_CONFIG_LOAD_NOT_FOUND',
-                message: `config/load.js not found or failed to load`,
-                error: err.message
-            });
+        const configLoadPath = `${$that.root}/config/load.js`;
+        if (fs.existsSync(configLoadPath)) {
+            try {
+                const mod = await import(url.pathToFileURL(configLoadPath).href);
+                configLoadFn = mod.default ?? mod;
+            } catch (err) {
+                logger.error({
+                    code: 'MC_CONFIG_LOAD_FAILED',
+                    message: `config/load.js exists at ${configLoadPath} but failed to load`,
+                    error: err.message,
+                    stack: err.stack
+                });
+                throw err; // critical — do not silently continue with a broken config/load.js
+            }
         }
+        // If the file doesn't exist, we silently skip — v2.0+ doesn't require it.
 
         // Terminal routing middleware.
         // If the user provides config/load.js, we call it (legacy hook for CORS etc).
