@@ -97,6 +97,17 @@ class MasterControl {
     _hstsPreload = false
     _viewEngine = null // Pluggable view engine (MasterView, EJS, Pug, etc.)
 
+    // Root directory for static file serving. Only files physically present
+    // under this directory are servable as static assets — URL pattern is never
+    // consulted. Same model as ASP.NET wwwroot / Rails public/ / express.static.
+    //
+    // Defaults to null. When unset the static-file middleware resolves to
+    // master.root for backward compatibility. Production apps should set this
+    // to a dedicated public directory so source files (server.js, config/,
+    // app/) aren't reachable via URL:
+    //   master.staticRoot = path.join(master.root, 'public');
+    staticRoot = null
+
     #loadTransientListClasses(name, params){
         Object.defineProperty(this.requestList, name, {
             get: function() { 
@@ -735,82 +746,85 @@ class MasterControl {
 
         // 1. Static File Serving (with path traversal protection)
         $that.pipeline.use(async (ctx, next) => {
-            if (ctx.isStatic) {
-                // SECURITY: Prevent path traversal attacks
-                let requestedPath = ctx.request.url;
+            // Static file serving — ASP.NET / Rails / Express model.
+            //
+            // The gate is "does the URL resolve to a real file under
+            // master.staticRoot?" — NOT URL pattern matching. This means:
+            //   - /api/customer.listMyEngagements → no such file → next() to router
+            //   - /css/site.css → file exists → served as static
+            //   - /api/users → no such file → next() to router
+            //
+            // URL never determines static-vs-dynamic. Filesystem does.
+            const staticRoot = path.resolve($that.staticRoot || $that.root || '.');
+            const requestedPath = ctx.request.url.split('?')[0].split('#')[0];
+            const safePath = path.join(staticRoot, requestedPath);
+            const resolvedPath = path.resolve(safePath);
 
-                // Normalize the path and resolve it
-                const publicRoot = path.resolve($that.root || '.');
-                const safePath = path.join(publicRoot, requestedPath);
-                const resolvedPath = path.resolve(safePath);
+            // SECURITY: Reject path-traversal escapes from the static root.
+            // Treated as a real security event (logged), but we still fall
+            // through to the router rather than 403 — the router may have a
+            // legitimate route at the requested URL, and the path traversal
+            // only matters to static file serving.
+            if (!resolvedPath.startsWith(staticRoot)) {
+                logger.warn({
+                    code: 'MC_SECURITY_PATH_TRAVERSAL',
+                    message: 'Path traversal attempt blocked from static serving',
+                    requestedPath: requestedPath,
+                    resolvedPath: resolvedPath,
+                    ip: ctx.request.connection.remoteAddress
+                });
+                return next();
+            }
 
-                // CRITICAL: Ensure resolved path is within public root (prevents ../ attacks)
-                if (!resolvedPath.startsWith(publicRoot)) {
-                    logger.warn({
-                        code: 'MC_SECURITY_PATH_TRAVERSAL',
-                        message: 'Path traversal attack blocked',
-                        requestedPath: requestedPath,
-                        resolvedPath: resolvedPath,
-                        ip: ctx.request.connection.remoteAddress
-                    });
-                    ctx.response.statusCode = 403;
-                    ctx.response.setHeader('Content-Type', 'text/plain');
-                    ctx.response.end('Forbidden');
-                    return;
-                }
+            // SECURITY: Refuse to serve dotfiles (.env, .git, .htaccess).
+            // Same fall-through rationale — the router may have a legitimate
+            // dynamic route at that URL.
+            const filename = path.basename(resolvedPath);
+            if (filename.startsWith('.')) {
+                logger.warn({
+                    code: 'MC_SECURITY_DOTFILE_BLOCKED',
+                    message: 'Dotfile access blocked from static serving',
+                    filename: filename,
+                    ip: ctx.request.connection.remoteAddress
+                });
+                return next();
+            }
 
-                // SECURITY: Block dotfiles (.env, .git, .htaccess, etc.)
-                const filename = path.basename(resolvedPath);
-                if (filename.startsWith('.')) {
-                    logger.warn({
-                        code: 'MC_SECURITY_DOTFILE_BLOCKED',
-                        message: 'Dotfile access blocked',
-                        filename: filename,
-                        ip: ctx.request.connection.remoteAddress
-                    });
-                    ctx.response.statusCode = 403;
-                    ctx.response.setHeader('Content-Type', 'text/plain');
-                    ctx.response.end('Forbidden');
-                    return;
-                }
+            // File-existence check is THE gate. If nothing is at this path
+            // (or it's not a regular file / index'd directory), fall through.
+            let stats;
+            try {
+                stats = fs.statSync(resolvedPath);
+            } catch (_) {
+                return next(); // not a static file → routing's turn
+            }
 
-                // Check if file exists (use synchronous check for better performance in middleware)
-                if (!fs.existsSync(resolvedPath)) {
-                    ctx.response.statusCode = 404;
-                    ctx.response.setHeader('Content-Type', 'text/plain');
-                    ctx.response.end('Not Found');
-                    return;
-                }
-
-                // Get file stats
-                let finalPath = resolvedPath;
+            // Resolve directory → index.html or fall through.
+            let finalPath = resolvedPath;
+            if (stats.isDirectory()) {
+                finalPath = path.join(resolvedPath, 'index.html');
                 try {
-                    const stats = fs.statSync(resolvedPath);
+                    stats = fs.statSync(finalPath);
+                } catch (_) {
+                    return next(); // no index.html in this directory → routing's turn
+                }
+            }
 
-                    // If directory, try to serve index.html
-                    if (stats.isDirectory()) {
-                        finalPath = path.join(resolvedPath, 'index.html');
+            if (!stats.isFile()) {
+                return next();
+            }
 
-                        // Check if index.html exists
-                        if (!fs.existsSync(finalPath)) {
-                            ctx.response.statusCode = 403;
-                            ctx.response.setHeader('Content-Type', 'text/plain');
-                            ctx.response.end('Forbidden');
-                            return;
-                        }
-                    }
+            try {
 
                     // CRITICAL FIX: Stream large files instead of reading into memory
                     // Files >1MB are streamed to prevent memory exhaustion and improve performance
                     const STREAM_THRESHOLD = 1 * 1024 * 1024; // 1MB
-                    const fileSize = stats.isDirectory() ? fs.statSync(finalPath).size : stats.size;
+                    const fileSize = stats.size;
                     const ext = path.extname(finalPath);
                     const mimeType = $that.router.findMimeType(ext);
 
-                    // CRITICAL FIX: Generate ETag for caching (based on file stats)
                     // ETag format: "size-mtime" (weak ETag for better performance)
-                    const fileStats = stats.isDirectory() ? fs.statSync(finalPath) : stats;
-                    const etag = `W/"${fileStats.size}-${fileStats.mtime.getTime()}"`;
+                    const etag = `W/"${stats.size}-${stats.mtime.getTime()}"`;
 
                     // CRITICAL FIX: Check If-None-Match header for 304 Not Modified
                     const clientETag = ctx.request.headers['if-none-match'];
@@ -835,7 +849,7 @@ class MasterControl {
 
                     // CRITICAL FIX: Add caching headers
                     ctx.response.setHeader('ETag', etag);
-                    ctx.response.setHeader('Last-Modified', fileStats.mtime.toUTCString());
+                    ctx.response.setHeader('Last-Modified', stats.mtime.toUTCString());
 
                     // Cache-Control based on file type
                     const cacheableExtensions = ['.js', '.css', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.eot', '.ico'];
@@ -901,24 +915,25 @@ class MasterControl {
                             }
                         });
                     }
-                } catch (error) {
-                    // Handle file stat errors
-                    logger.error({
-                        code: 'MC_ERR_FILE_STAT',
-                        message: 'Error accessing static file',
-                        path: resolvedPath,
-                        error: error.message
-                    });
+            } catch (error) {
+                // Failure DURING serving (read/stream error after we've decided
+                // the file exists). Not the same as "no such file" — this is an
+                // actual error reading a file that's there. Surface it as 500.
+                logger.error({
+                    code: 'MC_ERR_FILE_SERVE',
+                    message: 'Error serving static file',
+                    path: resolvedPath,
+                    error: error.message
+                });
+                if (!ctx.response.headersSent) {
                     ctx.response.statusCode = 500;
                     ctx.response.setHeader('Content-Type', 'text/plain');
                     ctx.response.end('Internal Server Error');
-                    return;
                 }
-
-                return; // Terminal - don't call next()
+                return;
             }
-
-            if (typeof next === 'function') await next(); // Not static, continue pipeline
+            // Note: when a file IS served, we return early inside the try{} above
+            // (via .end() / .pipe()). We never reach here in the served-file path.
         });
 
         // 2. Timeout Tracking (optional - disabled by default until init)
@@ -985,8 +1000,13 @@ class MasterControl {
         try {
             const parsedUrl = url.parse(req.url);
             const pathname = parsedUrl.pathname;
-            const ext = path.parse(pathname).ext;
 
+            // ctx.isStatic intentionally not set. Static vs dynamic dispatch is
+            // decided by the static-file middleware based on whether the URL
+            // resolves to an actual file under master.staticRoot, NOT by URL
+            // pattern. URLs with dots in path segments (e.g.
+            // /api/customer.listMyEngagements) flow through to the router
+            // correctly because there's no file at that path.
             const context = {
                 request: req,
                 response: res,
@@ -995,8 +1015,7 @@ class MasterControl {
                 type: req.method.toLowerCase(),
                 params: {},
                 state: {},
-                master: $that,
-                isStatic: ext !== ''
+                master: $that
             };
 
             await $that.pipeline.execute(context);
