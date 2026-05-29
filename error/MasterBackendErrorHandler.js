@@ -8,6 +8,27 @@ import { MasterControllerError } from './MasterErrorHandler.js';
 import { logger } from './MasterErrorLogger.js';
 import path from 'node:path';
 import fs from 'node:fs';
+
+/**
+ * HTML-escape user-controlled values before interpolating into error pages.
+ *
+ * SECURITY (v3.0): the 404/500 dev-mode templates previously interpolated
+ * requestPath, error.message, error.stack, and suggestion paths directly into
+ * HTML, allowing reflected XSS in dev environments (e.g. a malicious link
+ * to `/<img src=x onerror=...>` would execute when the dev landed on the
+ * 404 page). Production templates didn't interpolate these values, so the
+ * issue was dev-only — but dev environments often have privileged tooling
+ * and shared cookies, so this is still a real attack surface.
+ */
+function __esc(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 import { levenshteinDistance } from './MasterErrorHandler.js';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
@@ -244,7 +265,7 @@ function render404Page(requestPath, suggestions = []) {
       <p>Page Not Found</p>
     </div>
     <div class="content">
-      <div class="path">${requestPath}</div>
+      <div class="path">${__esc(requestPath)}</div>
       <p style="color: #6b7280; line-height: 1.6;">
         The page you're looking for doesn't exist or has been moved.
       </p>
@@ -252,7 +273,7 @@ function render404Page(requestPath, suggestions = []) {
       <div class="suggestions">
         <h3>Did you mean?</h3>
         <ul>
-          ${suggestions.map(s => `<li><a href="${s.path}">${s.path}</a></li>`).join('')}
+          ${suggestions.map(s => `<li><a href="${__esc(s.path)}">${__esc(s.path)}</a></li>`).join('')}
         </ul>
       </div>
       ` : ''}
@@ -421,7 +442,7 @@ function render500Page(error, requestPath) {
     <div class="section">
       <h2>Request Path</h2>
       <div class="code">
-        <span class="path">${requestPath || '(unknown)'}</span>
+        <span class="path">${__esc(requestPath || '(unknown)')}</span>
       </div>
     </div>
 
@@ -429,7 +450,7 @@ function render500Page(error, requestPath) {
     <div class="section">
       <h2>Error Message</h2>
       <div class="code">
-        ${error.message || 'Unknown error'}
+        ${__esc(error.message || 'Unknown error')}
       </div>
     </div>
 
@@ -437,7 +458,7 @@ function render500Page(error, requestPath) {
     <div class="section">
       <h2>Stack Trace</h2>
       <div class="code">
-        <div class="stack">${error.stack}</div>
+        <div class="stack">${__esc(error.stack)}</div>
       </div>
     </div>
     ` : ''}

@@ -15,6 +15,23 @@ const rateLimitStore = new Map();
 // CSRF token store (use Redis in production)
 const csrfTokenStore = new Map();
 
+/**
+ * Timing-safe string comparison. Returns false on length mismatch in constant
+ * time relative to the longer of the two lengths to avoid leaking length info
+ * via timing. Used for comparing session IDs and CSRF tokens to mitigate
+ * timing-side-channel attacks.
+ */
+function __timingSafeEqualStr(a, b) {
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+  if (aBuf.length !== bBuf.length) {
+    // Still do a constant-time compare against itself to keep timing flat.
+    crypto.timingSafeEqual(aBuf, aBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
 // Security headers configuration
 const SECURITY_HEADERS = {
   // Prevent XSS attacks
@@ -87,9 +104,15 @@ class SecurityMiddleware {
       }
     }
 
-    // Apply HSTS only in production over HTTPS
+    // Apply HSTS only in production over HTTPS.
+    // SECURITY: only honor X-Forwarded-Proto when the peer is in trustedProxies.
     const isProduction = process.env.NODE_ENV === 'production';
-    const isHTTPS = req.connection.encrypted || req.headers['x-forwarded-proto'] === 'https';
+    const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+    const trustedProxies = this.options?.trustedProxies || [];
+    const normalized = peer.startsWith('::ffff:') ? peer.slice(7) : peer;
+    const trusted = trustedProxies.some(p => p === peer || p === normalized);
+    const isHTTPS = req.connection?.encrypted || req.socket?.encrypted ||
+                    (trusted && req.headers['x-forwarded-proto'] === 'https');
 
     if (isProduction && isHTTPS) {
       for (const [header, value] of Object.entries(HSTS_HEADER)) {
@@ -111,14 +134,30 @@ class SecurityMiddleware {
 
     const origin = req.headers.origin;
 
-    // Check if origin is allowed
-    if (this.corsOrigins.includes('*') || this.corsOrigins.includes(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    // SECURITY (v3.0): never combine wildcard origin with credentials. The
+    // previous code reflected the request's Origin AND set
+    // Access-Control-Allow-Credentials: true whenever corsOrigins included
+    // '*' (which was the default!) — this neutered SameSite + CSRF for every
+    // authenticated endpoint. Now wildcard implies no credentials, per spec.
+    const wildcard = this.corsOrigins.includes('*');
+    const explicitlyAllowed = origin && this.corsOrigins.includes(origin);
+
+    if (explicitlyAllowed) {
+      // Specific allow-listed origin → may include credentials.
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Methods', this.corsMethods.join(', '));
       res.setHeader('Access-Control-Allow-Headers', this.corsHeaders.join(', '));
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+      res.setHeader('Access-Control-Max-Age', '86400');
+    } else if (wildcard) {
+      // Wildcard → public API only. Must NOT include credentials.
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', this.corsMethods.join(', '));
+      res.setHeader('Access-Control-Allow-Headers', this.corsHeaders.join(', '));
+      res.setHeader('Access-Control-Max-Age', '86400');
     }
+    // Otherwise: origin not allowed, send no CORS headers (browser will block).
 
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
@@ -295,7 +334,32 @@ class SecurityMiddleware {
       return;
     }
 
-    // Token valid, continue
+    // SECURITY (v3.0): bind token to session. Previously the in-memory store
+    // accepted any valid token for any user — making CSRF protection
+    // effectively no-op between authenticated users. Now the token MUST have
+    // been issued to the current request's session.
+    const currentSession = req.sessionId || req.session?.id;
+    if (storedToken.sessionId) {
+      if (!currentSession ||
+          !__timingSafeEqualStr(String(storedToken.sessionId), String(currentSession))) {
+        logger.warn({
+          code: 'MC_SECURITY_CSRF_SESSION_MISMATCH',
+          message: 'CSRF token belongs to a different session',
+          ip: this._getClientIP(req)
+        });
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden', message: 'CSRF token invalid' }));
+        return;
+      }
+    }
+
+    // SECURITY (v3.0): rotate-on-use. A leaked token was previously reusable
+    // until expiry (default 1h). Now it's single-use; issue a fresh one in
+    // the response so clients can pick it up.
+    csrfTokenStore.delete(clientToken);
+    const freshToken = this.generateCSRFToken(currentSession);
+    res.setHeader('X-CSRF-Token', freshToken);
+
     if (typeof next === 'function') next();
   }
 
@@ -316,9 +380,14 @@ class SecurityMiddleware {
   }
 
   /**
-   * Validate CSRF token manually
+   * Validate CSRF token manually. sessionId is required for tokens issued
+   * with a sessionId — passing null when the stored token has one will fail.
+   *
+   * @param {string} token - The token from the client
+   * @param {string|null} sessionId - The current request's session ID
+   * @returns {{valid: boolean, reason?: string}}
    */
-  validateCSRFToken(token) {
+  validateCSRFToken(token, sessionId = null) {
     const storedToken = csrfTokenStore.get(token);
 
     if (!storedToken) {
@@ -328,6 +397,12 @@ class SecurityMiddleware {
     if (Date.now() > storedToken.expiry) {
       csrfTokenStore.delete(token);
       return { valid: false, reason: 'Token expired' };
+    }
+
+    if (storedToken.sessionId) {
+      if (!sessionId || !__timingSafeEqualStr(String(storedToken.sessionId), String(sessionId))) {
+        return { valid: false, reason: 'Token does not belong to this session' };
+      }
     }
 
     return { valid: true };
@@ -355,19 +430,28 @@ class SecurityMiddleware {
    * Get client IP address
    */
   _getClientIP(req) {
-    // Check for forwarded IP (behind proxy/load balancer)
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) {
-      return forwarded.split(',')[0].trim();
-    }
+    // SECURITY: only trust X-Forwarded-For / X-Real-IP if the immediate peer
+    // is in our trustedProxies allow-list. Otherwise an attacker can spoof
+    // arbitrary IPs to bypass rate limiting and poison security logs.
+    const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+    const trustedProxies = this.options?.trustedProxies || [];
+    const normalized = peer.startsWith('::ffff:') ? peer.slice(7) : peer;
+    const trusted = trustedProxies.some(p => p === peer || p === normalized);
 
-    // Check for real IP header
-    if (req.headers['x-real-ip']) {
-      return req.headers['x-real-ip'];
+    if (trusted) {
+      const forwarded = req.headers['x-forwarded-for'];
+      if (forwarded) {
+        // Walk right-to-left, return first untrusted hop (real client).
+        const hops = String(forwarded).split(',').map(s => s.trim()).filter(Boolean);
+        for (let i = hops.length - 1; i >= 0; i--) {
+          const h = hops[i];
+          const hn = h.startsWith('::ffff:') ? h.slice(7) : h;
+          if (!trustedProxies.some(p => p === h || p === hn)) return h;
+        }
+      }
+      if (req.headers['x-real-ip']) return req.headers['x-real-ip'];
     }
-
-    // Fall back to connection remote address
-    return req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
+    return peer;
   }
 
   /**

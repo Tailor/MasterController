@@ -12,6 +12,55 @@ import { logger } from '../error/MasterErrorLogger.js';
 // Session store (use Redis in production)
 const sessionStore = new Map();
 
+/**
+ * Parse a single cookie value by name from a Cookie header.
+ *
+ * SECURITY: anchored on cookie-boundary (start-of-string or "; "), so a
+ * malicious sibling cookie like `Xmc_session=evil` cannot shadow `mc_session=`.
+ * The previous regex-based parser was vulnerable to substring matching, which
+ * enabled trivial session-fixation by an attacker who could set sibling cookies
+ * (subdomain XSS, public Wi-Fi MITM on HTTP). The cookie name is matched
+ * exactly via parse-and-compare, never interpolated into a regex (which would
+ * have allowed regex injection via dotted custom cookie names).
+ *
+ * @param {string|undefined} header - Raw Cookie header value
+ * @param {string} name - Exact cookie name to look up
+ * @returns {string|null}
+ */
+function __parseCookieByName(header, name) {
+  if (!header) return null;
+  for (const part of String(header).split(';')) {
+    const idx = part.indexOf('=');
+    if (idx < 0) continue;
+    const key = part.slice(0, idx).trim();
+    if (key === name) return part.slice(idx + 1).trim();
+  }
+  return null;
+}
+
+/**
+ * Set-Cookie writer that preserves existing cookies on the response.
+ *
+ * SECURITY: res.setHeader('Set-Cookie', str) replaces any prior Set-Cookie
+ * value. If middleware A sets a CSRF cookie and middleware B sets a session
+ * cookie via plain setHeader, A's cookie is silently dropped — and the user
+ * is silently logged out. This helper appends instead.
+ *
+ * @param {http.ServerResponse} res
+ * @param {string} cookieString - Full cookie string (already formatted)
+ */
+function __appendSetCookie(res, cookieString) {
+  if (!res || typeof res.setHeader !== 'function') return;
+  const existing = res.getHeader('Set-Cookie');
+  if (!existing) {
+    res.setHeader('Set-Cookie', [cookieString]);
+  } else if (Array.isArray(existing)) {
+    res.setHeader('Set-Cookie', [...existing, cookieString]);
+  } else {
+    res.setHeader('Set-Cookie', [existing, cookieString]);
+  }
+}
+
 class SessionSecurity {
   constructor(options = {}) {
     this.cookieName = options.cookieName || 'mc_session';
@@ -54,7 +103,7 @@ class SessionSecurity {
         if (session && self._isSessionValid(session, req)) {
           // Check if session needs regeneration
           if (self._shouldRegenerate(session)) {
-            req.session = await self._regenerateSession(sessionId, session, res);
+            req.session = await self._regenerateSession(sessionId, session, res, req);
           } else {
             // Use existing session
             req.session = session.data;
@@ -131,9 +180,50 @@ class SessionSecurity {
   }
 
   /**
-   * Regenerate session (prevent session fixation)
+   * Rotate the session ID, preserving data. Call this AFTER any
+   * authentication state change (login, role escalation, password change)
+   * to defend against session fixation.
+   *
+   *   master.session.regenerate(ctx.request, ctx.response);
+   *
+   * @param {Object} req - request (must have req.sessionId from middleware)
+   * @param {Object} res - response (new cookie will be appended)
+   * @returns {string|null} The new session ID, or null if no session existed
    */
-  async _regenerateSession(oldSessionId, oldSession, res) {
+  regenerate(req, res) {
+    if (!req || !req.sessionId) return null;
+    const old = sessionStore.get(req.sessionId);
+    if (!old) return null;
+
+    const newSessionId = this._generateSessionId();
+    const newSession = {
+      id: newSessionId,
+      data: { ...old.data },
+      createdAt: old.createdAt,
+      lastAccess: Date.now(),
+      expiry: Date.now() + this.maxAge,
+      fingerprint: old.fingerprint,
+      regeneratedAt: Date.now()
+    };
+
+    sessionStore.delete(req.sessionId);
+    sessionStore.set(newSessionId, newSession);
+    req.sessionId = newSessionId;
+    req.session = newSession.data;
+    this._setCookie(res, newSessionId);
+
+    logger.info({
+      code: 'MC_SECURITY_SESSION_REGENERATED_EXPLICIT',
+      message: 'Session ID rotated (explicit regenerate call)'
+    });
+    return newSessionId;
+  }
+
+  /**
+   * Regenerate session (prevent session fixation)
+   * Used internally by middleware on a time-based interval.
+   */
+  async _regenerateSession(oldSessionId, oldSession, res, req) {
     const newSessionId = this._generateSessionId();
 
     // Copy session data to new session
@@ -152,6 +242,10 @@ class SessionSecurity {
 
     // Store new session
     sessionStore.set(newSessionId, newSession);
+
+    // BUG FIX (v3.0): update req.sessionId so subsequent _saveSession writes
+    // to the new session, not the deleted old one (which silently lost data).
+    if (req) req.sessionId = newSessionId;
 
     // Update cookie
     this._setCookie(res, newSessionId);
@@ -250,11 +344,7 @@ class SessionSecurity {
    * Parse session cookie from request
    */
   _parseCookie(req) {
-    const cookies = req?.headers?.cookie;
-    if (!cookies) return null;
-
-    const match = cookies.match(new RegExp(`${this.cookieName}=([^;]+)`));
-    return match ? match[1] : null;
+    return __parseCookieByName(req?.headers?.cookie, this.cookieName);
   }
 
   /**
@@ -283,9 +373,7 @@ class SessionSecurity {
       options.push(`SameSite=${this.sameSite}`);
     }
 
-    if (typeof res?.setHeader === 'function') {
-      res.setHeader('Set-Cookie', options.join('; '));
-    }
+    __appendSetCookie(res, options.join('; '));
   }
 
   /**
@@ -306,9 +394,7 @@ class SessionSecurity {
         options.push(`Domain=${this.domain}`);
       }
 
-      if (typeof res?.setHeader === 'function') {
-        res.setHeader('Set-Cookie', options.join('; '));
-      }
+      __appendSetCookie(res, options.join('; '));
 
       req.session = null;
       req.sessionId = null;
@@ -469,6 +555,17 @@ class MasterSessionSecurity {
   }
 
   /**
+   * Rotate session ID (session-fixation defense — call after login).
+   *   master.session.regenerate(ctx.request, ctx.response);
+   */
+  regenerate(req, res) {
+    if (!this._instance) {
+      throw new Error('SessionSecurity not initialized. Call master.session.init() first.');
+    }
+    return this._instance.regenerate(req, res);
+  }
+
+  /**
    * Get session by ID
    */
   getSession(sessionId) {
@@ -527,11 +624,13 @@ class MasterSessionSecurity {
    * @returns {String|null} - Cookie value or null
    */
   getCookie(request, name) {
-    const cookies = request?.headers?.cookie;
-    if (!cookies) return null;
-
-    const match = cookies.match(new RegExp(`${name}=([^;]+)`));
-    return match ? decodeURIComponent(match[1]) : null;
+    const raw = __parseCookieByName(request?.headers?.cookie, name);
+    if (raw == null) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch (_) {
+      return raw; // malformed encoding — return raw rather than throwing
+    }
   }
 
   /**
@@ -576,9 +675,7 @@ class MasterSessionSecurity {
       cookieOptions.push('SameSite=Lax');
     }
 
-    if (typeof response?.setHeader === 'function') {
-      response.setHeader('Set-Cookie', cookieOptions.join('; '));
-    }
+    __appendSetCookie(response, cookieOptions.join('; '));
   }
 
   /**
@@ -598,9 +695,7 @@ class MasterSessionSecurity {
       cookieOptions.push(`Domain=${options.domain}`);
     }
 
-    if (typeof response?.setHeader === 'function') {
-      response.setHeader('Set-Cookie', cookieOptions.join('; '));
-    }
+    __appendSetCookie(response, cookieOptions.join('; '));
   }
 }
 

@@ -97,15 +97,80 @@ class MasterControl {
     _hstsPreload = false
     _viewEngine = null // Pluggable view engine (MasterView, EJS, Pug, etc.)
 
-    // Root directory for static file serving. Only files physically present
-    // under this directory are servable as static assets — URL pattern is never
-    // consulted. Same model as ASP.NET wwwroot / Rails public/ / express.static.
+    // Trusted reverse-proxy peer addresses (IPs / CIDRs). When set, the
+    // framework will trust X-Forwarded-Proto and X-Forwarded-For only when
+    // the immediate TCP peer (req.socket.remoteAddress) is in this list.
     //
-    // Defaults to null. When unset the static-file middleware resolves to
-    // master.root for backward compatibility. Production apps should set this
-    // to a dedicated public directory so source files (server.js, config/,
-    // app/) aren't reachable via URL:
-    //   master.staticRoot = path.join(master.root, 'public');
+    // SECURE DEFAULT: empty array means X-Forwarded-* headers are IGNORED,
+    // even if a client sends them. This prevents:
+    //   - HTTPS enforcement bypass by sending "X-Forwarded-Proto: https"
+    //   - Rate-limit bypass by rotating X-Forwarded-For
+    //   - Log/IP spoofing for forensics evasion
+    //
+    // Set this when you deploy behind a known reverse proxy (nginx, ELB, k8s
+    // ingress, Cloudflare):
+    //   master.trustedProxies = ['127.0.0.1', '::1', '10.0.0.0/8'];
+    trustedProxies = []
+
+    /**
+     * Returns true if the given peer IP is in the trustedProxies list.
+     * @param {string} peer - The TCP peer address (req.socket.remoteAddress)
+     * @returns {boolean}
+     */
+    isTrustedProxy(peer) {
+        if (!peer || !this.trustedProxies || this.trustedProxies.length === 0) return false;
+        // Simple exact-match for now. CIDR support can be added without API change.
+        // Normalize IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) for comparison.
+        const normalized = peer.startsWith('::ffff:') ? peer.slice(7) : peer;
+        return this.trustedProxies.some(p => p === peer || p === normalized);
+    }
+
+    /**
+     * Returns the effective client IP, honoring X-Forwarded-For only if the
+     * immediate peer is in trustedProxies. Otherwise returns the raw peer IP.
+     * @param {Object} req - Node http.IncomingMessage
+     * @returns {string}
+     */
+    getClientIp(req) {
+        const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+        if (!this.isTrustedProxy(peer)) return peer;
+        const xff = req.headers['x-forwarded-for'];
+        if (!xff) return peer;
+        // Walk right-to-left; first untrusted hop is the real client.
+        const hops = String(xff).split(',').map(s => s.trim()).filter(Boolean);
+        for (let i = hops.length - 1; i >= 0; i--) {
+            if (!this.isTrustedProxy(hops[i])) return hops[i];
+        }
+        return peer;
+    }
+
+    /**
+     * Returns true if the request is HTTPS, honoring X-Forwarded-Proto only
+     * if the immediate peer is in trustedProxies.
+     * @param {Object} req - Node http.IncomingMessage
+     * @returns {boolean}
+     */
+    isRequestSecure(req) {
+        if (req.connection?.encrypted || req.socket?.encrypted) return true;
+        const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+        if (!this.isTrustedProxy(peer)) return false;
+        return req.headers['x-forwarded-proto'] === 'https';
+    }
+
+    // Root directory for static file serving.
+    //
+    // Secure-by-default: defaults to `<master.root>/public/`. If that directory
+    // doesn't exist, static file serving is disabled entirely — there is NO
+    // fallback to master.root. This mirrors ASP.NET wwwroot, Rails public/, and
+    // Django STATIC_ROOT: source files (server.js, config/, app/, package.json,
+    // node_modules/) are never reachable via URL.
+    //
+    // Customize by setting before master.start():
+    //   master.staticRoot = path.join(master.root, 'assets');   // different dir
+    //   master.staticRoot = false;                              // disable entirely
+    //
+    // History: v2.x defaulted to master.root, which exposed application source.
+    // v3.0 introduced the public/ default. CVE-class fix.
     staticRoot = null
 
     #loadTransientListClasses(name, params){
@@ -581,44 +646,65 @@ class MasterControl {
      *
      * @security CRITICAL: Always provide allowedHosts in production to prevent open redirect attacks
      */
-    startHttpToHttpsRedirect(redirectPort, bindHost, allowedHosts = []){
-        const $that = this;
+    startHttpToHttpsRedirect(redirectPort, bindHost, allowedHosts){
+        // SECURITY: allowedHosts is required. Previously this was optional with
+        // a console.warn, which meant any deployment that forgot it became an
+        // open redirect ("Host: evil.com" → "Location: https://evil.com/..."
+        // → phishing). v3.0 fails-fast at startup instead of at request time.
+        if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) {
+            throw new Error(
+                'startHttpToHttpsRedirect: allowedHosts (non-empty array) is required to prevent ' +
+                'open-redirect attacks via the Host header. Example:\n' +
+                '  master.startHttpToHttpsRedirect(80, "0.0.0.0", ["example.com", "www.example.com"]);'
+            );
+        }
 
-        // Security warning if no hosts specified
-        if (allowedHosts.length === 0) {
-            console.warn('[MasterControl] ⚠️  SECURITY WARNING: startHttpToHttpsRedirect() called without allowedHosts.');
-            console.warn('[MasterControl] This is vulnerable to open redirect attacks. Specify allowed hosts:');
-            console.warn('[MasterControl] master.startHttpToHttpsRedirect(80, "0.0.0.0", ["example.com", "www.example.com"])');
+        // Validate hostnames in the allow-list (defensive — reject anything
+        // that isn't a plain hostname so misconfiguration can't produce
+        // surprising matches).
+        const hostnameRe = /^[A-Za-z0-9.-]+$/;
+        for (const h of allowedHosts) {
+            if (typeof h !== 'string' || !hostnameRe.test(h)) {
+                throw new Error(`startHttpToHttpsRedirect: invalid hostname in allowedHosts: ${h}`);
+            }
         }
 
         return http.createServer(function (req, res) {
-            try{
-                const host = req.headers['host'] || '';
-                const hostname = host.split(':')[0]; // Remove port number
+            try {
+                const rawHost = req.headers['host'] || '';
+                // Strip port for validation only. Reject CR/LF (response splitting),
+                // null bytes, and any userinfo (`@` in host enables phishing-grade
+                // redirects like `example.com:443@evil.com`).
+                if (rawHost.includes('\r') || rawHost.includes('\n') || rawHost.includes('\0') || rawHost.includes('@')) {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'text/plain');
+                    res.end('Bad Request: malformed Host header');
+                    return;
+                }
+                const colonIdx = rawHost.indexOf(':');
+                const hostname = colonIdx >= 0 ? rawHost.slice(0, colonIdx) : rawHost;
 
-                // CRITICAL SECURITY: Validate host header to prevent open redirect attacks
-                if (allowedHosts.length > 0) {
-                    if (!allowedHosts.includes(hostname)) {
-                        logger.warn({
-                            code: 'MC_SECURITY_INVALID_HOST',
-                            message: 'HTTP redirect blocked: invalid host header',
-                            host: hostname,
-                            ip: req.connection.remoteAddress
-                        });
-                        res.statusCode = 400;
-                        res.setHeader('Content-Type', 'text/plain');
-                        res.end('Bad Request: Invalid host header');
-                        return;
-                    }
+                if (!allowedHosts.includes(hostname)) {
+                    logger.warn({
+                        code: 'MC_SECURITY_INVALID_HOST',
+                        message: 'HTTP redirect blocked: host not in allow-list',
+                        host: hostname,
+                        ip: req.connection.remoteAddress
+                    });
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'text/plain');
+                    res.end('Bad Request: invalid host');
+                    return;
                 }
 
-                // Redirect to HTTPS with validated host
-                var location = 'https://' + host + req.url;
+                // Build the redirect from the VALIDATED hostname, NOT the raw
+                // Host header. Drops attacker-controlled port and userinfo.
+                const location = 'https://' + hostname + req.url;
                 res.statusCode = 301;
                 res.setHeader('Location', location);
                 res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 res.end();
-            }catch(e){
+            } catch (e) {
                 logger.error({
                     code: 'MC_ERR_REDIRECT',
                     message: 'HTTP to HTTPS redirect failed',
@@ -744,73 +830,132 @@ class MasterControl {
     _registerCoreMiddleware(){
         const $that = this;
 
-        // 1. Static File Serving (with path traversal protection)
-        $that.pipeline.use(async (ctx, next) => {
-            // Static file serving — ASP.NET / Rails / Express model.
-            //
-            // The gate is "does the URL resolve to a real file under
-            // master.staticRoot?" — NOT URL pattern matching. This means:
-            //   - /api/customer.listMyEngagements → no such file → next() to router
-            //   - /css/site.css → file exists → served as static
-            //   - /api/users → no such file → next() to router
-            //
-            // URL never determines static-vs-dynamic. Filesystem does.
-            const staticRoot = path.resolve($that.staticRoot || $that.root || '.');
-            const requestedPath = ctx.request.url.split('?')[0].split('#')[0];
-            const safePath = path.join(staticRoot, requestedPath);
-            const resolvedPath = path.resolve(safePath);
+        // 1. Static File Serving — ASP.NET / Rails / Express model
+        //
+        // SECURITY POSTURE:
+        //   - Default staticRoot is <master.root>/public/. If that directory
+        //     doesn't exist, static serving is disabled (every request flows
+        //     to the router). NEVER falls back to master.root — source files,
+        //     config/, node_modules/, etc. are not reachable via URL.
+        //   - URL pattern is never consulted. The gate is file existence.
+        //   - Dotfile filter applies to EVERY segment (blocks .git/config,
+        //     .ssh/anything, .env, etc.), not just the leaf.
+        //   - Containment check uses path separator to prevent prefix-confusion
+        //     bypass (e.g. staticRoot=/var/www/app must not match /var/www/app2).
+        //   - URL is decoded before traversal check (defeats %2e%2e attacks).
+        //   - Symlinks are rejected (defeats arbitrary file read via planted
+        //     symlinks in user-writable subdirectories).
+        //   - Set master.staticRoot = false to disable static serving entirely.
+        //   - Set master.staticRoot = '/some/path' to override the default.
+        //
+        // Resolve once at startup (not per request) for performance.
+        let resolvedStaticRoot = null;
+        if ($that.staticRoot === false) {
+            resolvedStaticRoot = null;
+        } else if ($that.staticRoot) {
+            resolvedStaticRoot = path.resolve($that.staticRoot);
+        } else if ($that.root) {
+            const defaultPublic = path.join($that.root, 'public');
+            if (fs.existsSync(defaultPublic) && fs.statSync(defaultPublic).isDirectory()) {
+                resolvedStaticRoot = path.resolve(defaultPublic);
+            }
+            // If <root>/public doesn't exist, static serving is disabled.
+        }
+        $that._resolvedStaticRoot = resolvedStaticRoot;
 
-            // SECURITY: Reject path-traversal escapes from the static root.
-            // Treated as a real security event (logged), but we still fall
-            // through to the router rather than 403 — the router may have a
-            // legitimate route at the requested URL, and the path traversal
-            // only matters to static file serving.
-            if (!resolvedPath.startsWith(staticRoot)) {
+        $that.pipeline.use(async (ctx, next) => {
+            // No static root configured → never serve static, always route.
+            if (!resolvedStaticRoot) return next();
+
+            const requestedPath = ctx.request.url.split('?')[0].split('#')[0];
+
+            // SECURITY: Decode URL before path operations so %2e%2e variants are
+            // checked, not just literal "..". Malformed encoding → fall through.
+            let decodedPath;
+            try {
+                decodedPath = decodeURIComponent(requestedPath);
+            } catch (_) {
+                return next();
+            }
+
+            // SECURITY: Reject NUL bytes (defeat poison-null-byte truncation
+            // attacks on some filesystems) and any literal ".." path segment
+            // (belt-and-suspenders before path.resolve).
+            if (decodedPath.includes('\0') || decodedPath.split('/').some(s => s === '..')) {
                 logger.warn({
                     code: 'MC_SECURITY_PATH_TRAVERSAL',
                     message: 'Path traversal attempt blocked from static serving',
                     requestedPath: requestedPath,
-                    resolvedPath: resolvedPath,
-                    ip: ctx.request.connection.remoteAddress
+                    ip: ctx.request.connection?.remoteAddress
                 });
                 return next();
             }
 
-            // SECURITY: Refuse to serve dotfiles (.env, .git, .htaccess).
-            // Same fall-through rationale — the router may have a legitimate
-            // dynamic route at that URL.
-            const filename = path.basename(resolvedPath);
-            if (filename.startsWith('.')) {
+            const resolvedPath = path.resolve(path.join(resolvedStaticRoot, decodedPath));
+
+            // SECURITY: Containment check uses path separator boundary to
+            // prevent prefix-confusion (staticRoot=/var/www/app must not
+            // accidentally allow /var/www/app2/whatever).
+            const rootWithSep = resolvedStaticRoot.endsWith(path.sep)
+                ? resolvedStaticRoot
+                : resolvedStaticRoot + path.sep;
+            if (resolvedPath !== resolvedStaticRoot && !resolvedPath.startsWith(rootWithSep)) {
+                logger.warn({
+                    code: 'MC_SECURITY_PATH_TRAVERSAL',
+                    message: 'Path traversal escape blocked from static serving',
+                    requestedPath: requestedPath,
+                    resolvedPath: resolvedPath,
+                    ip: ctx.request.connection?.remoteAddress
+                });
+                return next();
+            }
+
+            // SECURITY: Dotfile filter applies to EVERY segment between
+            // staticRoot and resolvedPath, not just the basename. This blocks
+            // /.git/config, /.ssh/id_rsa, /subdir/.env, etc.
+            const relSegments = path.relative(resolvedStaticRoot, resolvedPath).split(path.sep);
+            if (relSegments.some(seg => seg.startsWith('.'))) {
                 logger.warn({
                     code: 'MC_SECURITY_DOTFILE_BLOCKED',
                     message: 'Dotfile access blocked from static serving',
-                    filename: filename,
-                    ip: ctx.request.connection.remoteAddress
+                    requestedPath: requestedPath,
+                    ip: ctx.request.connection?.remoteAddress
                 });
                 return next();
             }
 
-            // File-existence check is THE gate. If nothing is at this path
-            // (or it's not a regular file / index'd directory), fall through.
+            // SECURITY: lstat (not stat) so symlinks don't traverse our check.
+            // If you need symlink support, use fs.realpathSync + re-verify
+            // containment — most apps shouldn't need it.
             let stats;
             try {
-                stats = fs.statSync(resolvedPath);
+                stats = fs.lstatSync(resolvedPath);
             } catch (_) {
                 return next(); // not a static file → routing's turn
             }
+            if (stats.isSymbolicLink()) {
+                logger.warn({
+                    code: 'MC_SECURITY_SYMLINK_BLOCKED',
+                    message: 'Symlink blocked from static serving',
+                    resolvedPath: resolvedPath,
+                    ip: ctx.request.connection?.remoteAddress
+                });
+                return next();
+            }
 
-            // Resolve directory → index.html or fall through.
+            // Directory → index.html (also lstat-checked).
             let finalPath = resolvedPath;
             if (stats.isDirectory()) {
                 finalPath = path.join(resolvedPath, 'index.html');
                 try {
-                    stats = fs.statSync(finalPath);
+                    stats = fs.lstatSync(finalPath);
                 } catch (_) {
-                    return next(); // no index.html in this directory → routing's turn
+                    return next();
                 }
-            }
-
-            if (!stats.isFile()) {
+                if (stats.isSymbolicLink() || !stats.isFile()) {
+                    return next();
+                }
+            } else if (!stats.isFile()) {
                 return next();
             }
 
@@ -995,7 +1140,10 @@ class MasterControl {
 
     async serverRun(req, res){
         const $that = this;
-        console.log("path", `${req.method} ${req.url}`);
+        // SECURITY: do not log full request URLs by default — query strings
+        // commonly contain secrets (?reset_token=, ?api_key=, ?access_token=,
+        // ?_csrf=). Apps that want request logging should opt in via
+        // requestLoggerMiddleware with explicit field redaction.
 
         try {
             const parsedUrl = url.parse(req.url);
@@ -1128,9 +1276,14 @@ class MasterControl {
 
         // Global error handler
         $that.pipeline.useError(async (error, ctx, next) => {
+            // Generate a correlation ID so operators can find the full error
+            // in logs without us having to include it in the response body.
+            const errorId = `err_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
             logger.error({
                 code: 'MC_ERR_PIPELINE',
                 message: 'Error in middleware pipeline',
+                errorId: errorId,
                 error: error.message,
                 stack: error.stack,
                 path: ctx.request.url,
@@ -1140,11 +1293,15 @@ class MasterControl {
             if (!ctx.response.headersSent) {
                 ctx.response.statusCode = 500;
                 ctx.response.setHeader('Content-Type', 'application/json');
+                // SECURITY (v3.0): never echo raw error.message to clients,
+                // even outside production. Error messages frequently include
+                // user input (validation errors echoing the bad value =
+                // reflected XSS / JSON injection), database driver text
+                // (schema disclosure), padding-oracle distinguishers, etc.
+                // Operators correlate via errorId in the log.
                 ctx.response.end(JSON.stringify({
                     error: 'Internal Server Error',
-                    message: process.env.NODE_ENV === 'production'
-                        ? 'An error occurred'
-                        : error.message
+                    errorId: errorId
                 }));
             }
         });
@@ -1176,41 +1333,10 @@ class MasterControl {
     }
     
     
-    // will take the repsonse and request objetc and add to it
-    async middleware(request, response){
-        request.requrl = url.parse(request.url, true);
-        // check if its css
-        if (/.(css)$/.test(request.requrl)) {
-
-            response.writeHead(200, {
-              'Content-Type': 'text/css'
-            });
-
-            // get css file — use this.root (absolute) instead of __dirname
-            // so this works in ESM where __dirname doesn't exist.
-            // Note: request.requrl is a parsed URL object; use .pathname for the string.
-            const cssPath = path.join(this.root, request.requrl.pathname || String(request.requrl));
-            fileserver.readFile(cssPath, 'utf8', function(err, data) {
-              if (err) throw err;
-              response.write(data, 'utf8');
-              response.end();
-            });
-
-            return -1;
-        }
-        else{
-            
-            var params = await this.request.getRequestParam(request, response);
-            return {
-                request : request,
-                response : response,
-                pathName : request.requrl.pathname,
-                type: request.method.toLowerCase(),
-                params : params
-            }
-
-        }
-    }
+    // (Legacy `middleware(req, res)` helper was removed in v3.0 — it had a
+    // path-traversal bug allowing `GET /../../etc/passwd.css` and was not
+    // wired into the request pipeline anywhere. Static CSS files are served
+    // by the secure static middleware registered in _registerCoreMiddleware.)
 };
 
 // Singleton default export. Users do `import master from 'mastercontroller'`.

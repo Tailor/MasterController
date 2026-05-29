@@ -31,6 +31,18 @@ class MasterCors{
 
 	init(options){
 		if(options){
+			// SECURITY (v3.0): refuse insecure CORS config combinations at init.
+			// origin:true + credentials:true reflects arbitrary Origin headers
+			// while asserting credentials = true, equivalent to disabling SOP
+			// for any third-party site that wants to read authenticated data.
+			if (options.origin === true && options.credentials === true) {
+				throw new Error(
+					'MasterCors: origin:true with credentials:true is unsafe — ' +
+					'this reflects arbitrary Origin headers with credentials enabled, ' +
+					'allowing any cross-origin site to read authenticated responses. ' +
+					'Use an explicit origin list (array of strings) instead.'
+				);
+			}
 			this.options = options;
 		}
 		else{

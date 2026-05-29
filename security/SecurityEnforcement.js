@@ -99,9 +99,12 @@ class SecurityEnforcement {
 
 			// 2. CSRF Protection (POST, PUT, DELETE, PATCH)
 			if (config.csrf && ['post', 'put', 'delete', 'patch'].includes(ctx.type)) {
-				// Check if path is excluded
+				// SECURITY (v3.0): match exclude paths at SEGMENT boundary.
+				// The previous startsWith without boundary meant `/api/webhook`
+				// also exempted `/api/webhookmanage`, `/api/webhook-admin`, etc.
 				const isExcluded = config.csrfExcludePaths.some(excludePath => {
-					return ctx.pathName.startsWith(excludePath.replace(/^\//, ''));
+					const norm = String(excludePath).replace(/^\/+/, '').replace(/\/+$/, '');
+					return ctx.pathName === norm || ctx.pathName.startsWith(norm + '/');
 				});
 
 				if (!isExcluded) {
@@ -189,6 +192,15 @@ class SecurityEnforcement {
 	 * Check if request is secure (HTTPS)
 	 */
 	static _isSecure(req) {
+		// Prefer the framework's trust-proxy-aware helper. Falls back to the
+		// raw checks if the master isn't bound (e.g. unit test).
+		const master = SecurityEnforcement.__masterCache;
+		if (master && typeof master.isRequestSecure === 'function') {
+			return master.isRequestSecure(req);
+		}
+		// SECURITY: only honor X-Forwarded-Proto when no master is available
+		// (e.g. unit test). In normal operation, isRequestSecure gates it on
+		// trustedProxies, which prevents X-Forwarded-Proto bypass.
 		return req.connection.encrypted ||
 		       req.headers['x-forwarded-proto'] === 'https';
 	}
