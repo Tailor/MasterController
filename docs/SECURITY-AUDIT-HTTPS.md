@@ -277,9 +277,22 @@ if(!credentials.ciphers){
 
 ## Issue #5: HTTP to HTTPS Redirect - Open Redirect Vulnerability
 
-**Severity:** 🔴 **CRITICAL**
+**Severity:** 🔴 **CRITICAL** — **Fixed in v2.0.4 (hardened further)**
 
-### Current State
+> **v2.0.4 update:** `startHttpToHttpsRedirect` now **throws at startup** if the third argument (`allowedHosts`) is missing or empty. Previously it merely `console.warn`'d. The `Location` header is now built from the validated hostname instead of the raw Host header, defeating phishing via `Host: example.com@evil.com` (userinfo) and CR-LF response splitting. Hostnames in the allow-list are validated as plain hostnames (regex `^[A-Za-z0-9.-]+$`) at startup.
+>
+> Code that does `master.startHttpToHttpsRedirect(80, '0.0.0.0')` will now fail loudly at boot instead of silently allowing open-redirect at request time.
+
+### Current State (post-v2.0.4)
+```javascript
+// MasterControl.js: startHttpToHttpsRedirect(port, bindHost, allowedHosts)
+//   - allowedHosts: REQUIRED non-empty array of valid hostnames
+//   - throws Error at startup if missing/invalid
+//   - rejects Host headers containing CR, LF, NUL, or '@' (userinfo)
+//   - Location header is built from the VALIDATED hostname, not raw Host
+```
+
+### Original State (pre-v2.0.4 — vulnerable)
 ```javascript
 // MasterControl.js:348-357
 startHttpToHttpsRedirect(redirectPort, bindHost){

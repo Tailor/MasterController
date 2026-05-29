@@ -2,6 +2,16 @@
 
 **MasterController Security Layer** - Comprehensive security middleware and utilities protecting against OWASP Top 10 vulnerabilities.
 
+> **🔐 v2.0.4 SECURITY RELEASE — required reading.** This release fixes 11 high-severity vulnerabilities. The most impactful changes:
+> - **Static files** default to `<root>/public/` (was app root — `2.0.0`–`2.0.3` served `/server.js`, `/package.json`, `/.env`)
+> - **CSRF tokens** are now session-bound, timing-safe compared, and single-use (rotate-on-success via `X-CSRF-Token` response header)
+> - **CORS** wildcard origin no longer combines with `credentials: true` (any-origin reflection with credentials was the default!)
+> - **HTTPS redirect** requires `allowedHosts` (was an open redirect)
+> - **Reverse-proxy headers** (`X-Forwarded-Proto`, `X-Forwarded-For`) now require an explicit `trustedProxies` allow-list — previously they were trusted unconditionally, enabling HTTPS-enforcement bypass and rate-limit evasion
+> - **Sessions** new `master.session.regenerate(req, res)` API for fixation defense on login; cookie parser is boundary-anchored (was substring-matched)
+>
+> Full migration notes in the [main README's v2.0.4 section](../README.md#v204-security-release---migration-required).
+
 ---
 
 ## 📋 Table of Contents
@@ -262,12 +272,19 @@ routeMiddleware(requestObject, _loadEmit, routeList, middlewareList) {
 
 **CSRF (Cross-Site Request Forgery)** protection prevents attackers from making unauthorized requests on behalf of authenticated users.
 
-#### How It Works
+#### How It Works (v2.0.4+)
 
-1. **Token Generation** - Server generates unique token per session
-2. **Token Embedding** - Token embedded in forms/AJAX headers
-3. **Token Validation** - Server validates token on state-changing requests
-4. **Token Rotation** - Tokens rotate periodically for security
+1. **Token Generation** — server generates a 32-byte token bound to the user's session ID
+2. **Token Embedding** — token is rendered in the page (form hidden field, AJAX header, or query param)
+3. **Token Validation** — on state-changing requests (POST/PUT/PATCH/DELETE), the framework verifies:
+   - The token exists in the store
+   - The token has not expired
+   - The token's stored `sessionId` matches the current request's session (timing-safe compare)
+4. **Single-Use Rotation** — on successful validation, the token is **deleted** and a fresh one is issued in the `X-CSRF-Token` response header. Clients must capture this header for the next request. A leaked token cannot be replayed.
+
+#### Why session binding matters
+
+Without session binding (the `2.0.0`–`2.0.3` behavior), any valid CSRF token issued to any user was accepted on any session. An attacker who could log in and obtain a token could then use it to forge requests against any other authenticated user. v2.0.4 enforces session binding identically to the `RedisCSRFStore` adapter.
 
 ### Workflow
 
@@ -295,61 +312,43 @@ User Submits Form
 Request Processed
 ```
 
-### Implementation
-
-**SecurityMiddleware.js (Lines 45-120)**
+### Implementation (v2.0.4+)
 
 ```javascript
-generateCSRFToken(sessionId) {
-    // Generate cryptographically secure token
+generateCSRFToken(sessionId = null) {
     const token = crypto.randomBytes(32).toString('hex');
-
-    // Store in session
-    this.csrfTokens.set(sessionId, {
-        token: token,
-        timestamp: Date.now(),
-        used: false
+    csrfTokenStore.set(token, {
+        sessionId: sessionId,         // bind to issuing session
+        expiry: Date.now() + this.csrfTokenExpiry,
+        createdAt: Date.now()
     });
-
     return token;
 }
 
-validateCSRF(requestObject) {
-    const sessionId = requestObject.session.id;
-    const submittedToken = requestObject.body._csrf ||
-                          requestObject.headers['x-csrf-token'];
-
-    const storedData = this.csrfTokens.get(sessionId);
-
-    // Validation checks
-    if (!storedData) return false;
-    if (storedData.token !== submittedToken) return false;
-    if (storedData.used) return false; // One-time use
-    if (Date.now() - storedData.timestamp > 3600000) return false; // 1 hour expiry
-
-    // Mark as used
-    storedData.used = true;
-
-    return true;
-}
+// Validation (in csrfMiddleware):
+//   1. Token exists in store
+//   2. Token not expired
+//   3. Token's stored sessionId matches req.sessionId (timing-safe compare)
+//   4. Delete token + issue fresh one in X-CSRF-Token response header
 ```
 
-### Usage in Controllers
+### Usage in Controllers (v2.0.4+)
 
 ```javascript
+import { generateCSRFToken } from 'mastercontroller/security/SecurityMiddleware.js';
+
 class FormController {
-    // Display form with CSRF token
-    showForm(obj) {
-        const csrfToken = this.generateCSRFToken();
+    showForm(ctx) {
+        // CRITICAL: pass sessionId so the token is bound to this user.
+        const csrfToken = generateCSRFToken(ctx.request.sessionId);
         this.returnView({ csrfToken });
     }
 
-    // Process form with CSRF validation
-    submitForm(obj) {
-        // CSRF automatically validated by SecurityMiddleware
-        // If we reach here, token was valid
-
-        const data = this.params;
+    submitForm(ctx) {
+        // If we reach here, CSRF middleware validated the token,
+        // confirmed it belongs to ctx.request.sessionId, and
+        // already wrote a fresh token in the X-CSRF-Token response header.
+        const data = ctx.params.formData;
         // Process form...
     }
 }
@@ -366,6 +365,28 @@ class FormController {
     <button type="submit">Submit</button>
 </form>
 ```
+
+### Client-side AJAX — capture rotated token
+
+```javascript
+// Capture the rotated token from each non-GET response so the NEXT request can use it.
+let csrfToken = window.__INITIAL_CSRF_TOKEN__;  // server-rendered into the page
+
+async function api(method, url, body) {
+    const res = await fetch(url, {
+        method,
+        headers: { 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+        body: body && JSON.stringify(body)
+    });
+    // v2.0.4+: rotate-on-success returns a fresh token in this header.
+    csrfToken = res.headers.get('x-csrf-token') || csrfToken;
+    return res;
+}
+```
+
+### Exempt paths (`csrfExcludePaths`)
+
+`config.csrfExcludePaths` is matched at **segment boundaries** in v2.0.4+. Previously, `/api/webhook` accidentally exempted `/api/webhookmanage` and `/api/webhook-admin` (anything starting with the same prefix). Now `/api/webhook` only exempts `/api/webhook` exactly and `/api/webhook/...` paths.
 
 ---
 
@@ -483,11 +504,29 @@ module.exports = {
 
 #### Security Measures
 
-1. **Session Fingerprinting** - Bind session to IP + User-Agent
-2. **Session Regeneration** - New session ID after authentication
+1. **Session Fingerprinting** - Bind session to IP + User-Agent (opt-in via `useFingerprint: true`)
+2. **Session Regeneration** - New session ID after authentication (call `master.session.regenerate(req, res)`)
 3. **Timeout Enforcement** - Sessions expire after inactivity
 4. **Concurrent Session Detection** - Limit sessions per user
 5. **Secure Cookie Flags** - HttpOnly, Secure, SameSite
+6. **Boundary-anchored cookie parsing (v2.0.4+)** - parser uses parse-and-compare on cookie boundaries, defeating sibling-cookie shadow attacks (e.g. `Xmc_session=evil` no longer hijacks `mc_session=`)
+7. **Set-Cookie append (v2.0.4+)** - cookies set by different middleware no longer clobber each other
+
+#### Required: call `regenerate()` after auth state changes (v2.0.4+)
+
+```javascript
+// In your login controller — defeats session fixation
+async login(ctx) {
+    const user = await authenticate(ctx.params.formData);
+    if (user) {
+        master.session.regenerate(ctx.request, ctx.response); // rotate session ID
+        ctx.request.session.userId = user.id;
+        // ...
+    }
+}
+```
+
+This issues a new session ID and updates the cookie, while preserving any data that was already on the session. Always do this on **login**, **logout**, **role escalation**, and **password change**.
 
 ### Workflow
 

@@ -8,6 +8,8 @@
 
 > **⚠️ v2.0 is ESM-only.** MasterController v2.0+ ships as a pure ECMAScript Module package — no CommonJS support. If your app uses `require('mastercontroller')`, stay on the **v1.x** line (still maintained for security fixes) until you can migrate to `import master from 'mastercontroller'`. See the [Migrating from v1.x](#migrating-from-v1x) section.
 
+> **🔐 v2.0.4 SECURITY RELEASE (READ BEFORE UPGRADING FROM 2.0.0-2.0.3).** This release fixes 11 high-severity vulnerabilities surfaced in a multi-agent security audit. Some defaults changed (e.g. static files now serve from `<root>/public/` instead of the app root, the HTTPS redirect helper requires an allow-list, reverse-proxy headers are no longer trusted by default). Read the [v2.0.4 Migration Notes](#v204-security-release---migration-required) before deploying. Upgrading is strongly recommended — staying on 2.0.0-2.0.3 leaves several remotely-exploitable holes open.
+
 **Fortune 500 Production Ready** | Enterprise-grade Node.js MVC framework with security hardening, horizontal scaling, and production monitoring.
 
 MasterController is a lightweight MVC-style server framework for Node.js with ASP.NET Core-inspired middleware pipeline, routing, controllers, views, dependency injection, distributed sessions, rate limiting, health checks, and comprehensive security features.
@@ -93,6 +95,7 @@ MasterController is a lightweight MVC-style server framework for Node.js with AS
 - [Timeout System](#timeout-system)
 - [Error Handling](#error-handling)
 - [HTTPS Setup](#https-setup)
+- [Reverse Proxy Configuration](#reverse-proxy-configuration-v204)
 - [Production Deployment](#production-deployment)
 - [Performance & Caching](#performance--caching)
 
@@ -261,6 +264,117 @@ master.serverSettings({
   requestTimeout: 60000
 });
 ```
+
+---
+
+## v2.0.4 Security Release - Migration Required
+
+If you're upgrading from `2.0.0`–`2.0.3`, several defaults changed for security reasons. **The previous defaults were exploitable**; staying on those versions is not safe. The list below is what to change in your app, in priority order.
+
+### 1. Static file serving — default root changed
+
+**Before (≤2.0.3):** any file under your app root was reachable via URL — including `/server.js`, `/package.json`, `/.env`, `/app/controllers/userController.js`, etc. Source code disclosure for any app that used the default.
+
+**After (2.0.4+):** the default static root is `<master.root>/public/`. If that directory doesn't exist, static file serving is **disabled entirely**. There is no fallback to the app root.
+
+**What to do:**
+
+- **If your app has no static assets** (pure API): nothing to change. Static serving is off by default.
+- **If your app has static assets at the app root** (e.g. `/index.html`, `/favicon.ico`): create a `public/` directory and move them in. URLs stay the same — `/favicon.ico` will now serve `public/favicon.ico`.
+- **If you want a different static directory:** set `master.staticRoot = path.join(master.root, 'assets')` before `master.start()`.
+- **If you genuinely want the old (unsafe) behavior:** set `master.staticRoot = master.root` — this is **not recommended** and exposes your source.
+
+The static middleware also now: blocks dotfiles in every path segment (not just the leaf), rejects symlinks, uses separator-anchored containment, URL-decodes before traversal checks, and falls through to the router (instead of returning 404) when no file matches. This is the ASP.NET / Rails / Express model.
+
+### 2. Reverse-proxy headers — no longer trusted by default
+
+**Before (≤2.0.3):** any client could send `X-Forwarded-Proto: https` to bypass HTTPS enforcement, or rotate `X-Forwarded-For` to bypass rate limits and poison security logs.
+
+**After (2.0.4+):** `X-Forwarded-Proto` and `X-Forwarded-For` are honored **only** when the immediate TCP peer (`req.socket.remoteAddress`) is in `master.trustedProxies`. Default is empty (no headers trusted).
+
+**What to do — if you deploy behind a reverse proxy** (nginx, ELB, k8s ingress, Cloudflare, HAProxy):
+
+```js
+master.trustedProxies = ['127.0.0.1', '::1', '10.0.0.0/8'];
+master.security.init({ ...options, trustedProxies: master.trustedProxies }); // also for SecurityMiddleware
+```
+
+**If you don't have a reverse proxy:** nothing to do. The default (ignore the headers) is correct.
+
+New helpers available: `master.isRequestSecure(req)`, `master.getClientIp(req)`, `master.isTrustedProxy(peer)`.
+
+### 3. HTTPS redirect helper — `allowedHosts` is now required
+
+**Before (≤2.0.3):** `master.startHttpToHttpsRedirect(80, '0.0.0.0')` was an open redirect — an attacker could send `Host: evil.com` to phish your users via `https://evil.com/...`.
+
+**After (2.0.4+):** the third argument throws if missing or empty. The redirect's `Location` header is built from the validated hostname (not the raw Host header), and userinfo/CR-LF in the Host are rejected.
+
+```js
+// REQUIRED in 2.0.4+
+master.startHttpToHttpsRedirect(80, '0.0.0.0', ['example.com', 'www.example.com']);
+```
+
+### 4. CORS — wildcard + credentials no longer combined
+
+**Before (≤2.0.3):** the default `corsOrigins: ['*']` reflected the request's `Origin` header AND set `Access-Control-Allow-Credentials: true`. Any malicious third-party site could read authenticated responses from your app.
+
+**After (2.0.4+):** wildcard origin sends literal `Access-Control-Allow-Origin: *` and never includes credentials. Only explicitly allow-listed origins get credentials. `master.cors.init({ origin: true, credentials: true })` throws at startup.
+
+**What to do:** if you need credentialed cross-origin requests, list the origins explicitly:
+
+```js
+master.security.init({
+  corsOrigins: ['https://app.example.com', 'https://admin.example.com'],
+});
+```
+
+### 5. CSRF tokens — now session-bound and single-use
+
+**Before (≤2.0.3):** any valid CSRF token was accepted on any session. Tokens stayed valid for the full expiry window (default 1h) regardless of use. CSRF protection was effectively a no-op between authenticated users.
+
+**After (2.0.4+):** tokens are bound to the session that issued them. Comparison is timing-safe. Tokens are **single-use** — a fresh token is set in the `X-CSRF-Token` response header after each successful validation, for clients to pick up.
+
+**What to do:**
+
+- Server: pass the session ID when generating tokens: `master.security.generateCSRFToken(req.sessionId)`.
+- Client: read the `X-CSRF-Token` response header after each non-GET request and use it as the token for the next request.
+- If you used CSRF exempt paths: the prefix match is now segment-boundary anchored (`/api/webhook` no longer exempts `/api/webhookmanage`).
+
+### 6. Session fixation — add `regenerate()` on login
+
+New API: `master.session.regenerate(req, res)`. Call this immediately after authentication state changes (login, role escalation, password change) to defend against session fixation.
+
+```js
+// in your login controller
+async login(ctx) {
+  // ... verify credentials ...
+  ctx.request.session.userId = user.id;
+  master.session.regenerate(ctx.request, ctx.response); // rotate session ID
+  ctx.response.end(JSON.stringify({ ok: true }));
+}
+```
+
+### 7. Error response shape — `error.message` no longer echoed
+
+**Before (≤2.0.3):** pipeline error responses included the raw `error.message` in non-production environments. Error messages frequently contain user input (validation errors → reflected XSS), database driver text (schema disclosure), or padding-oracle distinguishers.
+
+**After (2.0.4+):** error responses always look like `{"error":"Internal Server Error","errorId":"err_..."}`. Operators correlate via `errorId` in logs.
+
+**What to do:** if your client UX displayed `response.message` for 500 errors, switch to displaying a generic message and logging `errorId` for support tickets.
+
+### 8. Dev-mode 404/500 pages — now HTML-escape user input
+
+**Before (≤2.0.3):** the dev-mode error pages interpolated `requestPath`, `error.message`, `error.stack`, and route suggestions directly into HTML. Reflected XSS in dev environments (e.g. `/api/<img src=x onerror=...>`).
+
+**After (2.0.4+):** all user-controlled values are HTML-escaped. No action needed.
+
+### 9. Cookie parser — boundary-anchored
+
+**Before (≤2.0.3):** `mc_session=...` matched `Xmc_session=evil` as substring. Trivial session fixation via sibling cookies (subdomain XSS, public Wi-Fi MITM on HTTP).
+
+**After (2.0.4+):** parse-and-compare, anchored on cookie boundary. `Set-Cookie` now appends instead of clobbering prior cookies set by other middleware.
+
+No app-side action needed — this is internal behavior.
 
 ---
 
@@ -1255,7 +1369,7 @@ Initialize CORS (auto-registers with middleware pipeline).
 
 ```javascript
 master.cors.init({
-    origin: true,                           // Reflect request origin, or '*', or ['https://example.com']
+    origin: ['https://example.com', 'https://app.example.com'],  // explicit list — see Security Notes
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: true,                   // Reflect requested headers, or specify array
     exposeHeaders: ['X-Total-Count'],
@@ -1267,18 +1381,24 @@ master.cors.init({
 **Options:**
 
 - `origin`:
-  - `true` - Reflect request origin (or `*` if no credentials)
-  - `false` - Remove CORS headers
-  - `'*'` - Allow all origins
+  - `'*'` - Allow all origins. **MUST NOT** be used with `credentials: true` (combining them is a security hole — any malicious site could read authenticated responses).
   - `'https://example.com'` - Specific origin
   - `['https://example.com', 'https://app.com']` - Array of origins
   - `function(origin, req)` - Custom function returning `true`, `false`, or origin string
+  - `true` - Reflect request origin. **Throws at init in v2.0.4+ if combined with `credentials: true`**, because the combination allows any third-party site to read authenticated responses. Use an explicit array instead.
+  - `false` - Remove CORS headers
 
 - `methods`: Array of allowed HTTP methods
 - `allowedHeaders`: `true` (all), `false` (none), array, or string
 - `exposeHeaders`: Array of headers to expose to browser
 - `credentials`: `true` to allow credentials (cookies, auth headers)
 - `maxAge`: Preflight cache duration in seconds
+
+**Security notes (v2.0.4+):**
+- Wildcard origin (`'*'`) and `credentials: true` are mutually exclusive. Wildcard sends literal `Access-Control-Allow-Origin: *` without credentials, per CORS spec.
+- `origin: true` + `credentials: true` throws at startup.
+- Only explicit origin lists work with credentials.
+- The framework automatically sets `Vary: Origin` when reflecting an allowed origin.
 
 **CORS automatically:**
 - Handles preflight OPTIONS requests
@@ -1351,6 +1471,11 @@ class AuthController {
     login(obj) {
         const user = authenticateUser(obj.params.formData);
 
+        // CRITICAL (v2.0.4+): rotate the session ID immediately on auth state
+        // change to defend against session fixation. Always do this on login,
+        // logout, role escalation, and password change.
+        master.session.regenerate(obj.request, obj.response);
+
         // Set session data (Rails/Express style)
         obj.request.session.userId = user.id;
         obj.request.session.username = user.name;
@@ -1389,6 +1514,13 @@ class DashboardController {
 
 ```javascript
 master.session.destroy(obj.request, obj.response);
+```
+
+**`master.session.regenerate(req, res)`** - Rotate session ID (v2.0.4+). Call after authentication state changes. Preserves session data, issues a new session ID, and updates the cookie. Returns the new session ID, or `null` if no session existed.
+
+```javascript
+// After login, password change, or role escalation:
+master.session.regenerate(obj.request, obj.response);
 ```
 
 **`master.session.touch(sessionId)`** - Extend session expiry
@@ -1483,7 +1615,7 @@ master.pipeline.use(pipelineRateLimit({
 ### CSRF Protection
 
 ```javascript
-const { pipelineCsrf, generateCSRFToken } = require('./security/SecurityMiddleware');
+import { pipelineCsrf, generateCSRFToken } from 'mastercontroller/security/SecurityMiddleware.js';
 
 // Apply to all routes
 master.pipeline.use(pipelineCsrf());
@@ -1494,16 +1626,37 @@ master.pipeline.map('/admin/*', (admin) => {
 });
 ```
 
-**Generate token:**
-```javascript
-const token = generateCSRFToken(sessionId);
+**Security model (v2.0.4+):**
+- Tokens are **bound to the issuing session** — a token issued to user A cannot be replayed against user B. Pass `sessionId` to `generateCSRFToken(sessionId)` so the binding is enforced. (Tokens generated without a sessionId still work for backward compatibility but provide weaker protection — strongly recommended to always pass it.)
+- Token comparison uses `crypto.timingSafeEqual`.
+- Tokens are **single-use** (rotate-on-success). After each successful validation the middleware issues a fresh token in the `X-CSRF-Token` response header. Clients must read that header and use it for the next request. A leaked token is no longer reusable for the full expiry window.
+- CSRF exempt path matching is anchored at segment boundaries — `/api/webhook` no longer accidentally exempts `/api/webhookmanage`.
 
-// In controller
+**Generate token (server, on session-bound page):**
+```javascript
+import { generateCSRFToken } from 'mastercontroller/security/SecurityMiddleware.js';
+
 class FormController {
-    show(obj) {
-        const csrfToken = generateCSRFToken();
+    show(ctx) {
+        // Pass the session ID so the token is bound to this user's session.
+        const csrfToken = generateCSRFToken(ctx.request.sessionId);
         this.render('form', { csrfToken });
     }
+}
+```
+
+**Client must read X-CSRF-Token from each response** (single-use rotation):
+```javascript
+// Pseudo-code — read it after every non-GET response
+let csrfToken = initialToken;
+async function apiCall(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-csrf-token': csrfToken },
+        body: JSON.stringify(body)
+    });
+    csrfToken = res.headers.get('x-csrf-token') ?? csrfToken;  // capture fresh token
+    return res;
 }
 ```
 
@@ -1954,6 +2107,34 @@ For complete Redis adapter documentation, see [security/adapters/README.md](secu
 ## Performance & Caching
 
 MasterController v1.4.0 includes production-grade performance optimizations for high-traffic applications.
+
+### Static File Serving (v2.0.4+)
+
+**Secure-by-default.** Mirrors the ASP.NET `wwwroot` / Rails `public/` / Django `STATIC_ROOT` model: only files physically present under `master.staticRoot` are servable. URL pattern is never consulted; file existence is the only gate.
+
+```javascript
+// DEFAULT: serves from <master.root>/public/
+// If that directory doesn't exist, static serving is DISABLED entirely.
+// Source files (server.js, config/, app/, node_modules/) are not reachable.
+
+// Override the static root before master.start():
+master.staticRoot = path.join(master.root, 'assets');
+
+// Or disable static serving entirely (pure API):
+master.staticRoot = false;
+```
+
+**How it works on each request:**
+1. URL is decoded (defeats `%2e%2e` traversal variants).
+2. NUL bytes and literal `..` segments are rejected.
+3. Resolved path must remain under `staticRoot` (separator-anchored — defeats prefix-confusion like `/var/www/app` matching `/var/www/app2`).
+4. Every path segment (not just the leaf) is checked for dotfile prefix — blocks `/.git/config`, `/.ssh/anything`, `/sub/.env`.
+5. File is checked with `lstat` — symlinks are rejected.
+6. If the file exists and passes all checks, it's served. If not, the request falls through to the router (a `/report.pdf` URL can be a dynamic route if no `report.pdf` file exists).
+
+**Dynamic routes with dots in path** work transparently — `/api/customer.listMyEngagements`, `/users/foo.json`, etc. all reach the router unless there happens to be a matching file.
+
+**Performance:** file existence check is sub-microsecond thanks to OS stat cache. Large files (>1MB) are automatically streamed; small files are buffered. ETags and `Cache-Control` are applied automatically.
 
 ### Static File Streaming
 
@@ -3488,6 +3669,57 @@ const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
 ```
 
 ---
+
+---
+
+## Reverse Proxy Configuration (v2.0.4+)
+
+If you deploy MasterController behind a reverse proxy (nginx, ALB, Cloudflare, k8s ingress, HAProxy), you **must** tell the framework which proxy peer IPs are trusted so it can correctly read `X-Forwarded-Proto` (for HTTPS detection) and `X-Forwarded-For` (for the real client IP). Without this configuration, the framework treats those headers as untrusted client input — which is the safe default but means:
+
+- HTTPS enforcement will see all proxied requests as HTTP (and redirect-loop or block them)
+- Rate limiting will key every request to the proxy's IP (so one user can DOS the entire site through your proxy)
+- Security logs will record the proxy's IP, not the real client's
+
+### Configuration
+
+```javascript
+// Configure trusted proxy IPs BEFORE master.start()
+master.trustedProxies = [
+    '127.0.0.1',        // localhost (most common for sidecar proxies)
+    '::1',              // localhost IPv6
+    '10.0.0.5',         // specific proxy IP
+    // Add your reverse-proxy / load balancer IPs here
+];
+
+// Also pass to SecurityMiddleware if you use the security pipeline
+master.security.init({
+    trustedProxies: master.trustedProxies,
+    // ... other security options
+});
+```
+
+### Helpers
+
+```javascript
+master.isRequestSecure(req)   // true if HTTPS (honors X-Forwarded-Proto only from trusted peers)
+master.getClientIp(req)       // real client IP (honors X-Forwarded-For only from trusted peers)
+master.isTrustedProxy(peer)   // true if peer IP is in trustedProxies
+```
+
+### Why this matters
+
+In `2.0.0`–`2.0.3` (and v1.x), `X-Forwarded-Proto` and `X-Forwarded-For` were trusted unconditionally. Any client could send `X-Forwarded-Proto: https` to bypass HTTPS enforcement, or rotate `X-Forwarded-For: <random>` values to evade rate limiting and poison logs. `2.0.4+` gates these headers on `trustedProxies` to fix the bypass.
+
+### nginx example
+
+```nginx
+# Strip inbound X-Forwarded-* headers from clients, set them yourself
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header Host $host;
+```
+
+In the MasterController app: `master.trustedProxies = ['127.0.0.1'];` (assuming nginx and Node are on the same host).
 
 ---
 

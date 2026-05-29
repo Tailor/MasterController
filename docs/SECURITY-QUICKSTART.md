@@ -4,6 +4,14 @@
 
 > **MasterController v2.0+ is ESM-only.** All examples below use `import` syntax. Your `package.json` must have `"type": "module"`. For CJS see v1.x docs.
 
+> **🔐 v2.0.4 changes:** This guide is updated for the v2.0.4 security release. Key changes you must know about:
+> - Static files now default to `<root>/public/` (no app-root fallback)
+> - `master.trustedProxies` must be set if you deploy behind a reverse proxy
+> - `master.session.regenerate(req, res)` is required after login for fixation defense
+> - `master.startHttpToHttpsRedirect(80, host, allowedHosts)` now throws if `allowedHosts` is missing
+> - CSRF tokens are session-bound and single-use — clients must capture the `X-CSRF-Token` response header
+> - CORS no longer combines wildcard origin with `credentials: true`
+
 ---
 
 ## Step 1: Update config/initializers/config.js
@@ -16,14 +24,22 @@ import master from 'mastercontroller';
 import SecurityEnforcement from 'mastercontroller/security/SecurityEnforcement.js';
 
 // ===========================
+// CONFIGURE REVERSE PROXY (v2.0.4+)
+// ===========================
+// If you're behind nginx, ALB, Cloudflare, or k8s ingress, set this BEFORE
+// any security middleware. Without it, HTTPS enforcement and rate limiting
+// will be broken (the framework will see all requests as HTTP from the proxy).
+master.trustedProxies = ['127.0.0.1', '::1'];  // add your proxy IPs
+
+// ===========================
 // AUTOMATIC SECURITY ENFORCEMENT
 // ===========================
 
 const securityConfig = SecurityEnforcement.init({
-    csrf: true,                // Auto-validate CSRF tokens
+    csrf: true,                // Auto-validate CSRF tokens (session-bound in v2.0.4+)
     sanitizeInputs: true,      // Auto-sanitize all user inputs
     httpsOnly: true,           // Require HTTPS in production
-    csrfExcludePaths: [        // Paths that don't need CSRF (webhooks, APIs)
+    csrfExcludePaths: [        // Paths that don't need CSRF (segment-matched in v2.0.4+)
         '/api/webhook',
         '/api/public'
     ]
@@ -31,6 +47,16 @@ const securityConfig = SecurityEnforcement.init({
 
 // Register security middleware (IMPORTANT!)
 master.pipeline.use(SecurityEnforcement.middleware(securityConfig));
+
+// ===========================
+// STATIC FILES (v2.0.4+)
+// ===========================
+// Default: serves from <master.root>/public/. If you have no static assets
+// (pure API), nothing to do — static serving is off when there's no public/.
+// To override:
+//   master.staticRoot = path.join(master.root, 'assets');
+// To disable explicitly:
+//   master.staticRoot = false;
 
 // ... rest of your config
 ```
@@ -72,24 +98,29 @@ Add hostname to your production environment config:
 </form>
 ```
 
-### AJAX Requests
+### AJAX Requests (v2.0.4+ — capture rotated token)
 
 ```javascript
-// Get CSRF token from meta tag
-const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+// Get initial CSRF token from meta tag
+let csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
-// Include in request
-fetch('/api/users', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken
-    },
-    body: JSON.stringify({
-        username: 'john',
-        email: 'john@example.com'
-    })
-});
+async function apiCall(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify(body)
+    });
+    // v2.0.4+: server rotates the token on every successful validation and
+    // returns the fresh one in this header. Update your stored token so the
+    // NEXT request will succeed. Without this, the second request 403s.
+    csrfToken = res.headers.get('x-csrf-token') ?? csrfToken;
+    return res;
+}
+
+apiCall('/api/users', { username: 'john', email: 'john@example.com' });
 ```
 
 ### Add CSRF Meta Tag to Layout
@@ -329,17 +360,28 @@ const securityConfig = SecurityEnforcement.init({
 
 Use this checklist to ensure your app is secure:
 
+**v2.0.4+ required items:**
+- [ ] `master.trustedProxies` configured if behind a reverse proxy (nginx, ALB, k8s ingress, Cloudflare)
+- [ ] `master.staticRoot` reviewed — using default `<root>/public/` or set to a dedicated dir; NOT set to `master.root`
+- [ ] `master.session.regenerate(req, res)` called in login/logout/password-change/role-escalation handlers
+- [ ] `master.startHttpToHttpsRedirect(80, host, allowedHosts)` — third arg is non-empty array of allowed hostnames
+- [ ] CSRF tokens are generated with the session ID: `generateCSRFToken(req.sessionId)`
+- [ ] Client AJAX code captures and reuses `X-CSRF-Token` from each response
+- [ ] CORS is configured with explicit origin list (NOT `origin: '*'` with `credentials: true`, NOT `origin: true` with `credentials: true`)
+
+**General:**
 - [ ] Security enforcement enabled in `config/initializers/config.js`
 - [ ] Hostname configured in `config/environments/env.production.json`
 - [ ] CSRF tokens included in all forms
 - [ ] CSRF meta tag in layout
 - [ ] AJAX requests include X-CSRF-Token header
-- [ ] Webhook paths excluded from CSRF
+- [ ] Webhook paths excluded from CSRF (note: exclude paths are segment-boundary matched in v2.0.4+)
 - [ ] HTTPS certificate installed
 - [ ] Testing: CSRF validation works
 - [ ] Testing: XSS blocked in forms
 - [ ] Testing: Path traversal blocked
 - [ ] Testing: HTTPS redirect works
+- [ ] Testing: `GET /server.js`, `GET /package.json`, `GET /.env` all return 404 (source not exposed)
 
 ---
 
