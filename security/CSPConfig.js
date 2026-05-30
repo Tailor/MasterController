@@ -129,7 +129,7 @@ class CSPConfig {
         continue;
       }
 
-      let sources = [...values];
+      const sources = [...values];
 
       // Add nonce to script-src and style-src if enabled
       if (this.useNonce && this.currentNonce && (directive === 'script-src' || directive === 'style-src')) {

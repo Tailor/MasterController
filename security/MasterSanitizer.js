@@ -131,11 +131,11 @@ class MasterSanitizer {
 
     DANGEROUS_TAGS.forEach(tag => {
       // Remove opening and closing tags
-      const regex = new RegExp(`<${tag}[^>]*>.*?<\/${tag}>`, 'gis');
+      const regex = new RegExp(`<${tag}[^>]*>.*?</${tag}>`, 'gis');
       sanitized = sanitized.replace(regex, '');
 
       // Remove self-closing tags
-      const selfClosing = new RegExp(`<${tag}[^>]*\/>`, 'gi');
+      const selfClosing = new RegExp(`<${tag}[^>]*/>`, 'gi');
       sanitized = sanitized.replace(selfClosing, '');
 
       // Remove unclosed tags
@@ -283,7 +283,7 @@ class MasterSanitizer {
       }
 
       // Keep only allowed attributes
-      let cleanTag = match.replace(/\s+([a-z-]+)\s*=\s*["']([^"']*)["']/gi, (attrMatch, attrName, attrValue) => {
+      const cleanTag = match.replace(/\s+([a-z-]+)\s*=\s*["']([^"']*)["']/gi, (attrMatch, attrName, attrValue) => {
         if (allowedAttrs.includes(attrName.toLowerCase())) {
           return ` ${attrName}="${attrValue}"`;
         }

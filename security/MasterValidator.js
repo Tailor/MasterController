@@ -64,14 +64,15 @@ const PATH_TRAVERSAL_PATTERNS = [
 // LDAP injection patterns
 const LDAP_INJECTION_PATTERNS = [
   /[*()\\]/g,
+  // eslint-disable-next-line no-control-regex -- intentional: strip NUL byte used in LDAP injection
   /\x00/g
 ];
 
 // Email validation regex
-const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 // URL validation regex
-const URL_REGEX = /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
+const URL_REGEX = /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)$/;
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -221,7 +222,7 @@ class MasterValidator {
    * Check for SQL injection attempts
    * CRITICAL FIX: Added input length limit and timeout protection against ReDoS attacks
    */
-  detectSQLInjection(input, options = {}) {
+  detectSQLInjection(input, _options = {}) {
     if (typeof input !== 'string') {
       return { safe: true, value: input };
     }
@@ -281,7 +282,7 @@ class MasterValidator {
    * Check for command injection attempts
    * CRITICAL FIX: Added input length limit and timeout protection against ReDoS attacks
    */
-  detectCommandInjection(input, options = {}) {
+  detectCommandInjection(input, _options = {}) {
     if (typeof input !== 'string') {
       return { safe: true, value: input };
     }
@@ -306,7 +307,7 @@ class MasterValidator {
    * Check for path traversal attempts
    * CRITICAL FIX: Added input length limit and timeout protection against ReDoS attacks
    */
-  detectPathTraversal(input, options = {}) {
+  detectPathTraversal(input, _options = {}) {
     if (typeof input !== 'string') {
       return { safe: true, value: input };
     }
@@ -539,48 +540,14 @@ class MasterValidator {
    */
   _safeRegexTest(pattern, input) {
     try {
-      // Create a promise that will timeout after REGEX_TIMEOUT_MS
-      let timeoutId;
-      const timeoutPromise = new Promise((resolve) => {
-        timeoutId = setTimeout(() => {
-          logger.error({
-            code: 'MC_SECURITY_REGEX_TIMEOUT',
-            message: 'Regex execution timeout - possible ReDoS attack',
-            pattern: pattern.toString(),
-            inputLength: input.length,
-            timeout: REGEX_TIMEOUT_MS
-          });
-          resolve(false); // Timeout = assume unsafe
-        }, REGEX_TIMEOUT_MS);
-      });
-
-      // Create a promise that tests the regex
-      const testPromise = new Promise((resolve) => {
-        try {
-          const result = pattern.test(input);
-          clearTimeout(timeoutId);
-          if (result) {
-            this._logViolation('PATTERN_MATCH', input, pattern);
-          }
-          resolve(result);
-        } catch (error) {
-          clearTimeout(timeoutId);
-          logger.error({
-            code: 'MC_SECURITY_REGEX_ERROR',
-            message: 'Regex execution error',
-            pattern: pattern.toString(),
-            error: error.message
-          });
-          resolve(false); // Error = assume unsafe
-        }
-      });
-
-      // Race the two promises - return immediately on timeout or completion
-      // Note: Since we can't use async/await here without breaking compatibility,
-      // we'll use a simpler synchronous approach with try-catch
-
-      // For now, use synchronous test with try-catch (TODO: implement worker threads for true isolation)
+      // Synchronous test with timing-based ReDoS detection.
+      // (TODO: implement worker threads for true pre-emptive timeout isolation —
+      //  a Promise.race cannot abort a synchronous regex on the same thread.)
       const startTime = Date.now();
+      // The shared patterns use the /g flag, so .test() is stateful across
+      // calls (lastIndex advances). Reset it first or detection becomes
+      // non-deterministic when the same pattern object is reused.
+      pattern.lastIndex = 0;
       const result = pattern.test(input);
       const duration = Date.now() - startTime;
 
@@ -599,7 +566,13 @@ class MasterValidator {
         this._logViolation('PATTERN_MATCH', input, pattern);
       }
 
-      return result;
+      // Contract: return true when the input is SAFE (pattern did NOT match),
+      // false when a malicious pattern matched. Callers treat a falsy result
+      // as a detected threat (`if (!_safeRegexTest(...)) { ...threat... }`).
+      // This MUST be the negation of `result` (pattern.test === true means a
+      // match === unsafe). Returning `result` directly inverts every detector
+      // and makes them fail open on real injection input.
+      return !result;
 
     } catch (error) {
       logger.error({
@@ -608,7 +581,7 @@ class MasterValidator {
         pattern: pattern.toString(),
         error: error.message
       });
-      return false; // Error = assume unsafe
+      return false; // Error = assume unsafe (treated as a threat by callers)
     }
   }
 }

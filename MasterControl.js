@@ -458,7 +458,7 @@ class MasterControl {
             }
         }
         else{
-            throw "HTTP, HTTPS, HTTPPORT and REQUEST TIMEOUT MISSING";
+            throw new Error("HTTP, HTTPS, HTTPPORT and REQUEST TIMEOUT MISSING");
         }
 
     }
@@ -617,7 +617,7 @@ class MasterControl {
                     $that.server = server;
                     return server;
                 }else{
-                    throw "Credentials needed to setup https"
+                    throw new Error("Credentials needed to setup https");
                 }
             }
         }
@@ -720,26 +720,26 @@ class MasterControl {
     // Load TLS configuration from env and build SNI contexts with live reload
     _initializeTlsFromEnv(){
         try{
-            var cfg = this.env;
+            const cfg = this.env;
             if(!cfg || !cfg.server || !cfg.server.tls){
                 return;
             }
-            var tlsCfg = cfg.server.tls;
+            const tlsCfg = cfg.server.tls;
 
-            var defaultCreds = this._buildSecureContextFromPaths(tlsCfg.default);
-            var defaultContext = defaultCreds ? tls.createSecureContext(defaultCreds) : null;
+            const defaultCreds = this._buildSecureContextFromPaths(tlsCfg.default);
+            let defaultContext = defaultCreds ? tls.createSecureContext(defaultCreds) : null;
 
-            var sniMap = {};
+            const sniMap = {};
             if(tlsCfg.sni && typeof tlsCfg.sni === 'object'){
                 for (var domain in tlsCfg.sni){
                     if (Object.prototype.hasOwnProperty.call(tlsCfg.sni, domain)){
-                        var domCreds = this._buildSecureContextFromPaths(tlsCfg.sni[domain]);
+                        const domCreds = this._buildSecureContextFromPaths(tlsCfg.sni[domain]);
                         if(domCreds){
                             sniMap[domain] = tls.createSecureContext(domCreds);
                             // watch domain certs for reload
                             this._watchTlsFilesAndReload(tlsCfg.sni[domain], function(){
                                 try{
-                                    var updated = tls.createSecureContext(
+                                    const updated = tls.createSecureContext(
                                         this._buildSecureContextFromPaths(tlsCfg.sni[domain])
                                     );
                                     sniMap[domain] = updated;
@@ -752,9 +752,9 @@ class MasterControl {
                 }
             }
 
-            var options = defaultCreds ? Object.assign({}, defaultCreds) : {};
+            const options = defaultCreds ? Object.assign({}, defaultCreds) : {};
             options.SNICallback = function(servername, cb){
-                var ctx = sniMap[servername];
+                let ctx = sniMap[servername];
                 if(!ctx && defaultContext){ ctx = defaultContext; }
                 if(cb){ return cb(null, ctx); }
                 return ctx;
@@ -774,7 +774,7 @@ class MasterControl {
             if(tlsCfg.default){
                 this._watchTlsFilesAndReload(tlsCfg.default, function(){
                     try{
-                        var updatedCreds = this._buildSecureContextFromPaths(tlsCfg.default);
+                        const updatedCreds = this._buildSecureContextFromPaths(tlsCfg.default);
                         defaultContext = tls.createSecureContext(updatedCreds);
                         // keep key/cert on options for non-SNI connections
                         Object.assign(options, updatedCreds);
@@ -792,7 +792,7 @@ class MasterControl {
 
     _buildSecureContextFromPaths(desc){
         if(!desc){ return null; }
-        var opts = {};
+        const opts = {};
         try{
             if(desc.keyPath){ opts.key = fs.readFileSync(desc.keyPath); }
             if(desc.certPath){ opts.cert = fs.readFileSync(desc.certPath); }
@@ -807,7 +807,7 @@ class MasterControl {
     }
 
     _watchTlsFilesAndReload(desc, onChange){
-        var paths = [];
+        const paths = [];
         if(desc.keyPath){ paths.push(desc.keyPath); }
         if(desc.certPath){ paths.push(desc.certPath); }
         if(desc.caPath){ paths.push(desc.caPath); }
@@ -1308,11 +1308,11 @@ class MasterControl {
     }
 
     async startMVC(foldername){
-        var rootFolderLocation = path.join(this.root, foldername);
+        const rootFolderLocation = path.join(this.root, foldername);
 
         // Structure is always: {rootFolderLocation}/routes.js
         const routePath = path.join(rootFolderLocation, 'routes.js');
-        var route = {
+        const route = {
             isComponent: false,
             root: `${this.root}`
         };

@@ -207,7 +207,7 @@ class RedisRateLimiter {
    * Consume multiple points at once
    */
   async consumePoints(identifier, points) {
-    return await this.consume(identifier, points);
+    return this.consume(identifier, points);
   }
 
   /**

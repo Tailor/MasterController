@@ -138,7 +138,7 @@ class PrometheusExporter {
 
       // Handle metrics endpoint
       if (requestPath === self.options.endpoint) {
-        return await self._handleMetricsEndpoint(ctx);
+        return self._handleMetricsEndpoint(ctx);
       }
 
       // Track request metrics

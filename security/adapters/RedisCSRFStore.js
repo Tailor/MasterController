@@ -395,7 +395,7 @@ class RedisCSRFStore {
    * Get CSRF token for use in templates/frontend
    */
   async getTokenForTemplate(sessionId) {
-    return await this.get(sessionId);
+    return this.get(sessionId);
   }
 
   /**

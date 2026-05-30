@@ -68,7 +68,7 @@ class HealthCheck {
 
       // Only handle health check endpoint
       if (requestPath !== self.options.endpoint) {
-        if (typeof next === 'function') return await next();
+        if (typeof next === 'function') return next();
         return;
       }
 

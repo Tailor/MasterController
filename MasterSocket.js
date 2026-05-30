@@ -238,8 +238,8 @@ class MasterSocket{
      * // or null if file not found
      */
     _loadCorsConfig(){
+        const cfgPath = path.join(this._master.root, 'config', 'initializers', 'cors.json');
         try {
-            const cfgPath = path.join(this._master.root, 'config', 'initializers', 'cors.json');
             if (fs.existsSync(cfgPath)) {
                 const raw = fs.readFileSync(cfgPath, 'utf8');
                 return JSON.parse(raw);

@@ -184,7 +184,7 @@ class RedisSessionStore {
    * Update session data and refresh TTL
    */
   async update(sessionId, sessionData, ttl = null) {
-    return await this.set(sessionId, sessionData, ttl);
+    return this.set(sessionId, sessionData, ttl);
   }
 
   /**

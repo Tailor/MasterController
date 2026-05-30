@@ -202,7 +202,7 @@ class MasterRequest{
             $that.parsedURL.query = querydata.query;
             $that.form = new IncomingForm($that.options.formidable);
             if(request.headers['content-type'] || request.headers['transfer-encoding'] ){
-                    var contentType = contentTypeManager.parse(request);
+                    const contentType = contentTypeManager.parse(request);
                     switch(contentType.type){
                         case CONTENT_TYPES.FORM_URLENCODED:
                             $that.urlEncodeStream(request, function(data){
