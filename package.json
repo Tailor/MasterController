@@ -44,6 +44,8 @@
   },
   "files": [
     "*.js",
+    "!eslint.config.js",
+    "!prettier.config.js",
     "security/**/*.js",
     "monitoring/**/*.js",
     "error/**/*.js",
@@ -53,8 +55,8 @@
   ],
   "scripts": {
     "test": "node --test test/",
-    "lint": "eslint *.js **/*.js --fix",
-    "lint:check": "eslint *.js **/*.js",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
     "format": "prettier --write \"**/*.js\"",
     "format:check": "prettier --check \"**/*.js\"",
     "security-audit": "npm audit && npm audit signatures",
@@ -87,7 +89,9 @@
     }
   },
   "devDependencies": {
-    "eslint": "^8.56.0",
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
     "prettier": "^3.2.4"
   }
 }
