@@ -1,10 +1,13 @@
 {
   "name": "mastercontroller",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Fortune 500 ready Node.js MVC framework with enterprise security, monitoring, and horizontal scaling",
   "type": "module",
   "exports": {
     ".": "./MasterControl.js",
+    "./security/*.js": "./security/*.js",
+    "./monitoring/*.js": "./monitoring/*.js",
+    "./error/*.js": "./error/*.js",
     "./package.json": "./package.json"
   },
   "license": "MIT",
@@ -19,6 +22,7 @@
   "keywords": [
     "mvc",
     "framework",
+    "esm",
     "web",
     "api",
     "rest",

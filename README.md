@@ -503,7 +503,7 @@ Create middleware files that are auto-discovered:
 **Simple function export:**
 ```javascript
 // middleware/01-logger.js
-module.exports = async (ctx, next) => {
+export default async (ctx, next) => {
     const start = Date.now();
     await next();
     const duration = Date.now() - start;
@@ -514,7 +514,7 @@ module.exports = async (ctx, next) => {
 **Object with register() method:**
 ```javascript
 // middleware/02-auth.js
-module.exports = {
+export default {
     register: (master) => {
         master.pipeline.map('/admin/*', (admin) => {
             admin.use(async (ctx, next) => {
@@ -541,7 +541,7 @@ Files are loaded alphabetically (use `01-`, `02-` prefixes for ordering).
 Create `config/routes.js`:
 
 ```javascript
-var master = require('mastercontroller');
+import master from 'mastercontroller';
 var router = master.router.start();
 
 // Basic route
@@ -664,7 +664,7 @@ class UsersController {
     }
 }
 
-module.exports = UsersController;
+export default UsersController;
 ```
 
 ### Controller API
@@ -1007,8 +1007,8 @@ npm install masterview
 
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
-const MasterView = require('masterview');
+import master from 'mastercontroller';
+import MasterView from 'masterview';
 
 // Register view engine
 master.useView(MasterView, {
@@ -1115,8 +1115,8 @@ npm install react react-dom
 ```javascript
 const ReactSSRView = {
     register(master) {
-        master.controllerList.returnView = function(data, location) {
-            const Component = require(componentPath);
+        master.controllerList.returnView = async function(data, location) {
+            const { default: Component } = await import(componentPath);
             const html = ReactDOMServer.renderToString(
                 React.createElement(Component, data)
             );
@@ -1581,7 +1581,7 @@ For complete security documentation, see [security/README.md](security/README.md
 ### Security Headers
 
 ```javascript
-const { pipelineSecurityHeaders } = require('./security/SecurityMiddleware');
+import { pipelineSecurityHeaders } from './security/SecurityMiddleware.js';
 
 master.pipeline.use(pipelineSecurityHeaders());
 ```
@@ -1598,7 +1598,7 @@ master.pipeline.use(pipelineSecurityHeaders());
 ### Rate Limiting
 
 ```javascript
-const { pipelineRateLimit } = require('./security/SecurityMiddleware');
+import { pipelineRateLimit } from './security/SecurityMiddleware.js';
 
 master.pipeline.use(pipelineRateLimit({
     rateLimitWindow: 60000,  // 1 minute
@@ -1674,7 +1674,7 @@ async function apiCall(url, body) {
 ### Input Validation
 
 ```javascript
-const { validator } = require('./security/MasterValidator');
+import { validator } from './security/MasterValidator.js';
 
 class UsersController {
     create(obj) {
@@ -1750,6 +1750,8 @@ MasterController v1.4.0 includes enterprise-grade protection against file upload
 **Always validate file types in your controllers:**
 
 ```javascript
+import crypto from 'node:crypto';
+
 class UploadController {
     uploadImage(obj) {
         const file = obj.params.formData.files.avatar[0];
@@ -1776,7 +1778,6 @@ class UploadController {
         }
 
         // 4. Generate safe filename (prevent path traversal)
-        const crypto = require('crypto');
         const safeFilename = crypto.randomBytes(16).toString('hex') + file.extension;
         const uploadPath = path.join(master.root, 'uploads', safeFilename);
 
@@ -1880,7 +1881,7 @@ MasterController v1.4.0 includes production-grade monitoring with health checks 
 Built-in `/_health` endpoint for load balancers, Kubernetes liveness/readiness probes, and uptime monitoring.
 
 ```javascript
-const { healthCheck } = require('mastercontroller/monitoring/HealthCheck');
+import { healthCheck } from 'mastercontroller/monitoring/HealthCheck.js';
 
 // Add to pipeline (auto-creates /_health endpoint)
 master.pipeline.use(healthCheck.middleware());
@@ -1912,7 +1913,7 @@ master.pipeline.use(healthCheck.middleware());
 
 **Add custom health checks:**
 ```javascript
-const Redis = require('ioredis');
+import Redis from 'ioredis';
 const redis = new Redis();
 
 // Add custom Redis health check
@@ -1948,7 +1949,7 @@ readinessProbe:
 Built-in `/_metrics` endpoint in Prometheus format for monitoring and alerting.
 
 ```javascript
-const { prometheusExporter } = require('mastercontroller/monitoring/PrometheusExporter');
+import { prometheusExporter } from 'mastercontroller/monitoring/PrometheusExporter.js';
 
 // Add to pipeline (auto-creates /_metrics endpoint)
 master.pipeline.use(prometheusExporter.middleware());
@@ -1988,8 +1989,8 @@ MasterController v1.4.0 includes Redis adapters for distributed state management
 Distributed session management for horizontal scaling and zero-downtime deployments.
 
 ```javascript
-const Redis = require('ioredis');
-const { RedisSessionStore } = require('mastercontroller/security/adapters/RedisSessionStore');
+import Redis from 'ioredis';
+import { RedisSessionStore } from 'mastercontroller/security/adapters/RedisSessionStore.js';
 
 const redis = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
@@ -2025,8 +2026,8 @@ master.session.init({
 Distributed rate limiting across multiple app instances.
 
 ```javascript
-const Redis = require('ioredis');
-const { RedisRateLimiter } = require('mastercontroller/security/adapters/RedisRateLimiter');
+import Redis from 'ioredis';
+import { RedisRateLimiter } from 'mastercontroller/security/adapters/RedisRateLimiter.js';
 
 const redis = new Redis();
 
@@ -2076,8 +2077,8 @@ class APIController {
 Distributed CSRF token validation for multi-instance deployments.
 
 ```javascript
-const Redis = require('ioredis');
-const { RedisCSRFStore } = require('mastercontroller/security/adapters/RedisCSRFStore');
+import Redis from 'ioredis';
+import { RedisCSRFStore } from 'mastercontroller/security/adapters/RedisCSRFStore.js';
 
 const redis = new Redis();
 
@@ -2087,7 +2088,7 @@ const csrfStore = new RedisCSRFStore(redis, {
 });
 
 // Use with CSRF middleware
-const { pipelineCsrf } = require('mastercontroller/security/SecurityMiddleware');
+import { pipelineCsrf } from 'mastercontroller/security/SecurityMiddleware.js';
 
 master.pipeline.use(pipelineCsrf({
     store: csrfStore // Use Redis instead of memory
@@ -2401,7 +2402,7 @@ Convert file to Node.js Buffer (for in-memory processing).
 const buffer = master.tools.fileToBuffer('./image.jpg');
 
 // Process image with sharp library
-const sharp = require('sharp');
+import sharp from 'sharp';
 const resized = await sharp(buffer)
     .resize(800, 600)
     .toBuffer();
@@ -2433,7 +2434,7 @@ const bytes = master.tools.fileToBytes('./document.pdf');
 websocket.send(bytes);
 
 // Use with crypto
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 const hash = crypto.createHash('sha256').update(bytes).digest('hex');
 ```
 
@@ -2602,6 +2603,8 @@ class DocumentController {
 #### Use Case 3: Retrieve File from Database
 
 ```javascript
+import fs from 'node:fs';
+
 class DocumentController {
     async download(obj) {
         const docId = obj.params.id;
@@ -2627,7 +2630,6 @@ class DocumentController {
         obj.response.setHeader('Content-Type', doc.mimetype);
         obj.response.setHeader('Content-Disposition', `attachment; filename="${doc.filename}"`);
 
-        const fs = require('fs');
         const fileStream = fs.createReadStream(tempPath);
         fileStream.pipe(obj.response);
 
@@ -2642,7 +2644,7 @@ class DocumentController {
 #### Use Case 4: Image Processing Pipeline
 
 ```javascript
-const sharp = require('sharp');
+import sharp from 'sharp';
 
 class ImageController {
     async processThumbnail(obj) {
@@ -2679,7 +2681,7 @@ class ImageController {
 #### Use Case 5: Email with Embedded Images
 
 ```javascript
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 class EmailController {
     async sendWithImage(obj) {
@@ -2903,7 +2905,7 @@ MasterController includes a production-ready timeout system with per-request tra
 
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 // Initialize timeout system
 master.timeout.init({
@@ -3021,7 +3023,7 @@ console.log(master.timeout.getStats().enabled); // true/false
 
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 // Initialize timeout system
 master.timeout.init({
@@ -3072,7 +3074,7 @@ MasterController includes a professional error template system inspired by Rails
 
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 // Initialize error renderer
 master.errorRenderer.init({
@@ -3331,7 +3333,7 @@ class UsersController {
 ### Logging
 
 ```javascript
-const { logger } = require('./error/MasterErrorLogger');
+import { logger } from './error/MasterErrorLogger.js';
 
 // In controllers or middleware
 logger.info({
@@ -3424,7 +3426,7 @@ if (maintenanceMode) {
 
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 // Initialize error renderer
 master.errorRenderer.init({
@@ -3511,8 +3513,8 @@ cd ..
 
 **Step 2: Update `server.js`**
 ```javascript
-const fs = require('fs');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import master from 'mastercontroller';
 
 master.environmentType = process.env.NODE_ENV || 'development';
 master.root = __dirname;
@@ -3523,7 +3525,7 @@ const server = master.setupServer('https', {
     cert: fs.readFileSync('./certs/cert.pem')
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 
 master.start(server);
 master.serverSettings({ httpPort: 3000 }); // Use 3000 for development
@@ -3568,8 +3570,8 @@ sudo certbot certonly --standalone -d yourapp.com -d www.yourapp.com
 
 **Step 3: Update `server.js` for Production**
 ```javascript
-const fs = require('fs');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import master from 'mastercontroller';
 
 master.environmentType = process.env.NODE_ENV || 'production';
 master.root = __dirname;
@@ -3587,7 +3589,7 @@ master.enableHSTS({
     preload: true
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 
 // Start HTTPS on port 443
 master.start(server);
@@ -3640,8 +3642,8 @@ sudo crontab -e
 If you have a certificate from a commercial CA (GoDaddy, Namecheap, etc.):
 
 ```javascript
-const fs = require('fs');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import master from 'mastercontroller';
 
 master.environmentType = 'production';
 master.root = __dirname;
@@ -3658,7 +3660,7 @@ master.enableHSTS({
     preload: true
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings({ httpPort: 443 });
 
@@ -3736,8 +3738,8 @@ MasterController v1.4.0 is production-ready for Fortune 500 deployments with Doc
 Run MasterController directly on ports 80/443:
 
 ```javascript
-const fs = require('fs');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import master from 'mastercontroller';
 
 master.environmentType = 'production';
 master.root = __dirname;
@@ -3753,7 +3755,7 @@ master.enableHSTS({
     preload: true
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings({ httpPort: 443 });
 
@@ -3796,7 +3798,7 @@ brew install nginx
 **Step 2: Configure MasterController (High Port)**
 ```javascript
 // server.js - Run on port 3000
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 master.environmentType = 'production';
 master.root = __dirname;
@@ -3804,7 +3806,7 @@ master.root = __dirname;
 // HTTP only (Nginx handles HTTPS)
 const server = master.setupServer('http');
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings({
     httpPort: 3000,
@@ -3907,7 +3909,7 @@ sudo systemctl enable nginx
 **Step 5: Configure MasterController to Trust Proxy**
 ```javascript
 // config/initializers/config.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 // Trust X-Forwarded-* headers from Nginx
 master.pipeline.use(async (ctx, next) => {
@@ -3952,29 +3954,33 @@ npm install -g pm2
 ```
 
 **Step 2: Create PM2 Ecosystem File**
-```javascript
-// ecosystem.config.js
-module.exports = {
-  apps: [{
-    name: 'myapp',
-    script: './server.js',
-    instances: 'max',              // Use all CPU cores
-    exec_mode: 'cluster',
-    env: {
-      NODE_ENV: 'production'
+
+PM2 loads its ecosystem file with an internal `require()`. In a pure-ESM app a `.js` config (parsed as ESM) would throw `ERR_REQUIRE_ESM`. Use a **JSON** ecosystem file instead — it's module-system-agnostic, so your project stays 100% ESM with no CommonJS files. (`instances: "max"` uses all CPU cores.)
+
+Create `ecosystem.config.json`:
+
+```json
+{
+  "apps": [{
+    "name": "myapp",
+    "script": "./server.js",
+    "instances": "max",
+    "exec_mode": "cluster",
+    "env": {
+      "NODE_ENV": "production"
     },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    merge_logs: true
+    "error_file": "./logs/err.log",
+    "out_file": "./logs/out.log",
+    "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+    "merge_logs": true
   }]
-};
+}
 ```
 
 **Step 3: Start with PM2**
 ```bash
 # Start application
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.json
 
 # Save PM2 configuration
 pm2 save
@@ -4045,7 +4051,7 @@ MasterController supports serving multiple domains with different certificates:
 
 ```javascript
 // server.js
-const master = require('mastercontroller');
+import master from 'mastercontroller';
 
 master.environmentType = 'production';
 master.root = __dirname;
@@ -4053,7 +4059,7 @@ master.root = __dirname;
 // Loads TLS config from environment file (including SNI)
 const server = master.setupServer('https');
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings(master.env.server);
 
@@ -4065,9 +4071,9 @@ console.log('  • admin.example.com');
 
 **Method 2: Programmatic SNI**
 ```javascript
-const fs = require('fs');
-const tls = require('tls');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import tls from 'node:tls';
+import master from 'mastercontroller';
 
 master.environmentType = 'production';
 master.root = __dirname;
@@ -4105,7 +4111,7 @@ const server = master.setupServer('https', {
     }
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings({ httpPort: 443 });
 ```
@@ -4190,8 +4196,8 @@ sudo systemctl restart myapp
 MasterController supports certificate live reload with `fs.watchFile()`:
 
 ```javascript
-const fs = require('fs');
-const master = require('mastercontroller');
+import fs from 'node:fs';
+import master from 'mastercontroller';
 
 const certPath = '/etc/letsencrypt/live/example.com/fullchain.pem';
 const keyPath = '/etc/letsencrypt/live/example.com/privkey.pem';
@@ -4222,7 +4228,7 @@ fs.watchFile(certPath, (curr, prev) => {
     }
 });
 
-require('./config/initializers/config');
+import './config/initializers/config.js';
 master.start(server);
 master.serverSettings({ httpPort: 443 });
 ```
@@ -4544,8 +4550,8 @@ MasterController's HTTPS implementation **exceeds industry standards**:
 
 ```javascript
 // server.js - Production HTTPS setup
-const master = require('mastercontroller');
-const fs = require('fs');
+import master from 'mastercontroller';
+import fs from 'node:fs';
 
 // Set environment
 master.environmentType = process.env.NODE_ENV || 'production';
@@ -4565,7 +4571,7 @@ master.enableHSTS({
 });
 
 // Load application configuration
-require('./config/initializers/config');
+import './config/initializers/config.js';
 
 // Start HTTPS server on port 443
 master.start(server);
