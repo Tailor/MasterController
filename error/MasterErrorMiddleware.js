@@ -219,11 +219,23 @@ function setupGlobalErrorHandlers() {
       context: context
     });
 
-    // Exit immediately. The previous 1s setTimeout meant a fatal startup error
-    // could be drowned out by "boot succeeded" messages firing in the same tick,
-    // and process managers couldn't tell the difference between a hung process
-    // and a crashing one. Sync stderr writes above are enough to surface the cause.
-    process.exit(1);
+    // Flush async backends (Sentry, webhook, etc.) before terminating, then
+    // exit. The file backend writes synchronously (fs.appendFileSync), so
+    // the on-disk log is already flushed; this only awaits network-bound
+    // backends. flushAsync has its own 2s timeout — if a backend hangs we
+    // still exit promptly, just without that backend's confirmation.
+    //
+    // Note: the handler itself isn't `async` because Node doesn't await
+    // process event listeners. We use .then() chained to process.exit and
+    // accept that the process might keep running for a few hundred ms while
+    // the flush completes — that's the trade-off for not losing the
+    // last-breath telemetry entry.
+    const exitOnce = () => { try { process.exit(1); } catch (_) {} };
+    logger.flushAsync().then(exitOnce, exitOnce);
+    // Belt-and-suspenders: hard fallback in case flushAsync's own timeout
+    // misbehaves (e.g. a backend that swallowed Promise resolution).
+    const hardTimer = setTimeout(exitOnce, 3000);
+    if (hardTimer.unref) hardTimer.unref();
   });
 
   // Handle unhandled promise rejections

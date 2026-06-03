@@ -117,18 +117,75 @@ class MasterErrorLogger {
   }
 
   /**
-   * Dispatch entry to all backends
+   * Dispatch entry to all backends.
+   *
+   * If a backend returns a Promise (e.g. async webhook, Sentry SDK, LogRocket),
+   * the promise is tracked in `_pendingWrites` so `flushAsync()` can await it
+   * before the process exits on a fatal error.
    */
   _dispatch(entry) {
+    this._pendingWrites = this._pendingWrites || new Set();
     this.backends.forEach(backend => {
       try {
-        backend(entry);
+        const result = backend(entry);
+        if (result && typeof result.then === 'function') {
+          this._pendingWrites.add(result);
+          // Remove from pending set when settled, regardless of outcome.
+          result.then(
+            () => this._pendingWrites.delete(result),
+            () => this._pendingWrites.delete(result)
+          );
+        }
       } catch (error) {
         // Avoid console methods that can trigger EPIPE recursion
         if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_DESTROYED') {
           try { process.stderr.write(`[MasterErrorLogger] Backend failed: ${error.message}\n`); } catch (_) {}
         }
       }
+    });
+  }
+
+  /**
+   * Await any in-flight async backend writes, then resolve.
+   *
+   * Use this before process.exit() in fatal-error handlers to guarantee
+   * the FATAL log entry reaches Sentry / webhook / etc. before the process
+   * terminates. The file backend is already synchronous (fs.appendFileSync),
+   * so the on-disk log is always flushed regardless.
+   *
+   * Returns a Promise that resolves when all pending async writes settle, or
+   * `timeoutMs` elapses (default 2000ms — long enough for typical SaaS
+   * ingestion endpoints, short enough that an unresponsive backend doesn't
+   * hang the crash exit indefinitely).
+   *
+   * @param {number} [timeoutMs=2000]
+   * @returns {Promise<void>}
+   */
+  flushAsync(timeoutMs = 2000) {
+    const pending = this._pendingWrites && this._pendingWrites.size > 0
+      ? Array.from(this._pendingWrites)
+      : null;
+    if (!pending) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (!settled) { settled = true; resolve(); }
+      };
+      // Race the pending writes against a hard timeout. Promise.allSettled
+      // doesn't reject on individual failures, so the only way this hangs is
+      // if a backend simply never resolves — that's what the timeout catches.
+      const timer = setTimeout(() => {
+        try { process.stderr.write(`[MasterErrorLogger] flushAsync timed out after ${timeoutMs}ms (${this._pendingWrites.size} backends still pending)\n`); } catch (_) {}
+        finish();
+      }, timeoutMs);
+      // Unref so the timer alone doesn't prevent process exit if the rest of
+      // the event loop has drained.
+      if (timer.unref) timer.unref();
+      Promise.allSettled(pending).then(() => {
+        clearTimeout(timer);
+        finish();
+      });
     });
   }
 

@@ -97,6 +97,44 @@ class MasterControl {
     _hstsPreload = false
     _viewEngine = null // Pluggable view engine (MasterView, EJS, Pug, etc.)
 
+    // ---- Developer-convenience: auto-increment port on EADDRINUSE ----
+    //
+    // When enabled, if the configured port is already in use the framework
+    // automatically retries server.listen() on the next port (up to
+    // `maxPortIncrement` attempts) instead of crashing with FATAL.
+    //
+    // Intended for LOCAL DEVELOPMENT only. Auto-bumping a port in production
+    // makes service discovery and health checks miss the running instance.
+    // The setter therefore refuses to enable when NODE_ENV === 'production'.
+    //
+    // Usage:
+    //   master.autoIncrementPort = true;          // dev only
+    //   master.maxPortIncrement = 10;             // optional, default 10
+    //   master.start(server);
+    //   server.listen(3000);                      // → uses 3000, or 3001, 3002…
+    //
+    // After listen succeeds, `master.actualPort` holds the port that was
+    // bound (useful for printing "listening on http://127.0.0.1:3001").
+    _autoIncrementPort = false
+    maxPortIncrement = 10
+    actualPort = null
+
+    get autoIncrementPort() {
+        return this._autoIncrementPort;
+    }
+    set autoIncrementPort(v) {
+        if (v && process.env.NODE_ENV === 'production') {
+            // Refuse silently in production — don't throw because user code may
+            // toggle this from a shared config file.
+            try {
+                process.stderr.write('[MasterController] autoIncrementPort ignored: refuses to enable when NODE_ENV=production\n');
+            } catch (_) {}
+            this._autoIncrementPort = false;
+            return;
+        }
+        this._autoIncrementPort = !!v;
+    }
+
     // Trusted reverse-proxy peer addresses (IPs / CIDRs). When set, the
     // framework will trust X-Forwarded-Proto and X-Forwarded-For only when
     // the immediate TCP peer (req.socket.remoteAddress) is in this list.
@@ -1194,7 +1232,14 @@ class MasterControl {
         // the process. The flag lets us distinguish "before listen" (fatal)
         // from "after listen" (recoverable).
         let __isListening = false;
-        server.once('listening', () => { __isListening = true; });
+        let __portAttempts = 0;
+        server.once('listening', () => {
+            __isListening = true;
+            const addr = server.address();
+            if (addr && typeof addr === 'object') {
+                $that.actualPort = addr.port;
+            }
+        });
         server.prependListener('error', (err) => {
             if (__isListening) {
                 // Post-listen runtime error — log and let the application decide.
@@ -1206,13 +1251,47 @@ class MasterControl {
                 });
                 return;
             }
+
+            // Dev-only auto port bump — retry on the next port instead of exiting.
+            // Only triggers for EADDRINUSE and only when explicitly opted in.
+            // Refuses in production via the setter, so this branch is dev-safe.
+            if (err.code === 'EADDRINUSE'
+                && $that._autoIncrementPort
+                && __portAttempts < ($that.maxPortIncrement || 10)) {
+                __portAttempts++;
+                const nextPort = (err.port || 0) + 1;
+                try {
+                    process.stderr.write(`[MasterController] port ${err.port} in use, retrying on ${nextPort} (attempt ${__portAttempts}/${$that.maxPortIncrement})\n`);
+                } catch (_) {}
+                // Re-listen on the next port, preserving the original bind host.
+                // err.address is the host that was attempted; fall back to undefined
+                // (Node's default — all interfaces) if missing.
+                try {
+                    if (err.address !== undefined) {
+                        server.listen(nextPort, err.address);
+                    } else {
+                        server.listen(nextPort);
+                    }
+                } catch (retryErr) {
+                    try { process.stderr.write(`[MasterController] retry on port ${nextPort} threw synchronously: ${retryErr.message}\n`); } catch (_) {}
+                }
+                return;
+            }
+
             // Pre-listen error — fatal. Surface clearly and exit so process
             // managers (PM2, systemd, Docker) know the boot failed.
-            const detail = err.code === 'EADDRINUSE'
-                ? `Port ${err.port} is already in use. Stop the other process or pick a different port.`
-                : err.code === 'EACCES'
-                ? `Permission denied binding port ${err.port} (ports < 1024 require root or CAP_NET_BIND_SERVICE).`
-                : err.message;
+            let detail;
+            if (err.code === 'EADDRINUSE') {
+                if ($that._autoIncrementPort && __portAttempts >= ($that.maxPortIncrement || 10)) {
+                    detail = `Tried ${__portAttempts} consecutive ports starting from ${(err.port || 0) - __portAttempts}; all in use. Stop conflicting processes or raise master.maxPortIncrement.`;
+                } else {
+                    detail = `Port ${err.port} is already in use. Stop the other process, pick a different port, or (dev only) set master.autoIncrementPort = true.`;
+                }
+            } else if (err.code === 'EACCES') {
+                detail = `Permission denied binding port ${err.port} (ports < 1024 require root or CAP_NET_BIND_SERVICE).`;
+            } else {
+                detail = err.message;
+            }
             try {
                 process.stderr.write(`\n[MasterController] FATAL: server failed to start — ${err.code || 'unknown error'}\n  ${detail}\n\n`);
             } catch (_) {}
@@ -1223,7 +1302,12 @@ class MasterControl {
                 detail: detail,
                 stack: err.stack
             });
-            process.exit(1);
+            // Flush async backends before exiting (same pattern as the
+            // uncaughtException handler). 2s flush + 3s hard cap.
+            const exitOnce = () => { try { process.exit(1); } catch (_) {} };
+            logger.flushAsync().then(exitOnce, exitOnce);
+            const hardTimer = setTimeout(exitOnce, 3000);
+            if (hardTimer.unref) hardTimer.unref();
         });
 
         // Apply any pending server settings that were called before start()

@@ -95,6 +95,7 @@ MasterController is a lightweight MVC-style server framework for Node.js with AS
 - [Timeout System](#timeout-system)
 - [Error Handling](#error-handling)
 - [HTTPS Setup](#https-setup)
+- [Developer Experience (autoIncrementPort, async log flush)](#developer-experience-v206)
 - [Reverse Proxy Configuration](#reverse-proxy-configuration-v204)
 - [Production Deployment](#production-deployment)
 - [Performance & Caching](#performance--caching)
@@ -3671,6 +3672,74 @@ const redirectServer = master.startHttpToHttpsRedirect(80, '0.0.0.0', [
 ```
 
 ---
+
+---
+
+## Developer Experience (v2.0.6+)
+
+Two opt-in conveniences for local development.
+
+### `master.autoIncrementPort` — automatic port bumping
+
+When you're working on multiple branches or running parallel dev servers, port conflicts are a constant low-grade annoyance: you forget `npm run dev` is already running on 3000, start it again, and now you're staring at `EADDRINUSE` and a stack trace.
+
+Enable auto-increment to make the framework retry on the next free port instead of crashing:
+
+```js
+// server.js
+import master from 'mastercontroller';
+
+master.autoIncrementPort = true;       // dev only — see "production safety" below
+master.maxPortIncrement = 10;          // optional, default 10
+
+const server = master.setupServer('http');
+await master.startMVC('app');
+await master.start(server);
+
+server.listen(3000, '127.0.0.1', () => {
+  // master.actualPort holds the port that was actually bound,
+  // which may differ from the one you asked for.
+  console.log(`Listening on http://127.0.0.1:${master.actualPort}/`);
+});
+```
+
+If port 3000 is in use, you'll see:
+
+```
+[MasterController] port 3000 in use, retrying on 3001 (attempt 1/10)
+Listening on http://127.0.0.1:3001/
+```
+
+**Production safety:** the setter refuses to enable when `NODE_ENV=production`. Auto-bumping a port in production breaks service discovery, health checks, and load balancer registration — your config says you're on port 8080, but reality is port 8081 and the LB never finds you. The framework prints a notice and silently leaves the flag off.
+
+If `maxPortIncrement` attempts all fail, the framework reverts to the normal fatal-exit behavior with a clear message explaining how many ports were tried.
+
+### Async backend flush before fatal exit
+
+`logger.flushAsync()` waits for any in-flight async logger backends (Sentry SDK, custom webhook, LogRocket) to finish writing before the process terminates on uncaught exception or fatal listen failure. The file backend is already synchronous (`fs.appendFileSync`), so on-disk logs were always preserved — but network-bound backends could lose the last-breath entry if the process exited before their HTTP request completed.
+
+Default behavior (you don't have to do anything):
+- Built-in `uncaughtException` handler calls `logger.flushAsync()` before `process.exit(1)`
+- Default timeout: 2 seconds (long enough for typical SaaS ingestion endpoints, short enough not to hang the crash exit)
+- Hard fallback: 3-second timer that calls `process.exit(1)` no matter what
+
+If you've added a custom async backend, your `backend(entry)` function should return a Promise that resolves when the write is durable:
+
+```js
+import { logger } from 'mastercontroller/error/MasterErrorLogger.js';
+
+logger.addBackend(async (entry) => {
+  if (entry.level !== 'FATAL' && entry.level !== 'ERROR') return;
+  await fetch('https://my-log-ingest.example.com/events', {
+    method: 'POST',
+    body: JSON.stringify(entry)
+  });
+});
+
+// On uncaught exception or fatal listen failure, the framework will await
+// this fetch (up to 2s) before exiting. The FATAL entry is guaranteed
+// to reach your ingestion endpoint unless it's actively misbehaving.
+```
 
 ---
 
