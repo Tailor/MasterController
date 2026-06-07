@@ -1,6 +1,14 @@
-// version 0.1.2
+// version 0.1.3
 
-import { Server } from 'socket.io';
+// SECURITY/PORTABILITY: socket.io is a peer dependency, NOT a regular import.
+// Importing it at module top-level forced every consumer of mastercontroller
+// to install socket.io even if their app never used WebSockets, and broke
+// `import master from 'mastercontroller'` in any environment without
+// socket.io installed (test environments, CLI tools, build pipelines).
+//
+// It's now lazy-imported inside init() — apps that never call
+// master.socket.init() never trigger the resolve. Apps that DO call init()
+// get a clear actionable error if the package isn't installed.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -154,7 +162,7 @@ class MasterSocket{
      * // Pattern 3: Use master server (call after this._master.start(server))
      * this._master.socket.init();
      */
-    init(serverOrIo, options = {}){
+    async init(serverOrIo, options = {}){
         // Input validation
         if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
             throw new TypeError('Socket options must be an object');
@@ -168,7 +176,7 @@ class MasterSocket{
 
         // Determine whether we're given an io instance or an HTTP server
         if (serverOrIo && typeof serverOrIo.of === 'function') {
-            // It's already an io instance
+            // It's already an io instance — no need to load socket.io ourselves.
             this.io = serverOrIo;
         } else {
             // Prefer explicit server, fallback to this._master.server
@@ -180,6 +188,22 @@ class MasterSocket{
                     'or call this._master.start(server) before socket.init(). ' +
                     'Current initialization order issue: socket.init() called before this._master.start()'
                 );
+            }
+            // Lazy-load socket.io only when we actually need to instantiate it.
+            // If the consumer hasn't installed it, surface a clear actionable
+            // error instead of a cryptic ERR_MODULE_NOT_FOUND.
+            let Server;
+            try {
+                ({ Server } = await import('socket.io'));
+            } catch (e) {
+                const err = new Error(
+                    'MasterSocket.init requires the `socket.io` package, but it is not installed.\n' +
+                    'Install it as a regular dependency in your app:\n' +
+                    '  npm install socket.io\n' +
+                    'Original resolve error: ' + e.message
+                );
+                err.cause = e;
+                throw err;
             }
             this.io = new Server(httpServer, ioOptions);
         }

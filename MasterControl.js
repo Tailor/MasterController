@@ -432,47 +432,175 @@ class MasterControl {
         }
     }
 
-    async component(folderLocation, innerFolder){
+    /**
+     * Register a component.
+     *
+     * A component is a self-contained module rooted at a folder. The framework
+     * probes the folder for known layout pieces (init, routes, controllers,
+     * services, models, sockets) and loads whatever is present. None of these
+     * are individually required — many real components are controller-only,
+     * or service-only, or pure data layers. Missing pieces are silently
+     * skipped (not logged as errors).
+     *
+     * Behavior:
+     *   - The component folder MUST exist. If it doesn't, throws — that's a
+     *     configuration bug, not an optional condition.
+     *   - The component must contain AT LEAST ONE recognized piece (init,
+     *     routes, controllers, services, models, sockets). If it's empty, a
+     *     WARN is logged — registering an empty folder is almost always a
+     *     typo or stale path.
+     *   - Loading order: init → routes → controllers (registry pre-populated).
+     *   - A single INFO entry summarizes what was loaded, so operators can
+     *     see component composition at boot without 5 separate log lines.
+     *
+     * @param {string} folderLocation - Parent folder (absolute or relative to master.root)
+     * @param {string} innerFolder - Component folder name within folderLocation
+     * @param {Object} [opts]
+     * @param {boolean} [opts.silent=false] - Suppress the INFO summary line
+     *   (use when registering many components programmatically and you'd
+     *   rather emit your own consolidated log)
+     * @returns {Promise<Object>} Discovery result with flags and paths for
+     *   each piece — useful for tests, tooling, and orchestrators
+     */
+    async component(folderLocation, innerFolder, opts = {}) {
+        const rootFolderLocation = path.isAbsolute(folderLocation)
+            ? path.join(folderLocation, innerFolder)
+            : path.join(this.root, folderLocation, innerFolder);
+        const componentName = innerFolder;
 
-        // Enhanced: Support both relative (to master.root) and absolute paths
-        let rootFolderLocation;
-        if (path.isAbsolute(folderLocation)) {
-            rootFolderLocation = path.join(folderLocation, innerFolder);
-        } else {
-            rootFolderLocation = path.join(this.root, folderLocation, innerFolder);
-        }
-
-        // Structure is always: {rootFolderLocation}/config/initializers/config.js
-        const configPath = path.join(rootFolderLocation, 'config', 'initializers', 'config.js');
-        if (fs.existsSync(configPath)) {
-            await import(url.pathToFileURL(configPath).href);
-        } else {
+        // The component folder itself must exist. A missing folder is a real
+        // bug (typo, stale path, package not installed) and we surface it
+        // loudly rather than silently no-op'ing the registration.
+        if (!fs.existsSync(rootFolderLocation)) {
+            const err = new Error(
+                `Component '${componentName}' folder does not exist: ${rootFolderLocation}`
+            );
+            err.code = 'MC_ERR_COMPONENT_FOLDER_MISSING';
+            // NOTE: structured data goes in `context` because the logger only
+            // serializes a fixed set of top-level fields (code/message/
+            // component/file/line/route/context). Arbitrary top-level fields
+            // are silently dropped, so they're not useful for tooling.
             logger.error({
-                code: 'MC_ERR_CONFIG_NOT_FOUND',
-                message: 'Cannot find config file',
-                path: configPath
+                code: 'MC_ERR_COMPONENT_FOLDER_MISSING',
+                message: err.message,
+                component: componentName,
+                context: { path: rootFolderLocation }
             });
+            throw err;
         }
 
-        // Structure is always: {rootFolderLocation}/config/routes.js
-        const routePath = path.join(rootFolderLocation, 'config', 'routes.js');
-        const routeObject = {
+        const discovery = this._discoverComponent(rootFolderLocation);
+
+        // Empty folder = real config bug worth warning about (no init, no
+        // routes, no controllers, no services, no models, no sockets). The
+        // user likely meant a different path or hasn't built out the
+        // component yet.
+        if (discovery.isEmpty) {
+            logger.warn({
+                code: 'MC_WARN_COMPONENT_EMPTY',
+                message: `Component '${componentName}' registered but contains no recognized framework pieces (init, routes, controllers, services, models, or sockets). Check the path and folder layout.`,
+                component: componentName,
+                context: { path: rootFolderLocation }
+            });
+            return discovery;
+        }
+
+        // Set up the route scope so the router knows where this component's
+        // routes (if any) and controllers live, even if it ultimately only
+        // has controllers and no routes.js.
+        this.router.setup({
             isComponent: true,
             root: rootFolderLocation
-        };
-        this.router.setup(routeObject);
-        if (fs.existsSync(routePath)) {
-            await import(url.pathToFileURL(routePath).href);
-        } else {
-            logger.error({
-                code: 'MC_ERR_ROUTES_NOT_FOUND',
-                message: 'Cannot find routes file',
-                path: routePath
+        });
+
+        // Load init file if present — its job is usually pipeline.use()
+        // registration, service registration, scoped-service setup.
+        if (discovery.hasInit) {
+            await import(url.pathToFileURL(discovery.initPath).href);
+        }
+
+        // Load routes file if present.
+        if (discovery.hasRoutes) {
+            await import(url.pathToFileURL(discovery.routesPath).href);
+        }
+
+        // Pre-populate controllers into the registry if a controllers folder
+        // exists. discoverControllers is itself idempotent and a no-op when
+        // the directory is missing — but checking here lets us include it in
+        // the summary log.
+        if (discovery.hasControllers) {
+            await this.router.discoverControllers(rootFolderLocation);
+        }
+
+        if (!opts.silent) {
+            const pieces = Object.entries(discovery.has)
+                .filter(([, v]) => v)
+                .map(([k]) => k)
+                .join(', ');
+            logger.info({
+                code: 'MC_INFO_COMPONENT_LOADED',
+                message: `Component '${componentName}' loaded (${pieces})`,
+                component: componentName,
+                context: {
+                    path: rootFolderLocation,
+                    has: discovery.has
+                }
             });
         }
 
-        // Pre-populate component controllers into the registry.
-        await this.router.discoverControllers(rootFolderLocation);
+        return discovery;
+    }
+
+    /**
+     * Probe a component folder for known framework layout pieces. Synchronous
+     * because all the checks are filesystem `existsSync`/`statSync` calls —
+     * keeping discovery sync lets `component()` callers reason linearly about
+     * what was found before any async loading kicks in.
+     *
+     * Returns a stable shape with both per-piece flags and absolute paths.
+     * Add new piece types here as the framework grows; bumps to this contract
+     * should be additive (existing callers should keep working).
+     *
+     * @private
+     * @param {string} root - Absolute path to the component folder
+     * @returns {Object} discovery result
+     */
+    _discoverComponent(root) {
+        const isDir = (p) => {
+            try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
+        };
+        const isFile = (p) => {
+            try { return fs.statSync(p).isFile(); } catch (_) { return false; }
+        };
+
+        const initPath        = path.join(root, 'config', 'initializers', 'config.js');
+        const routesPath      = path.join(root, 'config', 'routes.js');
+        const controllersPath = path.join(root, 'app', 'controllers');
+        const servicesPath    = path.join(root, 'app', 'services');
+        const modelsPath      = path.join(root, 'app', 'models');
+        const socketsPath     = path.join(root, 'app', 'sockets');
+
+        const has = {
+            init:        isFile(initPath),
+            routes:      isFile(routesPath),
+            controllers: isDir(controllersPath),
+            services:    isDir(servicesPath),
+            models:      isDir(modelsPath),
+            sockets:     isDir(socketsPath)
+        };
+
+        return {
+            root,
+            isEmpty: Object.values(has).every(v => v === false),
+            has,
+            // Convenience accessors so consumers don't have to re-compute paths.
+            hasInit:        has.init,        initPath,
+            hasRoutes:      has.routes,      routesPath,
+            hasControllers: has.controllers, controllersPath,
+            hasServices:    has.services,    servicesPath,
+            hasModels:      has.models,      modelsPath,
+            hasSockets:     has.sockets,     socketsPath
+        };
     }
 
 
