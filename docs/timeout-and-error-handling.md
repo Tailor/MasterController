@@ -262,7 +262,7 @@ class UsersController {
             return;
         }
 
-        this.render('show', { user });
+        this.returnView({ user });
     }
 }
 ```

@@ -220,7 +220,7 @@ class UsersController {
         const email = obj.params.formData.email;       // Already sanitized
 
         const user = this.userContext.create({ username, email });
-        this.json({ user });
+        this.returnJson({ user });
     }
 }
 ```

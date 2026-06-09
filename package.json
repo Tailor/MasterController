@@ -1,6 +1,6 @@
 {
   "name": "mastercontroller",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Fortune 500 ready Node.js MVC framework with enterprise security, monitoring, and horizontal scaling",
   "type": "module",
   "exports": {

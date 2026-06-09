@@ -648,20 +648,20 @@ class UsersController {
     // Actions
     index(obj) {
         // obj = requestObject
-        this.render('index', {
+        this.returnView({
             users: ['Alice', 'Bob', 'Charlie']
         });
     }
 
     show(obj) {
         const userId = obj.params.id;
-        this.render('show', { userId });
+        this.returnView({ userId });
     }
 
     create(obj) {
         const userData = obj.params.formData;
         // Save user...
-        this.redirect('/users');
+        this.redirectTo('/users');
     }
 }
 
@@ -670,41 +670,56 @@ export default UsersController;
 
 ### Controller API
 
-#### `this.render(view, data)`
-Render a view with data.
+#### `this.returnJson(data)`
+Send a JSON response (Content-Type `application/json`, status `200` unless `data.status`
+is a 4xx/5xx code).
 
 ```javascript
-this.render('index', {
+this.returnJson({
+    success: true,
+    users: userList
+});
+```
+
+#### `this.returnError(statusCode, message, details = {})`
+Send a structured JSON error response.
+
+```javascript
+this.returnError(404, 'User not found');
+```
+
+#### `this.returnView(data)`
+Render the view for the current action with `data`. Requires a registered view engine
+(see [Views and Templates](#views-and-templates)). The view is inferred from the
+controller + action and located at `app/views/<controller>/<action>.html`.
+
+```javascript
+this.returnView({
     title: 'Users',
     users: userList
 });
 ```
 
-Views are located at: `app/views/<controller>/<view>.html`
-
-#### `this.redirect(path)`
-Redirect to another path.
+#### `this.returnPartialView(view, data)`
+Render a partial (no layout) with a registered view engine.
 
 ```javascript
-this.redirect('/users');
-this.redirect('/users/123');
+this.returnPartialView('shared/header', { user: 'John' });
 ```
 
-#### `this.renderComponent(componentName, viewName, data)`
-Render a view from a component.
+#### `this.redirectTo(path)`
+Redirect to another path (same-origin validated).
 
 ```javascript
-this.renderComponent('mail', 'inbox', { emails });
+this.redirectTo('/users');
+this.redirectTo('/users/123');
 ```
 
-#### `this.json(data)`
-Send JSON response.
+#### `this.redirectBack(fallback = '/')`
+Redirect to the previous page (HTTP referer), falling back to `fallback`.
 
 ```javascript
-this.json({
-    success: true,
-    users: userList
-});
+this.redirectBack('/home');
 ```
 
 #### Access Request Data
@@ -762,14 +777,14 @@ class UsersController {
 
     edit(obj) {
         // beforeAction runs first
-        this.render('edit');
+        this.returnView({});
     }
 
     update(obj) {
         // beforeAction runs first
         // ... update user ...
         // afterAction runs after
-        this.redirect('/users');
+        this.redirectTo('/users');
     }
 }
 ```
@@ -1244,7 +1259,7 @@ master.addSingleton('db', DatabaseConnection);
 class UsersController {
     index(obj) {
         const users = this.db.query('SELECT * FROM users');
-        this.render('index', { users });
+        this.returnView({ users });
     }
 }
 ```
@@ -1278,7 +1293,7 @@ class UsersController {
         const users = getUsers();
         this.logger.log('Users fetched');
         this.logger.flush();
-        this.render('index', { users });
+        this.returnView({ users });
     }
 }
 ```
@@ -1327,7 +1342,7 @@ class UsersController {
         // Access transient
         this.email.send(user.email, 'Subject', 'Body');
 
-        this.render('index', { users });
+        this.returnView({ users });
     }
 }
 ```
@@ -1454,13 +1469,13 @@ class AuthController {
         obj.request.session.username = user.name;
         obj.request.session.loggedInAt = Date.now();
 
-        this.redirect('/dashboard');
+        this.redirectTo('/dashboard');
     }
 
     logout(obj) {
         // Destroy entire session
         master.session.destroy(obj.request, obj.response);
-        this.redirect('/');
+        this.redirectTo('/');
     }
 }
 ```
@@ -1472,11 +1487,11 @@ class DashboardController {
         const userId = obj.request.session.userId;
 
         if (!userId) {
-            this.redirect('/login');
+            this.redirectTo('/login');
             return;
         }
 
-        this.render('dashboard', { userId });
+        this.returnView({ userId });
     }
 }
 ```
@@ -1613,7 +1628,7 @@ class FormController {
     show(ctx) {
         // Pass the session ID so the token is bound to this user's session.
         const csrfToken = generateCSRFToken(ctx.request.sessionId);
-        this.render('form', { csrfToken });
+        this.returnView({ csrfToken });
     }
 }
 ```
@@ -1656,7 +1671,7 @@ class UsersController {
         // Validate email
         const emailCheck = validator.isEmail(email);
         if (!emailCheck.valid) {
-            this.json({ error: emailCheck.error });
+            this.returnJson({ error: emailCheck.error });
             return;
         }
 
@@ -1732,21 +1747,21 @@ class UploadController {
         // 1. Validate MIME type
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(file.mimetype)) {
-            this.json({ error: 'Only images allowed (JPEG, PNG, GIF, WebP)' });
+            this.returnJson({ error: 'Only images allowed (JPEG, PNG, GIF, WebP)' });
             return;
         }
 
         // 2. Validate file extension
         const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
         if (!allowedExts.includes(file.extension.toLowerCase())) {
-            this.json({ error: 'Invalid file extension' });
+            this.returnJson({ error: 'Invalid file extension' });
             return;
         }
 
         // 3. Validate file size (additional check)
         const maxSize = 5 * 1024 * 1024; // 5MB
         if (file.size > maxSize) {
-            this.json({ error: 'File too large (max 5MB)' });
+            this.returnJson({ error: 'File too large (max 5MB)' });
             return;
         }
 
@@ -1757,7 +1772,7 @@ class UploadController {
         // 5. Move file
         fs.renameSync(file.filepath, uploadPath);
 
-        this.json({ success: true, filename: safeFilename });
+        this.returnJson({ success: true, filename: safeFilename });
     }
 
     uploadDocument(obj) {
@@ -1771,7 +1786,7 @@ class UploadController {
         ];
 
         if (!allowedTypes.includes(file.mimetype)) {
-            this.json({ error: 'Only PDF and Word documents allowed' });
+            this.returnJson({ error: 'Only PDF and Word documents allowed' });
             return;
         }
 
@@ -1833,11 +1848,11 @@ class UploadController {
             // Delete temp file after processing
             master.request.deleteFileBuffer(file.filepath);
 
-            this.json({ success: true });
+            this.returnJson({ success: true });
         } catch (error) {
             // Always cleanup on error
             master.request.deleteFileBuffer(file.filepath);
-            this.json({ error: error.message });
+            this.returnJson({ error: error.message });
         }
     }
 }
@@ -2032,7 +2047,7 @@ class APIController {
 
         if (!result.allowed) {
             this.status(429);
-            this.json({
+            this.returnJson({
                 error: 'Rate limit exceeded',
                 retryAfter: result.resetAt
             });
@@ -2246,7 +2261,7 @@ class UploadController {
             maxSize: 5 * 1024 * 1024  // 5MB limit
         });
 
-        this.json({
+        this.returnJson({
             success: true,
             imageData: base64  // Can be used directly in <img src="">
         });
@@ -2336,7 +2351,7 @@ class ApiController {
             { overwrite: false, createDir: true }
         );
 
-        this.json({
+        this.returnJson({
             success: true,
             path: result.filePath,
             size: result.size
@@ -2500,7 +2515,7 @@ class VideoController {
             }
         });
 
-        this.json({ success: true, videoData: base64 });
+        this.returnJson({ success: true, videoData: base64 });
     }
 }
 
@@ -2531,7 +2546,7 @@ class ProductController {
             maxSize: 2 * 1024 * 1024  // 2MB limit
         });
 
-        this.json({
+        this.returnJson({
             id: product.id,
             name: product.name,
             image: imageData  // Client can use directly in <img src="">
@@ -2550,7 +2565,7 @@ class DocumentController {
         // Validate file type
         const allowedTypes = ['application/pdf', 'application/msword'];
         if (!allowedTypes.includes(file.mimetype)) {
-            this.json({ error: 'Only PDF and Word documents allowed' });
+            this.returnJson({ error: 'Only PDF and Word documents allowed' });
             return;
         }
 
@@ -2568,7 +2583,7 @@ class DocumentController {
         // Delete temp file
         master.request.deleteFileBuffer(file.filepath);
 
-        this.json({ success: true });
+        this.returnJson({ success: true });
     }
 }
 ```
@@ -2643,7 +2658,7 @@ class ImageController {
         // Cleanup temp file
         master.request.deleteFileBuffer(file.filepath);
 
-        this.json({
+        this.returnJson({
             success: true,
             thumbnail: base64
         });
@@ -2680,7 +2695,7 @@ class EmailController {
         // Cleanup
         master.request.deleteFileBuffer(file.filepath);
 
-        this.json({ success: true });
+        this.returnJson({ success: true });
     }
 }
 ```
@@ -3096,7 +3111,7 @@ class UsersController {
             return;
         }
 
-        this.render('show', { user });
+        this.returnView({ user });
     }
 
     async update(obj) {
@@ -3105,7 +3120,7 @@ class UsersController {
             const updates = obj.params.formData;
 
             await this.db.query('UPDATE users SET ? WHERE id = ?', [updates, userId]);
-            this.redirect(`/users/${userId}`);
+            this.redirectTo(`/users/${userId}`);
         } catch (error) {
             console.error('Update failed:', error);
 
@@ -3289,7 +3304,7 @@ class UsersController {
     async index(obj) {
         try {
             const users = await this.db.query('SELECT * FROM users');
-            this.render('index', { users });
+            this.returnView({ users });
         } catch (error) {
             console.error('Database error:', error);
 
