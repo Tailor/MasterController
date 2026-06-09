@@ -95,7 +95,7 @@ class MasterControl {
     _hstsMaxAge = 31536000 // 1 year default
     _hstsIncludeSubDomains = true
     _hstsPreload = false
-    _viewEngine = null // Pluggable view engine (MasterView, EJS, Pug, etc.)
+    _viewEngine = null // Pluggable view engine (EJS, Pug, React SSR, etc.)
 
     // ---- Developer-convenience: auto-increment port on EADDRINUSE ----
     //
@@ -354,21 +354,15 @@ class MasterControl {
     }
 
     /**
-     * Register a view engine (MasterView, React, EJS, Pug, etc.)
-     * This allows for pluggable view rendering
+     * Register a pluggable view engine (EJS, Pug, React SSR, etc.)
      *
      * @param {Object|Function} ViewEngine - View engine class or instance
      * @param {Object} options - Configuration options for the view engine
      * @returns {MasterControl} - Returns this for chaining
      *
      * @example
-     * // Use MasterView (official view engine)
-     * const MasterView = require('masterview');
-     * master.useView(MasterView, { ssr: true });
-     *
-     * @example
-     * // Use EJS adapter
-     * const EJSAdapter = require('./adapters/ejs');
+     * // Use an EJS adapter
+     * import EJSAdapter from './adapters/ejs.js';
      * master.useView(EJSAdapter);
      */
     useView(ViewEngine, options = {}) {
@@ -386,7 +380,7 @@ class MasterControl {
         logger.info({
             code: 'MC_INFO_VIEW_ENGINE_REGISTERED',
             message: 'View engine registered',
-            engine: ViewEngine.name || 'Custom'
+            context: { engine: ViewEngine.name || 'Custom' }
         });
 
         return this;

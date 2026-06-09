@@ -3,7 +3,7 @@
 
 import toolClass from './MasterTools.js';
 const tools = new toolClass();
-// View templating removed - handled by view engine (e.g., MasterView)
+// View templating removed - handled by the registered pluggable view engine
 
 // Node utils
 import path from 'node:path';

@@ -877,7 +877,7 @@ var masterFile = fileserver.readFileSync(this.__currentRoute.root + "/app/views/
 
 ```javascript
 async returnView(data, location){
-    var masterView = null;
+    var renderedHtml = null;
     data = data === undefined ? {} : data;
     this.params = this.params === undefined ? {} : this.params;
     this.params = tools.combineObjects(data, this.params);
@@ -896,12 +896,12 @@ async returnView(data, location){
         ]);
 
         if(master.overwrite.isTemplate){
-            masterView = master.overwrite.templateRender(this.params, "returnView");
+            renderedHtml = master.overwrite.templateRender(this.params, "returnView");
         }
         else{
             var childView = temp.htmlBuilder(viewFile, this.params);
             this.params.yield = childView;
-            masterView = temp.htmlBuilder(masterFile, this.params);
+            renderedHtml = temp.htmlBuilder(masterFile, this.params);
         }
 
         if (!this.__response._headerSent) {
@@ -913,11 +913,11 @@ async returnView(data, location){
             };
 
             try {
-                Promise.resolve(compileWebComponentsHTML(masterView))
+                Promise.resolve(compileWebComponentsHTML(renderedHtml))
                     .then(send)
-                    .catch(() => send(masterView));
+                    .catch(() => send(renderedHtml));
             } catch (_) {
-                send(masterView);
+                send(renderedHtml);
             }
         }
     } catch (error) {

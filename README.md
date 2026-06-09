@@ -996,28 +996,19 @@ getUserData(obj) {
 
 ## Views and Templates
 
-MasterController v1.3+ uses a **pluggable view architecture**, allowing you to choose any template engine (MasterView, EJS, Pug, React SSR, etc.) or build your own adapter.
+MasterController v2.0 uses a **pluggable view architecture**. The framework ships with no built-in template engine — bring your own (EJS, Pug, React SSR, etc.) or write a small adapter.
 
-### Quick Start with MasterView
+### Registering a View Engine
 
-MasterView is the official view engine with built-in SSR support:
-
-```bash
-npm install masterview
-```
+Any object with a `register(master)` method works as an adapter. The adapter is responsible for wiring up `returnView` / `returnPartialView` on the controller list:
 
 ```javascript
 // config/initializers/config.js
 import master from 'mastercontroller';
-import MasterView from 'masterview';
+import MyViewAdapter from './adapters/my-view.js';
 
-// Register view engine
-master.useView(MasterView, {
-    ssr: true,  // Enable server-side rendering
-    layoutPath: 'app/views/layouts/master.html'
-});
+master.useView(MyViewAdapter, { /* engine-specific options */ });
 
-// Rest of your config...
 master.startMVC('config');
 ```
 
@@ -1086,8 +1077,6 @@ const EJSView = {
 master.useView(EJSView);
 ```
 
-See [MasterView Examples](https://github.com/yourorg/masterview/tree/master/examples) for EJS, Pug, and React SSR adapters.
-
 #### Using Pug
 
 ```bash
@@ -1129,24 +1118,7 @@ const ReactSSRView = {
 master.useView(ReactSSRView);
 ```
 
-### MasterView Template Syntax
-
-MasterView uses `{{...}}` syntax similar to Handlebars:
-
-```html
-<!-- Variables -->
-{{name}}
-{{user.email}}
-
-<!-- HTML escaping (automatic) -->
-{{description}}
-
-<!-- Raw HTML (use sparingly, XSS risk) -->
-{{{htmlContent}}}
-
-<!-- Partials -->
-{{html.renderPartial('shared/header', {user: currentUser})}}
-```
+> Template syntax is determined entirely by your chosen view engine — MasterController only orchestrates the call into `returnView` / `returnPartialView`. Refer to the engine's own documentation for variable interpolation, escaping, and partial syntax.
 
 ---
 
