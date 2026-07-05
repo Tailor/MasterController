@@ -61,6 +61,34 @@ function __appendSetCookie(res, cookieString) {
   }
 }
 
+// v2.1.0: cookie name / attribute-value validators.
+//
+// RFC 6265 token: only ASCII visible chars minus separators. This is stricter
+// than "no CRLF", intentionally — the previous code interpolated caller-
+// supplied strings straight into a Set-Cookie header, so `sid\r\nSet-Cookie:
+// admin=1` was a response-splitting hole. Rejecting anything outside the RFC
+// token set closes the family of encoding tricks that also work.
+const __COOKIE_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+function __assertCookieName(name) {
+  if (typeof name !== 'string' || name.length === 0 || !__COOKIE_NAME_RE.test(name)) {
+    throw new Error(`Invalid cookie name: control characters, CRLF, or RFC 6265 separators are not permitted. Got: ${JSON.stringify(name)}`);
+  }
+}
+
+// Cookie attribute values (Path, Domain, SameSite): reject any control or
+// CRLF character. We don't apply the full RFC 6265 grammar here because
+// different attribute values have different allowed sets — but every one of
+// them forbids CR, LF, and NUL, so this is a hard floor.
+function __assertCookieAttrValue(attrName, value) {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${attrName} value: must be a string`);
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1F\x7F;,]/.test(value)) {
+    throw new Error(`Invalid ${attrName} value: control character, CRLF, ';' or ',' is not permitted`);
+  }
+}
+
 class SessionSecurity {
   constructor(options = {}) {
     this.cookieName = options.cookieName || 'mc_session';
@@ -429,7 +457,7 @@ class SessionSecurity {
    * Cleanup expired sessions
    */
   _startCleanup() {
-    setInterval(() => {
+    this._cleanupInterval = setInterval(() => {
       const now = Date.now();
       let cleaned = 0;
 
@@ -444,10 +472,19 @@ class SessionSecurity {
         logger.info({
           code: 'MC_SECURITY_SESSION_CLEANUP',
           message: `Cleaned up ${cleaned} expired sessions`,
-          totalSessions: sessionStore.size
+          context: { totalSessions: sessionStore.size }
         });
       }
-    }, 60000); // Run every minute
+    }, 60000);
+    // v2.1.0: don't keep the process alive for this timer.
+    if (this._cleanupInterval.unref) this._cleanupInterval.unref();
+  }
+
+  stop() {
+    if (this._cleanupInterval) {
+      clearInterval(this._cleanupInterval);
+      this._cleanupInterval = null;
+    }
   }
 
   /**
@@ -647,6 +684,35 @@ class MasterSessionSecurity {
    * @param {String} options.sameSite - SameSite attribute (default: 'lax')
    */
   setCookie(response, name, value, options = {}) {
+    // v2.1.0 hardening: validate every attacker-influenced piece of the
+    // Set-Cookie header before serialising. Prior versions interpolated
+    // name / Path / Domain verbatim, so a controller that fed a request-
+    // derived string into any of them could inject arbitrary headers via
+    // CRLF (response splitting).
+    __assertCookieName(name);
+    const path = options.path || '/';
+    __assertCookieAttrValue('Path', path);
+    if (options.domain) __assertCookieAttrValue('Domain', options.domain);
+    if (options.sameSite) __assertCookieAttrValue('SameSite', options.sameSite);
+
+    // __Host- prefix: browsers silently drop the cookie unless
+    // Secure=true, Path=/, and no Domain. Enforce these at write time so a
+    // misconfigured caller fails loudly instead of shipping a broken cookie.
+    if (typeof name === 'string' && name.startsWith('__Host-')) {
+      if (!options.secure) {
+        throw new Error(`__Host- prefixed cookie '${name}' requires secure: true`);
+      }
+      if (path !== '/') {
+        throw new Error(`__Host- prefixed cookie '${name}' requires path: '/'`);
+      }
+      if (options.domain) {
+        throw new Error(`__Host- prefixed cookie '${name}' must not set Domain`);
+      }
+    }
+    if (typeof name === 'string' && name.startsWith('__Secure-') && !options.secure) {
+      throw new Error(`__Secure- prefixed cookie '${name}' requires secure: true`);
+    }
+
     const cookieOptions = [];
 
     cookieOptions.push(`${name}=${encodeURIComponent(value)}`);
@@ -655,7 +721,7 @@ class MasterSessionSecurity {
       cookieOptions.push(`Max-Age=${options.maxAge}`);
     }
 
-    cookieOptions.push(`Path=${options.path || '/'}`);
+    cookieOptions.push(`Path=${path}`);
 
     if (options.domain) {
       cookieOptions.push(`Domain=${options.domain}`);

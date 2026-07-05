@@ -7,6 +7,7 @@ import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
 import fs from 'node:fs';
+import net from 'node:net'; // For BlockList (trusted-proxy CIDR matching)
 import path from 'node:path';
 import crypto from 'node:crypto'; // For ETag generation
 import { fileURLToPath } from 'node:url';
@@ -97,6 +98,13 @@ class MasterControl {
     _hstsPreload = false
     _viewEngine = null // Pluggable view engine (EJS, Pug, React SSR, etc.)
 
+    // When true (default), an uncaught exception or unhandled rejection will
+    // flush logs and terminate the process (Node's own recommendation). Setting
+    // this to false keeps the process alive after logging the error — useful
+    // when a supervisor is not restarting the process, but ONLY if you have
+    // audited that all async code paths are wrapped and side-effect-safe.
+    exitOnUncaughtException = true
+
     // ---- Developer-convenience: auto-increment port on EADDRINUSE ----
     //
     // When enabled, if the configured port is already in use the framework
@@ -157,10 +165,46 @@ class MasterControl {
      */
     isTrustedProxy(peer) {
         if (!peer || !this.trustedProxies || this.trustedProxies.length === 0) return false;
-        // Simple exact-match for now. CIDR support can be added without API change.
         // Normalize IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) for comparison.
         const normalized = peer.startsWith('::ffff:') ? peer.slice(7) : peer;
+        // v2.1.0: support CIDR entries (e.g. '10.0.0.0/8', 'fc00::/7') via
+        // net.BlockList. The docs advertised CIDR since day one, but the
+        // previous implementation was string-equality only — silently
+        // treating `'10.0.0.0/8'` as un-matchable. Cache the BlockList so we
+        // rebuild it only when the trustedProxies list itself changes.
+        if (this._trustedProxiesBL === undefined
+            || this._trustedProxiesCacheKey !== this.trustedProxies) {
+            this._trustedProxiesCacheKey = this.trustedProxies;
+            this._trustedProxiesBL = this._buildTrustedProxiesBlockList(this.trustedProxies);
+        }
+        if (this._trustedProxiesBL) {
+            try {
+                const family = normalized.includes(':') ? 'ipv6' : 'ipv4';
+                if (this._trustedProxiesBL.check(normalized, family)) return true;
+            } catch (_) { /* invalid IP shape — fall through to string match */ }
+        }
         return this.trustedProxies.some(p => p === peer || p === normalized);
+    }
+
+    _buildTrustedProxiesBlockList(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) return null;
+        try {
+            const bl = new net.BlockList();
+            for (const entry of entries) {
+                if (typeof entry !== 'string') continue;
+                if (entry.includes('/')) {
+                    const [addr, bitsRaw] = entry.split('/');
+                    const bits = parseInt(bitsRaw, 10);
+                    if (Number.isNaN(bits)) continue;
+                    const family = addr.includes(':') ? 'ipv6' : 'ipv4';
+                    try { bl.addSubnet(addr, bits, family); } catch (_) {}
+                } else {
+                    const family = entry.includes(':') ? 'ipv6' : 'ipv4';
+                    try { bl.addAddress(entry, family); } catch (_) {}
+                }
+            }
+            return bl;
+        } catch (_) { return null; }
     }
 
     /**
@@ -706,6 +750,12 @@ class MasterControl {
                         $that.extend('securityEnforcement', SecurityEnforcement);
                     }
                 }
+                // v2.1.0: bind the SecurityMiddleware singleton so its rate
+                // limiter / CSRF / HSTS paths use master.getClientIp,
+                // master.isRequestSecure, master._hstsMaxAge, etc.
+                if (security && typeof security.bindMaster === 'function') {
+                    security.bindMaster($that);
+                }
             } catch (e) {
                 console.error('[MasterControl] Failed to bind master to action modules:', e.message);
             }
@@ -718,8 +768,10 @@ class MasterControl {
             // are imported at the top of this file. They register themselves explicitly
             // via bindMaster() above. No additional require() needed.
 
-            // Initialize global error handlers
-            setupGlobalErrorHandlers();
+            // Initialize global error handlers, honoring master.exitOnUncaughtException.
+            setupGlobalErrorHandlers({
+                exitOnUncaught: $that.exitOnUncaughtException !== false
+            });
 
             // Register core middleware that must run for framework to function
             $that._registerCoreMiddleware();
@@ -860,7 +912,11 @@ class MasterControl {
                 // Build the redirect from the VALIDATED hostname, NOT the raw
                 // Host header. Drops attacker-controlled port and userinfo.
                 const location = 'https://' + hostname + req.url;
-                res.statusCode = 301;
+                // v2.1.0: 308 is method+body preserving. 301 silently rewrote
+                // POST/PUT/DELETE into GET and dropped the body, breaking any
+                // API client that hit HTTP by mistake (webhooks, mobile cold
+                // starts, misconfigured CI).
+                res.statusCode = 308;
                 res.setHeader('Location', location);
                 res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 res.end();
@@ -1277,10 +1333,17 @@ class MasterControl {
             if (typeof next === 'function') await next();
         });
 
-        // 4. HSTS Header (if enabled for HTTPS)
+        // 4. HSTS Header (per-request TLS check, honors trusted proxies)
+        //
+        // v2.1.0: previously gated on `serverProtocol === 'https'`, which is
+        // the framework's own listener protocol — set at server start and
+        // never changed. Standard production topology is nginx / ELB / CDN
+        // terminating TLS and forwarding plain HTTP to the app, so
+        // serverProtocol was always 'http' → HSTS never emitted. Now uses
+        // the per-request `isRequestSecure` helper, which is honest about
+        // `X-Forwarded-Proto: https` from trustedProxies.
         $that.pipeline.use(async (ctx, next) => {
-            if ($that.serverProtocol === 'https' && $that._hstsEnabled) {
-                // Use configured HSTS values (not hardcoded)
+            if ($that._hstsEnabled && $that.isRequestSecure(ctx.request)) {
                 let hstsValue = `max-age=${$that._hstsMaxAge}`;
                 if ($that._hstsIncludeSubDomains) {
                     hstsValue += '; includeSubDomains';

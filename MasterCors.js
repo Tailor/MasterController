@@ -43,6 +43,22 @@ class MasterCors{
 					'Use an explicit origin list (array of strings) instead.'
 				);
 			}
+			// v2.1.0: also refuse a function-origin + credentials:true unless
+			// the caller has explicitly opted in via `unsafeReflectOrigin: true`.
+			// A function origin that returns `true` (very common shape) is
+			// behaviourally identical to origin:true + credentials:true, and
+			// silently bypasses the guard above.
+			if (typeof options.origin === 'function' && options.credentials === true
+			    && options.unsafeReflectOrigin !== true) {
+				throw new Error(
+					'MasterCors: a function origin combined with credentials:true ' +
+					'is unsafe by default — a function returning `true` reflects the ' +
+					'request Origin, which permits any third-party site to read ' +
+					'authenticated responses. Return explicit string origins from ' +
+					'your function (or set `unsafeReflectOrigin: true` if you have ' +
+					'independently validated the origin allow-list).'
+				);
+			}
 			this.options = options;
 		}
 		else{

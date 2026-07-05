@@ -163,6 +163,15 @@ class MasterValidator {
       return this._handleError('INVALID_TYPE', `${name} must be a string`, { input });
     }
 
+    // v2.1.0: length-cap BEFORE running the regex. EMAIL_REGEX contains
+    // multiple overlapping character classes and repetition — running it on
+    // a multi-KB input burns event-loop time via catastrophic backtracking.
+    // RFC 5321 caps the entire address at 320 chars (64 local + '@' + 255
+    // domain). Anything longer is invalid by construction.
+    if (input.length > 320) {
+      return this._handleError('INVALID_EMAIL', `${name} exceeds RFC 5321 max length (320)`, { input });
+    }
+
     const trimmed = input.trim().toLowerCase();
 
     if (!EMAIL_REGEX.test(trimmed)) {
@@ -180,6 +189,15 @@ class MasterValidator {
 
     if (typeof input !== 'string') {
       return this._handleError('INVALID_TYPE', `${name} must be a string`, { input });
+    }
+
+    // v2.1.0: length-cap BEFORE the regex. URL_REGEX is a
+    // multi-alternation with a `*` at the tail (`([-a-zA-Z0-9()@:%_+.~#?&//=]*)`)
+    // that backtracks poorly on non-matching multi-KB inputs. 2048 is the
+    // longest URL length that any mainstream browser or server (IE, most
+    // CDNs, nginx) reliably accepts.
+    if (input.length > 2048) {
+      return this._handleError('INVALID_URL', `${name} exceeds practical max length (2048)`, { input });
     }
 
     const trimmed = input.trim();
@@ -209,6 +227,12 @@ class MasterValidator {
 
     if (typeof input !== 'string') {
       return this._handleError('INVALID_TYPE', `${name} must be a string`, { input });
+    }
+
+    // v2.1.0: length-cap BEFORE regex. A UUID is exactly 36 chars
+    // (8-4-4-4-12 hex + 4 hyphens); anything longer is invalid.
+    if (input.length > 36) {
+      return this._handleError('INVALID_UUID', `${name} exceeds UUID max length (36)`, { input });
     }
 
     if (!UUID_REGEX.test(input.trim())) {

@@ -174,6 +174,19 @@ class MasterSocket{
         const defaults = this._buildDefaultIoOptions();
         const ioOptions = mergeDeep(defaults, options || {});
 
+        // v2.1.0: refuse the same insecure CORS combination that MasterCors
+        // refuses. origin:true + credentials:true reflects an attacker's Origin
+        // header with credentials enabled, allowing cross-site authenticated
+        // socket connections from any third-party page.
+        const effectiveCors = ioOptions.cors || {};
+        if (effectiveCors.origin === true && effectiveCors.credentials === true) {
+            throw new Error(
+                'MasterSocket: cors.origin:true with cors.credentials:true is unsafe — ' +
+                'this reflects arbitrary Origin headers with credentials enabled. ' +
+                'Use an explicit origin list (array of strings) or a function origin instead.'
+            );
+        }
+
         // Determine whether we're given an io instance or an HTTP server
         if (serverOrIo && typeof serverOrIo.of === 'function') {
             // It's already an io instance — no need to load socket.io ourselves.
@@ -237,10 +250,21 @@ class MasterSocket{
                 if (Array.isArray(corsCfg.methods)) cors.methods = corsCfg.methods;
                 if (Array.isArray(corsCfg.allowedHeaders)) cors.allowedHeaders = corsCfg.allowedHeaders;
             } else {
-                // sensible defaults for dev
-                cors.origin = true;
-                cors.credentials = true;
+                // v2.1.0: SAFE defaults. Previously fell back to
+                // { origin:true, credentials:true } — the exact combination
+                // MasterCors refuses at init because it reflects any Origin
+                // with credentials, letting any third-party site read
+                // authenticated socket data. Apps that want dev CORS must
+                // create config/initializers/cors.json or pass options
+                // explicitly to socket.init().
+                cors.origin = false;
+                cors.credentials = false;
                 cors.methods = [HTTP_METHODS.GET, HTTP_METHODS.POST];
+                logger.warn({
+                    code: 'MC_SOCKET_CORS_NO_CONFIG',
+                    message: 'MasterSocket: no cors.json found; defaulting to origin:false, credentials:false. ' +
+                             'Create config/initializers/cors.json or pass { cors: {...} } to socket.init() to enable cross-origin sockets.'
+                });
             }
         } catch (_) {}
         return { cors, transports };

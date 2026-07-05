@@ -168,9 +168,22 @@ function extractUserCodeContext(stack) {
 }
 
 /**
- * Uncaught exception handler
+ * Uncaught exception handler.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.exitOnUncaught=true] - When true (default), the
+ *   handler flushes logs and terminates the process. This matches Node's own
+ *   documented recommendation — the process is in an unknown state after an
+ *   uncaught exception and continuing is unsafe.
+ *
+ *   Setting this to false keeps the process alive after logging the error.
+ *   Use this ONLY if you have audited every async path in your app to be
+ *   idempotent and side-effect-safe. In particular, without a supervisor
+ *   (pm2 / systemd / K8s), an exit-loop from repeatedly-triggered exceptions
+ *   is a DoS surface, but so is continuing execution with a corrupted heap.
  */
-function setupGlobalErrorHandlers() {
+function setupGlobalErrorHandlers(options = {}) {
+  const exitOnUncaught = options.exitOnUncaught !== false;
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
     // EPIPE/stream errors from logging itself — do not recurse
@@ -230,12 +243,18 @@ function setupGlobalErrorHandlers() {
     // accept that the process might keep running for a few hundred ms while
     // the flush completes — that's the trade-off for not losing the
     // last-breath telemetry entry.
-    const exitOnce = () => { try { process.exit(1); } catch (_) {} };
-    logger.flushAsync().then(exitOnce, exitOnce);
-    // Belt-and-suspenders: hard fallback in case flushAsync's own timeout
-    // misbehaves (e.g. a backend that swallowed Promise resolution).
-    const hardTimer = setTimeout(exitOnce, 3000);
-    if (hardTimer.unref) hardTimer.unref();
+    if (exitOnUncaught) {
+      const exitOnce = () => { try { process.exit(1); } catch (_) {} };
+      logger.flushAsync().then(exitOnce, exitOnce);
+      // Belt-and-suspenders: hard fallback in case flushAsync's own timeout
+      // misbehaves (e.g. a backend that swallowed Promise resolution).
+      const hardTimer = setTimeout(exitOnce, 3000);
+      if (hardTimer.unref) hardTimer.unref();
+    } else {
+      // Opt-out path. Best-effort flush without terminating — the caller
+      // has explicitly accepted the risk of continuing after an uncaught.
+      logger.flushAsync().catch(() => {});
+    }
   });
 
   // Handle unhandled promise rejections

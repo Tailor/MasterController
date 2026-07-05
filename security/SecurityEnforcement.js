@@ -74,13 +74,20 @@ class SecurityEnforcement {
 	static middleware(config = {}) {
 		return async (ctx, next) => {
 			// 1. HTTPS Enforcement (Production only)
+			// v2.1.0: httpsOnly ALWAYS blocks the request when it isn't secure —
+			// prior versions silently fell through when env.server.hostname was
+			// unset or 'localhost', which meant a deployment that forgot to set
+			// the hostname served credentials over HTTP while believing it was
+			// enforcing HTTPS. Now, if we can redirect we do (308, method-
+			// preserving); otherwise we return 426 Upgrade Required.
 			if (config.httpsOnly && SecurityEnforcement._master.environmentType === 'production') {
 				if (!SecurityEnforcement._isSecure(ctx.request)) {
+					const clientIp = (SecurityEnforcement._master.getClientIp?.(ctx.request))
+						|| ctx.request.connection?.remoteAddress;
 					logger.warn({
 						code: 'MC_SECURITY_HTTPS_REQUIRED',
 						message: 'HTTPS required in production',
-						path: ctx.pathName,
-						ip: ctx.request.connection.remoteAddress
+						context: { path: ctx.pathName, ip: clientIp }
 					});
 
 					const configuredHost = SecurityEnforcement._master.env?.server?.hostname;
@@ -89,11 +96,21 @@ class SecurityEnforcement {
 						const port = httpsPort === 443 ? '' : `:${httpsPort}`;
 						const httpsUrl = `https://${configuredHost}${port}${ctx.request.url}`;
 
-						ctx.response.statusCode = 301;
+						ctx.response.statusCode = 308;
 						ctx.response.setHeader('Location', httpsUrl);
 						ctx.response.end();
-						return; // Don't call next()
+						return;
 					}
+					// No configured host to redirect to — refuse the request.
+					ctx.response.statusCode = 426;
+					ctx.response.setHeader('Content-Type', 'application/json');
+					ctx.response.setHeader('Upgrade', 'TLS/1.2, HTTP/1.1');
+					ctx.response.setHeader('Connection', 'Upgrade');
+					ctx.response.end(JSON.stringify({
+						error: 'Upgrade Required',
+						message: 'HTTPS is required for this endpoint'
+					}));
+					return;
 				}
 			}
 
@@ -111,33 +128,37 @@ class SecurityEnforcement {
 					const token = ctx.request.headers['x-csrf-token'] ||
 					             ctx.params?.formData?._csrf ||
 					             ctx.params?.query?._csrf;
+					// v2.1.0: bind CSRF to the current session id. Without a
+					// session, we cannot validate — refuse the request.
+					const sessionId = ctx.request.sessionId
+						|| ctx.request.session?.id
+						|| ctx.session?.id;
 
-					if (!token) {
+					if (!token || !sessionId) {
 						logger.warn({
 							code: 'MC_SECURITY_CSRF_MISSING',
-							message: 'CSRF token missing',
-							path: ctx.pathName,
-							method: ctx.type,
-							ip: ctx.request.connection.remoteAddress
+							message: 'CSRF token or session missing',
+							context: {
+								path: ctx.pathName, method: ctx.type,
+								hasToken: !!token, hasSession: !!sessionId
+							}
 						});
 
 						ctx.response.statusCode = 403;
 						ctx.response.setHeader('Content-Type', 'application/json');
 						ctx.response.end(JSON.stringify({
 							error: 'CSRF token required',
-							message: 'Include X-CSRF-Token header or _csrf field in request'
+							message: 'Include X-CSRF-Token header (or _csrf field) and a valid session'
 						}));
-						return; // Don't call next()
+						return;
 					}
 
-					const validation = validateCSRFToken(token);
+					const validation = validateCSRFToken(token, sessionId);
 					if (!validation.valid) {
 						logger.warn({
 							code: 'MC_SECURITY_CSRF_INVALID',
 							message: 'CSRF token validation failed',
-							path: ctx.pathName,
-							reason: validation.reason,
-							ip: ctx.request.connection.remoteAddress
+							context: { path: ctx.pathName, reason: validation.reason }
 						});
 
 						ctx.response.statusCode = 403;
@@ -146,7 +167,7 @@ class SecurityEnforcement {
 							error: 'Invalid CSRF token',
 							message: validation.reason
 						}));
-						return; // Don't call next()
+						return;
 					}
 				}
 			}

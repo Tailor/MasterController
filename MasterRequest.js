@@ -713,7 +713,20 @@ class MasterRequest{
           if (errorOccurred) return;
 
           buffer += decoder.end();
-          const buff = qs.parse(buffer);
+          // v2.1.0: pin prototype-safe options. `qs` 6.x defaults to
+          // allowPrototypes:false today, but relying on library defaults
+          // silently regresses if the dep is downgraded or its defaults
+          // change. plainObjects:true returns objects with a null prototype
+          // so `_rawBody` (or app code) can't accidentally reach into
+          // Object.prototype via `__proto__` at parse time. The parameter /
+          // depth / arrayLimit caps mitigate quadratic parse-time DoS.
+          const buff = qs.parse(buffer, {
+              plainObjects: true,
+              allowPrototypes: false,
+              parameterLimit: 1000,
+              depth: 5,
+              arrayLimit: 20
+          });
           // Preserve raw body for signature verification
           buff._rawBody = buffer;
           func(buff);

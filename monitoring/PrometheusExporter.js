@@ -22,12 +22,28 @@
 import os from 'node:os';
 import { logger } from '../error/MasterErrorLogger.js';
 
+// v2.1.0: escape label values before interpolating into Prometheus text-format
+// lines. The exposition format allows only \\, \", and \n as escapes inside a
+// double-quoted label value; leaving user paths unescaped enables metric-line
+// injection (attacker requests `/x"} 999999\nmastercontroller_x{a="b`).
+function __escapeLabelValue(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
+}
+
 class PrometheusExporter {
   constructor(options = {}) {
     this.options = {
       endpoint: options.endpoint || '/_metrics',
       prefix: options.prefix || 'mastercontroller_',
       collectDefaultMetrics: options.collectDefaultMetrics !== false,
+      // v2.1.0: LRU cap on simple-mode metric maps (`httpRequestsTotal`,
+      // `httpRequestDuration`). Prior versions grew without bound when
+      // request paths contained unnormalized user data, letting an attacker
+      // fill memory by hitting random URLs.
+      metricsMax: options.metricsMax || 5000,
       ...options
     };
 
@@ -39,6 +55,8 @@ class PrometheusExporter {
     this.httpRequestsInFlight = 0; // Current active requests
     this.httpRequestSizeBytes = {}; // Histogram of request sizes
     this.httpResponseSizeBytes = {}; // Histogram of response sizes
+    // LRU queue: keys in insertion (touch) order for eviction.
+    this._metricsKeyOrder = [];
 
     // Custom metrics storage
     this.customMetrics = new Map();
@@ -205,11 +223,19 @@ class PrometheusExporter {
       }
 
     } else {
-      // Simple implementation
+      // Simple implementation with an LRU cap on total keys so unbounded path
+      // cardinality can't exhaust memory.
       const key = `${method}:${normalizedPath}:${status}`;
 
       if (!this.httpRequestsTotal[key]) {
         this.httpRequestsTotal[key] = { count: 0, totalDuration: 0 };
+        this._metricsKeyOrder.push(key);
+        this._evictMetricsIfOverCap();
+      } else {
+        // touch: move key to the tail of the LRU order
+        const idx = this._metricsKeyOrder.indexOf(key);
+        if (idx >= 0) this._metricsKeyOrder.splice(idx, 1);
+        this._metricsKeyOrder.push(key);
       }
 
       this.httpRequestsTotal[key].count++;
@@ -224,6 +250,15 @@ class PrometheusExporter {
       if (this.httpRequestDuration[key].length > 1000) {
         this.httpRequestDuration[key].shift();
       }
+    }
+  }
+
+  _evictMetricsIfOverCap() {
+    const cap = this.options.metricsMax;
+    while (this._metricsKeyOrder.length > cap) {
+      const oldest = this._metricsKeyOrder.shift();
+      delete this.httpRequestsTotal[oldest];
+      delete this.httpRequestDuration[oldest];
     }
   }
 
@@ -302,8 +337,13 @@ class PrometheusExporter {
     lines.push('# HELP mastercontroller_http_requests_total Total number of HTTP requests');
     lines.push('# TYPE mastercontroller_http_requests_total counter');
     for (const [key, data] of Object.entries(this.httpRequestsTotal)) {
-      const [method, path, status] = key.split(':');
-      lines.push(`mastercontroller_http_requests_total{method="${method}",path="${path}",status="${status}"} ${data.count}`);
+      // Only split on the FIRST and LAST colons so a colon inside the path
+      // doesn't shift the status label; then escape everything for label safety.
+      const parts = key.split(':');
+      const method = parts[0];
+      const status = parts[parts.length - 1];
+      const path = parts.slice(1, -1).join(':');
+      lines.push(`mastercontroller_http_requests_total{method="${__escapeLabelValue(method)}",path="${__escapeLabelValue(path)}",status="${__escapeLabelValue(status)}"} ${data.count}`);
     }
     lines.push('');
 
@@ -311,9 +351,12 @@ class PrometheusExporter {
     lines.push('# HELP mastercontroller_http_request_duration_seconds_avg Average HTTP request duration');
     lines.push('# TYPE mastercontroller_http_request_duration_seconds_avg gauge');
     for (const [key, data] of Object.entries(this.httpRequestsTotal)) {
-      const [method, path, status] = key.split(':');
+      const parts = key.split(':');
+      const method = parts[0];
+      const status = parts[parts.length - 1];
+      const path = parts.slice(1, -1).join(':');
       const avgDuration = data.totalDuration / data.count;
-      lines.push(`mastercontroller_http_request_duration_seconds_avg{method="${method}",path="${path}",status="${status}"} ${avgDuration.toFixed(6)}`);
+      lines.push(`mastercontroller_http_request_duration_seconds_avg{method="${__escapeLabelValue(method)}",path="${__escapeLabelValue(path)}",status="${__escapeLabelValue(status)}"} ${avgDuration.toFixed(6)}`);
     }
     lines.push('');
 
