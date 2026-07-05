@@ -201,6 +201,15 @@ class MasterAction{
 			throw new Error('Invalid redirect URL: protocol-relative URLs not allowed');
 		}
 
+		// v2.1.1: block backslash open-redirect variants. Chromium and
+		// Firefox normalize backslashes to forward slashes in the authority
+		// portion, so `\\evil.com`, `/\evil.com`, and `\/evil.com` all
+		// resolve as protocol-relative URLs to attacker-controlled hosts —
+		// even though none of them match the `//` prefix check above.
+		if (/^[/\\]{2,}/.test(url) || url.startsWith('\\')) {
+			throw new Error('Invalid redirect URL: backslash-based protocol-relative URLs not allowed');
+		}
+
 		// Prevent javascript: or data: URLs
 		if (/^(javascript|data|vbscript|file):/i.test(url)) {
 			throw new Error('Invalid redirect URL: dangerous protocol detected');

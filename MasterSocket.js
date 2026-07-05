@@ -488,9 +488,21 @@ class MasterSocket{
                     await bs.callBeforeAction(data);
                 }
 
-                // Check if action method exists
-                if (typeof bs[data[0]] !== 'function') {
-                    throw new Error(`Action '${data[0]}' not found in socket controller ${controller}`);
+                // v2.1.1: allow-list dispatch. Only methods defined DIRECTLY
+                // on the socket controller's prototype are callable. Prior
+                // code did `typeof bs[data[0]] !== 'function'`, which let
+                // clients invoke ANY inherited method — toString,
+                // hasOwnProperty, callBeforeAction, plus any framework mixin
+                // methods (returnJson from MasterAction, etc.). Own-method
+                // check narrows the surface to declared actions only.
+                validateSocketIdentifier(data[0], 'action');
+                const proto = Object.getPrototypeOf(bs);
+                const isOwnMethod = proto
+                    && Object.prototype.hasOwnProperty.call(proto, data[0])
+                    && typeof proto[data[0]] === 'function'
+                    && data[0] !== 'constructor';
+                if (!isOwnMethod) {
+                    throw new Error(`Action '${data[0]}' is not a declared method of socket controller ${controller}`);
                 }
 
                 bs[data[0]](data[1], socket, io);

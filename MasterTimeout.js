@@ -46,8 +46,11 @@ class MasterTimeout {
             totalRequests: 0,
             totalTimeouts: 0,
             peakConcurrent: 0,
-            totalDuration: 0
+            totalDuration: 0,
+            loadShedded: 0
         };
+
+        this._maxActiveRequests = TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS;
 
         // Start periodic cleanup
         this.cleanupTimer = setInterval(() => {
@@ -72,6 +75,25 @@ class MasterTimeout {
      * @throws {TypeError} If enabled is not a boolean
      * @throws {TypeError} If onTimeout is not a function
      */
+    /**
+     * v2.1.1: allow ops (and tests) to lower the active-requests cap
+     * without editing TIMEOUT_CONFIG. The middleware honors this instance
+     * override; if unset, TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS is used.
+     */
+    setMaxActiveRequests(n) {
+        if (typeof n !== 'number' || n < 1) {
+            throw new TypeError('setMaxActiveRequests: n must be a positive number');
+        }
+        this._maxActiveRequests = n;
+    }
+
+    destroy() {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
+    }
+
     init(options = {}) {
         // Input validation
         if (typeof options !== 'object' || options === null) {
@@ -216,15 +238,33 @@ class MasterTimeout {
             throw new Error('Context must have a response object');
         }
 
-        // Check max active requests (DoS protection)
-        if (this.activeRequests.size >= TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS) {
-            logger.error({
-                code: 'MC_TIMEOUT_MAX_REQUESTS',
-                message: 'Maximum active requests exceeded',
-                current: this.activeRequests.size,
-                max: TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS
+        // v2.1.1: DoS load-shed. Prior code THREW here, which the pipeline
+        // then reported as a 500 (leaking the internal cap) and lost the
+        // ability to signal Retry-After. Now we return a 503 with a small
+        // random Retry-After hint and emit a metric event operators can
+        // alert on. The caller does NOT call next() — the middleware
+        // terminates the request cleanly.
+        const maxActive = this._maxActiveRequests || TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS;
+        if (this.activeRequests.size >= maxActive) {
+            logger.warn({
+                code: 'MC_TIMEOUT_LOAD_SHED',
+                message: 'Maximum active requests exceeded — load-shedding request',
+                context: { current: this.activeRequests.size, max: maxActive }
             });
-            throw new Error(`Maximum active requests (${TIMEOUT_CONFIG.MAX_ACTIVE_REQUESTS}) exceeded`);
+            this.metrics.loadShedded = (this.metrics.loadShedded || 0) + 1;
+            try {
+                const res = ctx.response;
+                if (res && !res.writableEnded) {
+                    res.setHeader('Retry-After', 1);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.statusCode = 503;
+                    res.end(JSON.stringify({
+                        error: 'Service Unavailable',
+                        message: 'Server is at capacity; retry after a short delay'
+                    }));
+                }
+            } catch (_) { /* best effort */ }
+            return; // do NOT call next(); do NOT throw
         }
 
         const requestId = this._generateRequestId();

@@ -94,6 +94,11 @@ class SessionSecurity {
     this.cookieName = options.cookieName || 'mc_session';
     this.secret = options.secret || this._generateSecret();
     this.maxAge = options.maxAge || 86400000; // 24 hours
+    // v2.1.1: absoluteMaxAge caps how long a session can live regardless of
+    // rolling. A stolen cookie that keeps getting used could previously
+    // extend a session forever; now the session is invalid after this
+    // many ms from createdAt, no matter what. 0 or null disables the cap.
+    this.absoluteMaxAge = options.absoluteMaxAge || null;
     this.httpOnly = options.httpOnly !== false;
     this.secure = options.secure !== false; // Only send over HTTPS
     this.sameSite = options.sameSite || 'strict'; // 'strict', 'lax', or 'none'
@@ -105,8 +110,25 @@ class SessionSecurity {
     // Session fingerprinting (disabled by default like ASP.NET Core)
     this.useFingerprint = options.useFingerprint === true;
 
+    // v2.1.1: LRU cap on the in-memory session store so an unauthenticated
+    // request flood that creates a fresh session per request can't exhaust
+    // memory. Set to Infinity to disable in tests / single-tenant apps.
+    this.sessionStoreMax = options.sessionStoreMax || 100_000;
+
+    // Optional master reference so fingerprint / IP-based checks use the
+    // framework's trusted-proxy-aware helpers instead of raw peer address.
+    this._master = null;
+
     // Start cleanup interval
     this._startCleanup();
+  }
+
+  /**
+   * Bind to a MasterControl so IP-derived state (fingerprint) uses
+   * master.getClientIp() and honors trusted proxies.
+   */
+  bindMaster(master) {
+    this._master = master;
   }
 
   /**
@@ -198,6 +220,7 @@ class SessionSecurity {
     };
 
     sessionStore.set(sessionId, sessionData);
+    this._evictSessionsIfOverCap();
 
     // Set cookie
     this._setCookie(res, sessionId);
@@ -205,6 +228,19 @@ class SessionSecurity {
     req.sessionId = sessionId;
 
     return sessionData.data;
+  }
+
+  /**
+   * Evict the oldest sessions (Map iteration order = insertion) until the
+   * store is within `sessionStoreMax`. Session keys are 64-byte hex; at
+   * 100k entries a session-flood attack can otherwise soak ~50-100 MB.
+   */
+  _evictSessionsIfOverCap() {
+    while (sessionStore.size > this.sessionStoreMax) {
+      const oldest = sessionStore.keys().next().value;
+      if (!oldest) break;
+      sessionStore.delete(oldest);
+    }
   }
 
   /**
@@ -297,7 +333,15 @@ class SessionSecurity {
     const session = sessionStore.get(req.sessionId);
     if (session) {
       session.data = req.session;
-      session.lastAccess = Date.now();
+      const now = Date.now();
+      session.lastAccess = now;
+      // v2.1.1: when rolling is on, refresh expiry on save. Prior versions
+      // only updated lastAccess, so a request that started ~expiry could
+      // succeed and then the next request would find the session expired
+      // and log the user out unpredictably.
+      if (this.rolling) {
+        session.expiry = now + this.maxAge;
+      }
     }
   }
 
@@ -305,8 +349,17 @@ class SessionSecurity {
    * Check if session is valid
    */
   _isSessionValid(session, req) {
-    // Check expiry
-    if (Date.now() > session.expiry) {
+    const now = Date.now();
+    // Check rolling expiry
+    if (now > session.expiry) {
+      return false;
+    }
+    // v2.1.1: absolute cap. A rolling session that keeps getting used
+    // could previously live forever — a stolen cookie stayed valid as
+    // long as the attacker exercised it. Now sessions are invalid after
+    // absoluteMaxAge ms from createdAt.
+    if (this.absoluteMaxAge && session.createdAt
+        && (now - session.createdAt) > this.absoluteMaxAge) {
       return false;
     }
 
@@ -355,10 +408,18 @@ class SessionSecurity {
    */
   _generateFingerprint(req) {
     const headers = req?.headers || {};
+    // v2.1.1: use master.getClientIp when available so behind a load
+    // balancer each real client has a distinct fingerprint. Previously
+    // used raw req.connection.remoteAddress, which is the LB IP behind
+    // any reverse proxy — every user hashed to the same fingerprint and
+    // hijacking with a stolen cookie was undetectable.
+    const clientIp = (this._master && typeof this._master.getClientIp === 'function')
+      ? this._master.getClientIp(req)
+      : (req?.socket?.remoteAddress || req?.connection?.remoteAddress || '');
     const components = [
       headers['user-agent'] || '',
       headers['accept-language'] || '',
-      req?.connection?.remoteAddress || '',
+      clientIp,
       // Don't include Accept-Encoding (changes too often)
     ];
 
@@ -366,6 +427,13 @@ class SessionSecurity {
       .createHash('sha256')
       .update(components.join('|'))
       .digest('hex');
+  }
+
+  /**
+   * Test-only accessor: returns the raw session record (not just data).
+   */
+  _getSessionRaw(sessionId) {
+    return sessionStore.get(sessionId);
   }
 
   /**

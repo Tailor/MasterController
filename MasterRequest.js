@@ -214,9 +214,15 @@ class MasterRequest{
                             // Offer operturnity to add options. find a way to add dependecy injection. to request
                             if(!$that.options.disableFormidableMultipartFormData){
 
+                                // v2.1.1: null-prototype containers so a
+                                // form field named `__proto__` or `constructor`
+                                // can't mutate Object.prototype. Formidable
+                                // emits raw field names verbatim; without a
+                                // null proto, `fields.__proto__ = value`
+                                // sets the prototype rather than a property.
                                 $that.parsedURL.formData = {
-                                    files : {},
-                                    fields : {}
+                                    files : Object.create(null),
+                                    fields : Object.create(null)
                                 };
 
                                 // Track uploaded files for cleanup on error

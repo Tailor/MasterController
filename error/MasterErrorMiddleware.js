@@ -3,6 +3,7 @@
  * Version: 1.0.1
  */
 
+import nodePath from 'node:path';
 import { handleControllerError, handleRoutingError, sendErrorResponse } from './MasterBackendErrorHandler.js';
 import { logger } from './MasterErrorLogger.js';
 import { handleFileReadError } from './MasterBackendErrorHandler.js';
@@ -310,9 +311,20 @@ function setupGlobalErrorHandlers(options = {}) {
 }
 
 /**
- * Safe file reader with error handling
+ * File reader with structured error handling.
+ *
+ * NOTE (v2.1.1): the name `safeReadFile` was historically misleading — this
+ * function catches read errors but does NOT validate or confine `filePath`
+ * against traversal, symlinks, or extension. Callers that pass request-
+ * derived paths must use `readFileWithinRoot(fs, filePath, allowedRoot)`
+ * instead, which resolves the path, checks containment against a required
+ * root, and rejects symlinks.
+ *
+ * The old name is preserved for backward compatibility but is deprecated;
+ * prefer `readFileUnchecked` to make the lack of path validation explicit
+ * at call sites.
  */
-function safeReadFile(fs, filePath, encoding = 'utf8') {
+function readFileUnchecked(fs, filePath, encoding = 'utf8') {
   try {
     return {
       success: true,
@@ -328,6 +340,44 @@ function safeReadFile(fs, filePath, encoding = 'utf8') {
       error: mcError
     };
   }
+}
+// Backward-compatible alias — same body, misleading name kept until 3.0.
+const safeReadFile = readFileUnchecked;
+
+/**
+ * v2.1.1: actually safe file reader. Resolves `filePath` against
+ * `allowedRoot` and refuses to read anything that escapes the root or
+ * that is a symlink. Callers with attacker-influenced paths MUST use
+ * this rather than `safeReadFile` / `readFileUnchecked`.
+ *
+ * @param {typeof import('node:fs')} fs
+ * @param {string} filePath - path to read, absolute or relative
+ * @param {string} allowedRoot - directory that the resolved path must live under
+ * @param {string} [encoding='utf8']
+ */
+function readFileWithinRoot(fs, filePath, allowedRoot, encoding = 'utf8') {
+  const resolvedRoot = nodePath.resolve(allowedRoot);
+  const resolvedTarget = nodePath.resolve(
+    nodePath.isAbsolute(filePath) ? filePath : nodePath.join(resolvedRoot, filePath)
+  );
+  const rootWithSep = resolvedRoot.endsWith(nodePath.sep)
+    ? resolvedRoot : resolvedRoot + nodePath.sep;
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(rootWithSep)) {
+    const err = new Error(`Refused to read outside allowedRoot: ${filePath}`);
+    err.code = 'MC_ERR_READ_OUT_OF_ROOT';
+    return { success: false, content: null, error: err };
+  }
+  try {
+    const stat = fs.lstatSync(resolvedTarget);
+    if (stat.isSymbolicLink()) {
+      const err = new Error(`Refused to read symlink: ${resolvedTarget}`);
+      err.code = 'MC_ERR_READ_SYMLINK';
+      return { success: false, content: null, error: err };
+    }
+  } catch (e) {
+    return { success: false, content: null, error: e };
+  }
+  return readFileUnchecked(fs, resolvedTarget, encoding);
 }
 
 /**
@@ -437,6 +487,8 @@ export { errorHandlerMiddleware,
   notFoundMiddleware,
   setupGlobalErrorHandlers,
   safeReadFile,
+  readFileUnchecked,
+  readFileWithinRoot,
   safeFileExists,
   wrapController,
   performanceTracker };

@@ -44,8 +44,14 @@ class PrometheusExporter {
       // request paths contained unnormalized user data, letting an attacker
       // fill memory by hitting random URLs.
       metricsMax: options.metricsMax || 5000,
+      // v2.1.1: authorize(ctx) → boolean hook. When set, the metrics
+      // endpoint returns 403 for callers that fail the check. Without it,
+      // /_metrics is world-readable — recommended default is loopback +
+      // RFC 1918 only. We log a WARN once so ops notice the exposure.
+      authorize: typeof options.authorize === 'function' ? options.authorize : null,
       ...options
     };
+    this._loggedOpenAccessWarning = false;
 
     this.startTime = Date.now();
 
@@ -156,6 +162,23 @@ class PrometheusExporter {
 
       // Handle metrics endpoint
       if (requestPath === self.options.endpoint) {
+        // v2.1.1: authorize gate
+        if (self.options.authorize) {
+          let allowed = false;
+          try { allowed = !!self.options.authorize(ctx); } catch (_) { allowed = false; }
+          if (!allowed) {
+            ctx.response.statusCode = 403;
+            ctx.response.setHeader('Content-Type', 'text/plain');
+            ctx.response.end('Forbidden\n');
+            return;
+          }
+        } else if (!self._loggedOpenAccessWarning) {
+          self._loggedOpenAccessWarning = true;
+          logger.warn({
+            code: 'MC_METRICS_UNAUTHENTICATED',
+            message: 'Metrics endpoint is open to any client. Configure `authorize` to restrict scrapers.'
+          });
+        }
         return self._handleMetricsEndpoint(ctx);
       }
 
@@ -280,8 +303,7 @@ class PrometheusExporter {
     try {
       logger.debug({
         code: 'MC_METRICS_SCRAPE',
-        message: 'Metrics scrape requested',
-        ip: ctx.request.connection.remoteAddress
+        message: 'Metrics scrape requested'
       });
 
       let metricsText;

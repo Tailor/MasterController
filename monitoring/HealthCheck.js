@@ -37,12 +37,31 @@ class HealthCheck {
       includeDetails: options.includeDetails !== false,
       customChecks: options.customChecks || [],
       timeout: options.timeout || 5000, // 5 seconds
+      // v2.1.1: opt-in to expose the framework version. Prior versions
+      // leaked it unconditionally, letting anyone with `curl` pin the
+      // running mastercontroller version + known CVEs against it.
+      exposeVersion: options.exposeVersion === true,
+      // v2.1.1: authorize hook. If set, the middleware calls
+      // authorize(ctx) → boolean and returns 403 when false. Recommended
+      // default is to allow only internal networks (loopback + RFC 1918).
+      // Left unset = current behavior (open access) for backward compat,
+      // but the middleware WARN-logs an unauthenticated scrape once so
+      // ops notice the exposure.
+      authorize: typeof options.authorize === 'function' ? options.authorize : null,
+      // v2.1.1: cache last-successful check result for `cacheTtl` ms so a
+      // flood of /_health probes doesn't amplify into downstream work
+      // (DB pings, upstream HTTPS checks, etc.).
+      cacheTtl: options.cacheTtl !== undefined ? options.cacheTtl : 5000,
       ...options
     };
 
     this.startTime = Date.now();
     this.version = options.version || __pkgVersion;
     this.customHealthChecks = [];
+    // Cache slot for the last successful check response.
+    this._cachedResult = null;
+    this._cachedAt = 0;
+    this._loggedOpenAccessWarning = false;
   }
 
   /**
@@ -72,11 +91,28 @@ class HealthCheck {
         return;
       }
 
+      // v2.1.1: authorize gate
+      if (self.options.authorize) {
+        let allowed = false;
+        try { allowed = !!self.options.authorize(ctx); } catch (_) { allowed = false; }
+        if (!allowed) {
+          ctx.response.statusCode = 403;
+          ctx.response.setHeader('Content-Type', 'application/json');
+          ctx.response.end(JSON.stringify({ error: 'Forbidden' }));
+          return;
+        }
+      } else if (!self._loggedOpenAccessWarning) {
+        self._loggedOpenAccessWarning = true;
+        logger.warn({
+          code: 'MC_HEALTH_UNAUTHENTICATED',
+          message: 'Health endpoint is open to any client. Configure `authorize` to restrict scrapers.'
+        });
+      }
+
       // Log health check request
       logger.debug({
         code: 'MC_HEALTH_CHECK',
-        message: 'Health check requested',
-        ip: ctx.request.connection.remoteAddress
+        message: 'Health check requested'
       });
 
       try {
@@ -119,6 +155,11 @@ class HealthCheck {
    * Perform health check
    */
   async check() {
+    // v2.1.1: serve from cache if within TTL. `cacheTtl: 0` disables.
+    if (this.options.cacheTtl > 0 && this._cachedResult
+        && (Date.now() - this._cachedAt) < this.options.cacheTtl) {
+      return this._cachedResult;
+    }
     const startTime = Date.now();
 
     try {
@@ -184,10 +225,15 @@ class HealthCheck {
       const response = {
         status: allHealthy && memoryHealthy ? 'healthy' : 'degraded',
         uptime: Math.floor(uptime),
-        version: this.version,
         timestamp: new Date().toISOString(),
         responseTime: Date.now() - startTime
       };
+      // v2.1.1: version is opt-in only. Prior versions leaked it
+      // unconditionally, letting unauthenticated clients pin the running
+      // mastercontroller version and target known CVEs against it.
+      if (this.options.exposeVersion) {
+        response.version = this.version;
+      }
 
       // Add detailed metrics if enabled
       if (this.options.includeDetails) {
@@ -211,6 +257,11 @@ class HealthCheck {
         }
       }
 
+      // Populate cache for subsequent scrapes.
+      if (this.options.cacheTtl > 0) {
+        this._cachedResult = response;
+        this._cachedAt = Date.now();
+      }
       return response;
 
     } catch (error) {

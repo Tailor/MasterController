@@ -80,9 +80,18 @@ class MasterErrorLogger {
       return;
     }
 
-    // Deduplicate repeated errors within the window
+    // Deduplicate repeated entries within the window.
+    // v2.1.1: dedup can be extended to WARN via `dedupeLevel: 'warn'`
+    // (default remains 'error'). Prior versions only dedup'd at ERROR, so
+    // a flood of CSRF-invalid / rate-limit-triggered WARN logs (10k rps ×
+    // ~500B each) could soak the event loop on synchronous file writes.
+    // Ops that want that mitigation opt in; tests continue to observe
+    // individual WARN entries by default.
     const code = data.code || 'UNKNOWN';
-    if (level >= LOG_LEVELS.ERROR) {
+    const dedupeMinLevel = this.options.dedupeLevel === 'warn'
+        ? LOG_LEVELS.WARN
+        : LOG_LEVELS.ERROR;
+    if (level >= dedupeMinLevel) {
       const now = Date.now();
       const recent = this._recentErrors.get(code);
       if (recent && (now - recent.firstSeen) < this.options.dedupeWindowMs) {

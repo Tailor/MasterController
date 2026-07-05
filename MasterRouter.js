@@ -142,8 +142,16 @@ const ROUTER_CONFIG = {
             context: { param: paramName, value: paramValue }
         });
 
-        // Remove dangerous content
-        return paramValue.replace(/\.\./g, '').replace(/\.\//g, '');
+        // v2.1.1: single-pass replacement was non-idempotent — `....//`
+        // left `..//` because the outer dots collapsed inward. Repeatedly
+        // strip until stable so no `..` sequence can survive.
+        let cleaned = paramValue;
+        let prev;
+        do {
+            prev = cleaned;
+            cleaned = cleaned.replace(/\.\./g, '').replace(/\.\//g, '');
+        } while (cleaned !== prev);
+        return cleaned;
     }
 
     // Check for SQL injection attempts
@@ -1110,4 +1118,4 @@ class MasterRouter {
     
 }
 
-export { MasterRouter };
+export { MasterRouter, sanitizeRouteParam };

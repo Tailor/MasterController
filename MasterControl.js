@@ -105,6 +105,11 @@ class MasterControl {
     // audited that all async code paths are wrapped and side-effect-safe.
     exitOnUncaughtException = true
 
+    // v2.1.1: default deny-list of extensions that should never be served
+    // from public/ even if a developer accidentally deploys them. Apps can
+    // set this to `false` or replace it with a custom list.
+    staticDenyExtensions = ['.env', '.map', '.bak', '.pem', '.key', '.git']
+
     // ---- Developer-convenience: auto-increment port on EADDRINUSE ----
     //
     // When enabled, if the configured port is already in use the framework
@@ -699,6 +704,31 @@ class MasterControl {
         return this; // Chainable
     }
 
+    /**
+     * v2.1.1: apply defensive server-level timeouts to counter slowloris.
+     *
+     * MasterTimeout only starts tracking after middleware runs — i.e. after
+     * headers + body are fully received. A slowloris client that drip-feeds
+     * headers 1 byte at a time bypasses the middleware timer entirely.
+     * These socket-level defaults close such connections.
+     *
+     * Overridable per-instance:
+     *   master.serverHeadersTimeout = 30_000;
+     *   master.serverRequestTimeout = 120_000;
+     *   master.serverKeepAliveTimeout = 5_000;
+     *
+     * Set to 0 to disable a specific timeout (not recommended).
+     */
+    _applyServerTimeoutDefaults(server) {
+        if (!server) return;
+        const headers = this.serverHeadersTimeout ?? 15_000;
+        const request = this.serverRequestTimeout ?? 60_000;
+        const keepAlive = this.serverKeepAliveTimeout ?? 5_000;
+        if (headers >= 0) server.headersTimeout = headers;
+        if (request >= 0) server.requestTimeout = request;
+        if (keepAlive >= 0) server.keepAliveTimeout = keepAlive;
+    }
+
     useHTTPServer(port, func){
         if (typeof func === 'function') {
             http.createServer(function (req, res) {
@@ -781,6 +811,7 @@ class MasterControl {
                 const server = http.createServer(async function(req, res) {
                     await $that.serverRun(req, res);
                 });
+                $that._applyServerTimeoutDefaults(server);
                 // Set server immediately so config can access it
                 $that.server = server;
                 return server;
@@ -825,6 +856,7 @@ class MasterControl {
                     const server = https.createServer(credentials, async function(req, res) {
                         await $that.serverRun(req, res);
                     });
+                    $that._applyServerTimeoutDefaults(server);
                     // Set server immediately so config can access it
                     $that.server = server;
                     return server;
@@ -984,7 +1016,18 @@ class MasterControl {
 
             // HSTS
             this._hstsEnabled = !!tlsCfg.hsts;
-            this._hstsMaxAge = tlsCfg.hstsMaxAge || 15552000; // 180 days by default
+            // v2.1.1: unify default with enableHSTS() → 1 year (matches
+            // Chrome / Mozilla guidance and the HSTS preload list minimum
+            // for domains that later opt-in). Previously two entry points
+            // disagreed (1yr vs 180d), so which path enabled HSTS silently
+            // changed the browser cache duration.
+            this._hstsMaxAge = tlsCfg.hstsMaxAge || 31536000;
+            if (typeof tlsCfg.hstsIncludeSubDomains === 'boolean') {
+                this._hstsIncludeSubDomains = tlsCfg.hstsIncludeSubDomains;
+            }
+            if (typeof tlsCfg.hstsPreload === 'boolean') {
+                this._hstsPreload = tlsCfg.hstsPreload;
+            }
 
             // Watch default certs for reload
             if(tlsCfg.default){
@@ -1015,9 +1058,24 @@ class MasterControl {
             if(desc.caPath){ opts.ca = fs.readFileSync(desc.caPath); }
             if(desc.pfxPath){ opts.pfx = fs.readFileSync(desc.pfxPath); }
             if(desc.passphrase){ opts.passphrase = desc.passphrase; }
+            // v2.1.1: fail-fast if the credential set is incomplete. Prior
+            // behavior handed the partial object to https.createServer, which
+            // produced an obscure ERR_TLS_CERT_ALTNAME_INVALID or "Missing
+            // PFX or certificate + private key" at listen() time — a
+            // startup-time DX cliff that historically drove users to
+            // disable TLS while debugging.
+            const hasPfx = !!opts.pfx;
+            const hasKeyPair = !!(opts.key && opts.cert);
+            if (!hasPfx && !hasKeyPair) {
+                const keys = Object.keys(desc).filter(k => desc[k]).join(', ');
+                throw new Error(
+                    'TLS config invalid: must supply either pfxPath, or BOTH keyPath and certPath. ' +
+                    `Got: ${keys || '(none)'}`
+                );
+            }
             return opts;
         }catch(e){
-            console.error('Failed to read TLS files', e);
+            console.error('Failed to build TLS context:', e.message);
             return null;
         }
     }
@@ -1129,15 +1187,46 @@ class MasterControl {
             // SECURITY: Dotfile filter applies to EVERY segment between
             // staticRoot and resolvedPath, not just the basename. This blocks
             // /.git/config, /.ssh/id_rsa, /subdir/.env, etc.
+            //
+            // v2.1.1: allow the standard `.well-known/` prefix so Let's
+            // Encrypt HTTP-01 challenges and other RFC 8615 resources work
+            // out of the box. Only the TOP-LEVEL `.well-known` is exempted;
+            // dotfiles NESTED inside `.well-known/…/.env` still fail.
             const relSegments = path.relative(resolvedStaticRoot, resolvedPath).split(path.sep);
-            if (relSegments.some(seg => seg.startsWith('.'))) {
+            const isWellKnown = relSegments[0] === '.well-known';
+            const dotSegments = isWellKnown
+                ? relSegments.slice(1).some(seg => seg.startsWith('.'))
+                : relSegments.some(seg => seg.startsWith('.'));
+            if (dotSegments) {
                 logger.warn({
                     code: 'MC_SECURITY_DOTFILE_BLOCKED',
                     message: 'Dotfile access blocked from static serving',
-                    requestedPath: requestedPath,
-                    ip: ctx.request.connection?.remoteAddress
+                    context: {
+                        requestedPath: requestedPath,
+                        ip: ($that.getClientIp?.(ctx.request)) || ctx.request.connection?.remoteAddress
+                    }
                 });
                 return next();
+            }
+
+            // v2.1.1: extension deny-list. Defends against accidental
+            // deployments of secret / source-map / backup files under public/.
+            // The check runs after the containment + dotfile filter so
+            // legitimate `.well-known/` files are unaffected.
+            const denyExts = $that.staticDenyExtensions;
+            if (denyExts && denyExts.length > 0) {
+                const ext = path.extname(resolvedPath).toLowerCase();
+                if (ext && denyExts.includes(ext)) {
+                    logger.warn({
+                        code: 'MC_SECURITY_EXTENSION_BLOCKED',
+                        message: 'Static serving blocked by extension deny-list',
+                        context: {
+                            requestedPath: requestedPath, ext,
+                            ip: ($that.getClientIp?.(ctx.request)) || ctx.request.connection?.remoteAddress
+                        }
+                    });
+                    return next();
+                }
             }
 
             // SECURITY: lstat (not stat) so symlinks don't traverse our check.
