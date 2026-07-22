@@ -36,6 +36,45 @@ class MasterAction{
 	// Maximum response size (10MB default)
 	static MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
 
+	// One-shot log gate for the deprecated `data.status` magic in returnJson.
+	// The set is per-status-code (so a repeated 4xx from the same call site
+	// warns once, not every request).
+	static _statusMagicWarned = new Set();
+
+	/**
+	 * Resolve the HTTP status for returnJson.
+	 *
+	 * Priority:
+	 *  1) opts.status (explicit — always wins)
+	 *  2) response.statusCode if the controller set it to non-200
+	 *  3) numeric data.status in 400–599 (DEPRECATED — emits one-time WARN)
+	 *  4) 200
+	 */
+	static _resolveJsonStatus(response, data, opts) {
+		if (opts && typeof opts.status === 'number' && opts.status >= 100 && opts.status <= 599) {
+			return opts.status;
+		}
+		const currentStatus = response && response.statusCode;
+		if (typeof currentStatus === 'number' && currentStatus !== 200) {
+			return currentStatus;
+		}
+		if (data && typeof data.status === 'number' && data.status >= 400 && data.status <= 599) {
+			const code = data.status;
+			if (!MasterAction._statusMagicWarned.has(code)) {
+				MasterAction._statusMagicWarned.add(code);
+				try {
+					logger.warn({
+						code: 'MC_WARN_JSON_STATUS_MAGIC',
+						message: 'returnJson() interpreted payload `status` as HTTP status — this is deprecated. Use returnJsonStatus(code, data) or returnJson(data, { status: code }).',
+						context: { payloadStatus: code }
+					});
+				} catch (_) { /* logger not available in some test setups */ }
+			}
+			return code;
+		}
+		return HTTP_STATUS.OK;
+	}
+
 	// Master reference is set by MasterControl.setupServer() via bindMaster().
 	// User controllers extend MasterAction, so constructor injection isn't possible —
 	// we use a static class property set once at framework startup instead.
@@ -77,14 +116,31 @@ class MasterAction{
 	}
 
 	/**
-	 * Returns a JSON response to the client
-	 * @param {Object|Array|string|number|boolean} data - Data to serialize as JSON
+	 * Returns a JSON response to the client.
+	 *
+	 * HTTP status resolution (in priority order — first non-null wins):
+	 *   1. `opts.status` — explicit override.
+	 *   2. `this.__response.statusCode` if the controller already set it
+	 *      to a non-200 value.
+	 *   3. **Deprecated:** a numeric `data.status` in the payload between
+	 *      400–599. Prior versions overloaded this as an HTTP status; that
+	 *      silently discards `response.statusCode` and can corrupt real
+	 *      responses whose payload legitimately carries a `status` field.
+	 *      Setting this now logs `MC_WARN_JSON_STATUS_MAGIC` once per
+	 *      status code; use `returnJsonStatus(code, data)` or `opts.status`
+	 *      instead. Behavior will be removed in a future major.
+	 *   4. Otherwise 200.
+	 *
+	 * @param {Object|Array|string|number|boolean} data - Data to serialize as JSON.
+	 * @param {Object} [opts]
+	 * @param {number} [opts.status] - Explicit HTTP status override.
 	 * @returns {void}
-	 * @throws {Error} If JSON serialization fails or response already sent
+	 * @throws {Error} If JSON serialization fails or response already sent.
 	 * @example
 	 * this.returnJson({ success: true, data: users });
+	 * this.returnJson({ error: 'not found' }, { status: 404 });
 	 */
-	returnJson(data){
+	returnJson(data, opts){
 		try {
 			if (!this._isResponseReady()) {
 				logger.warn({
@@ -119,10 +175,7 @@ class MasterAction{
 				return;
 			}
 
-			// Use status field from data as HTTP status code if it's a valid 4xx/5xx code
-			const httpStatus = (data && typeof data.status === 'number' && data.status >= 400 && data.status <= 599)
-				? data.status
-				: HTTP_STATUS.OK;
+			const httpStatus = MasterAction._resolveJsonStatus(this.__response, data, opts);
 
 			this.__response.writeHead(httpStatus, {
 				'Content-Type': 'application/json',
@@ -142,6 +195,23 @@ class MasterAction{
 				this.returnError(HTTP_STATUS.INTERNAL_ERROR, 'Internal server error');
 			}
 		}
+	}
+
+	/**
+	 * Returns a JSON response with an explicit HTTP status code.
+	 * Preferred over the historical `data.status` magic in `returnJson`.
+	 *
+	 * @param {number} httpStatus - HTTP status code (100–599).
+	 * @param {*} data - Payload to serialize as JSON.
+	 * @returns {void}
+	 * @example
+	 * this.returnJsonStatus(401, { error: 'Invalid credentials' });
+	 */
+	returnJsonStatus(httpStatus, data){
+		if (typeof httpStatus !== 'number' || httpStatus < 100 || httpStatus > 599) {
+			throw new RangeError(`returnJsonStatus: httpStatus must be a number 100..599; got ${httpStatus}`);
+		}
+		return this.returnJson(data, { status: httpStatus });
 	}
 
 	// returnPartialView() removed - handled by view engine (register via master.useView())
