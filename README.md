@@ -1349,6 +1349,20 @@ class UsersController {
 
 ---
 
+## Caching & Compression (v2.8.0)
+
+ASP.NET `UseResponseCompression`, `[OutputCache]` policies with tags/vary-by, and `IDistributedCache` (memory or Redis). Full guide: [docs/CACHING.md](docs/CACHING.md).
+
+```javascript
+master.useResponseCompression();                                                   // gzip/brotli, streaming
+router.route('/products', 'products#index', 'get', { outputCache: { duration: 60, varyByQuery: ['page'], tags: ['products'] } });
+await master.outputCache.evictByTag('products');                                   // after writes
+const cats = await master.cache.getOrCreate('categories', () => db.Category.toList(), { ttlMs: 60_000 });
+master.cache.use(new RedisCacheStore(redis));                                      // distributed (also backs the output cache)
+```
+
+---
+
 ## Logging (v2.7.0)
 
 ASP.NET `ILogger<T>`: category loggers, `Logging:LogLevel` per category from configuration, message templates, scopes across `await`, request correlation (`X-Request-Id`), pluggable providers. Full guide: [docs/LOGGING.md](docs/LOGGING.md).

@@ -1,5 +1,15 @@
 # MasterController Changelog
 
+## 2.8.0 — Response compression, output caching, distributed cache
+
+Closes gap #6 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **`master.useResponseCompression({ threshold, level, brotli, brotliQuality, mimeTypes })`** (`MasterCaching.js`): streaming gzip/brotli for clients that accept it; skips encoded/204/304/HEAD/`no-transform`/non-compressible/small-known-length responses; sets `Content-Encoding` + `Vary: Accept-Encoding`.
+- **Output caching** (`[OutputCache]`): route `{ outputCache: { duration, varyByQuery, varyByHeader, varyByUser, tags, cacheAuthenticated, maxBodyBytes } | 'PolicyName' | true }`, controller `static outputCache = { action: …, '*': … }`, `resources(name, { outputCache })`; named policies `master.outputCache.addPolicy`; `evictByTag/evict/clear`; `X-Output-Cache: HIT|MISS` + `Age`; only GET/HEAD 200s, authenticated requests bypass by default, `Set-Cookie`/`no-store`/`private` never cached; runs after authorization + binding.
+- **`master.cache`** (`IDistributedCache`): `get/set(ttlMs|slidingMs, tags)/remove/getOrCreate (single-flight)/evictByTag/clear`; `MemoryCacheStore` (LRU, TTL, sliding, tags) by default, `RedisCacheStore(client)` for Redis — shared by the output cache. Named exports: `DistributedCache`, `MemoryCacheStore`, `RedisCacheStore`, `OutputCache`.
+
+Tests: `test/caching.test.js` (stores, single-flight, Redis contract, policy/key resolution, end-to-end gzip/br/skips + output cache HIT/MISS/vary/tags/auth-bypass/POST). Docs: `docs/CACHING.md`, README.
+
 ## 2.7.0 — Logging (ILogger<T> parity)
 
 Closes gap #5 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.

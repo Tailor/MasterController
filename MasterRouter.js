@@ -366,7 +366,8 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
                         path: route.path,
                         toController: route.toController,
                         toAction: route.toAction,
-                        type: route.type
+                        type: route.type,
+                        outputCache: route.outputCache
                     };
 
                     try {
@@ -744,7 +745,8 @@ class MasterRouter {
                     toAction: action,
                     constraint : constraint,
                     authorize: routeOptions.authorize,
-                    allowAnonymous: !!routeOptions.allowAnonymous
+                    allowAnonymous: !!routeOptions.allowAnonymous,
+                    outputCache: routeOptions.outputCache      // v2.8.0 [OutputCache]
                 };
 
                 $that._routes[$that.currentRouteName].routes.push(route);
@@ -764,7 +766,7 @@ class MasterRouter {
                 const authorize = resourceOptions && resourceOptions.authorize;
                 const only = resourceOptions && Array.isArray(resourceOptions.only) ? resourceOptions.only : null;
                 const except = resourceOptions && Array.isArray(resourceOptions.except) ? resourceOptions.except : [];
-                const add = (r) => { if ((!only || only.includes(r.toAction)) && !except.includes(r.toAction)) { r.authorize = authorize; $that._routes[$that.currentRouteName].routes.push(r); } };
+                const add = (r) => { if ((!only || only.includes(r.toAction)) && !except.includes(r.toAction)) { r.authorize = authorize; if (resourceOptions && resourceOptions.outputCache !== undefined && ['index', 'show'].includes(r.toAction)) r.outputCache = resourceOptions.outputCache; $that._routes[$that.currentRouteName].routes.push(r); } };
 
                 add({
                         type: HTTP_METHODS.GET,
@@ -1102,26 +1104,40 @@ class MasterRouter {
                  control.logger = (this._master.logging && typeof this._master.logging.createLogger === "function") ? this._master.logging.createLogger(Control.name || requestObject.toController) : null;
 
                  const afterBind = () => {
-                 // check if before function is avaliable and wait for it to return
-                 if(control.__hasBeforeAction(control, requestObject)){
-                     control.__callBeforeAction(control, requestObject, _callEmit)
-                         .catch((error) => {
-                             if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
-                                 const mcError = handleControllerError(
-                                     error,
-                                     requestObject.toController,
-                                     requestObject.toAction,
-                                     requestObject.pathName,
-                                     currentRoute.routeDef
-                                 );
-                                 sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
-                             }
-                             performanceTracker.end(requestId);
-                             _callEmit.removeAllListeners();
-                         });
-                 }else{
-                    _callEmit.emit("controller");
-                 }
+                     const runFiltersAndAction = () => {
+                     // check if before function is avaliable and wait for it to return
+                     if(control.__hasBeforeAction(control, requestObject)){
+                         control.__callBeforeAction(control, requestObject, _callEmit)
+                             .catch((error) => {
+                                 if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
+                                     const mcError = handleControllerError(
+                                         error,
+                                         requestObject.toController,
+                                         requestObject.toAction,
+                                         requestObject.pathName,
+                                         currentRoute.routeDef
+                                     );
+                                     sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
+                                 }
+                                 performanceTracker.end(requestId);
+                                 _callEmit.removeAllListeners();
+                             });
+                     }else{
+                        _callEmit.emit("controller");
+                     }
+                     };
+
+                     // v2.8.0: output caching ([OutputCache]) — after authorization and
+                     // binding: serve a cached 200 for eligible GET/HEAD requests, else
+                     // capture this response and store it when it completes.
+                     const oc = this._master.outputCache;
+                     const ocPolicy = oc ? oc.resolvePolicy(currentRoute.routeDef && currentRoute.routeDef.outputCache, Control, requestObject.toAction) : null;
+                     if (!ocPolicy) { runFiltersAndAction(); return; }
+                     oc.tryServe(requestObject, ocPolicy).then((served) => {
+                         if (served) { performanceTracker.end(requestId); _callEmit.removeAllListeners(); return; }
+                         try { oc.capture(requestObject, ocPolicy); } catch (_) { /* caching must never break the request */ }
+                         runFiltersAndAction();
+                     }).catch(() => { runFiltersAndAction(); });
                  };
 
                  // v2.4.0: model binding + validation (ASP.NET [ApiController]):

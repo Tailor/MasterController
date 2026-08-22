@@ -53,6 +53,7 @@ import { MasterResults, validate as validateModel, bindRequest, problemTypeFor }
 import { ConfigurationRoot, OptionsManager, hostEnvironment } from './MasterConfiguration.js';
 import { HostedServiceManager, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, QueuedHostedService } from './MasterHosting.js';
 import { LoggerFactory, consoleProvider, memoryProvider, requestLoggingScope } from './MasterLogging.js';
+import { DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, compressionMiddleware } from './MasterCaching.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -420,6 +421,16 @@ class MasterControl {
         else { this.options._configuration = cfg; this.options._invalidateAll(); cfg.onChange(() => this.options._invalidateAll()); }
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
+    }
+
+    // ---- v2.8.0: response compression (UseResponseCompression) ------------
+    /** gzip/brotli responses for clients that accept it (compressible types, not no-transform/encoded/204/304/HEAD). Call before start(). */
+    useResponseCompression(opts = {}) {
+        if (!this.pipeline) throw new Error('useResponseCompression(): call master.setupServer() first');
+        if (this._compressionInstalled) return this;
+        this._compressionInstalled = true;
+        this.pipeline.use(compressionMiddleware(opts));
+        return this;
     }
 
     // ---- v2.7.0: logging (ILoggerFactory.CreateLogger) --------------------
@@ -888,6 +899,10 @@ class MasterControl {
             $that.buildConfiguration();
             // v2.6.0: hosted services, background queue and host lifetime (ASP.NET generic host)
             if (!$that.hosting) $that.hosting = new HostedServiceManager($that);
+            // v2.8.0: IDistributedCache (memory by default; master.cache.use(new RedisCacheStore(client)))
+            // and output caching ([OutputCache] policies on routes/controllers).
+            if (!$that.cache) $that.cache = new DistributedCache();
+            if (!$that.outputCache) $that.outputCache = new OutputCache($that);
             // v2.7.0: application logging (ILogger): categories, Logging:LogLevel from
             // configuration, scopes, request correlation. Console provider by default
             // (JSON lines in production); master.logging.addProvider(...) for sinks.
@@ -1902,4 +1917,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache };

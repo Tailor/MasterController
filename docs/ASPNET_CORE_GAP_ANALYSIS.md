@@ -71,6 +71,7 @@ Rails pieces worth matching that ASP.NET also has: generators ✓, migrations �
 
 ## Status
 
+- **2.8.0 shipped** — Response compression (gzip/br), output caching (policies, vary-by, tags, auth bypass), `master.cache` distributed cache (memory/Redis). (`docs/CACHING.md`)
 - **2.7.0 shipped** — Logging: `master.createLogger` / `this.logger`, per-category levels from configuration, templates, redaction, scopes across awaits, request correlation with `X-Request-Id`, console/JSON/custom providers. (`docs/LOGGING.md`)
 - **2.6.0 shipped** — Hosted services / BackgroundService (StopHost semantics) / PeriodicTimer service with scope per run / background task queue / `master.lifetime` + `master.stop()` graceful shutdown + SIGTERM handling. (`docs/HOSTED_SERVICES.md`)
 - **2.5.0 shipped** — Configuration & Options: layered `master.configuration` (appsettings / env-specific / env.{env}.json / user secrets / env vars / command line / set), `master.options` validated on start (IOptions + ValidateOnStart + OnChange), `master.environment`, `this.options/configuration/environment` on controllers. (`docs/CONFIGURATION.md`)
