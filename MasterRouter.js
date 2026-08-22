@@ -615,6 +615,10 @@ class MasterRouter {
         // Keyed by absolute file path. Eliminates per-request fs/require overhead
         // and is required for Phase 4 (ESM) where sync require() doesn't exist.
         this._controllers = new Map();
+        // v2.10.0: programmatic controllers (minimal APIs) and named routes (urlFor)
+        this._programmatic = new Map();
+        this._named = new Map();
+        this._minimalSeq = 0;
     }
 
     /**
@@ -676,6 +680,7 @@ class MasterRouter {
      * @returns {Function|null} The controller class, or null if not found
      */
     _resolveController(routeRoot, controllerName) {
+        if (this._programmatic.has(controllerName)) return this._programmatic.get(controllerName);   // v2.10.0 minimal APIs
         const lowerPath = path.join(routeRoot, 'app', 'controllers', `${tools.firstLetterlowercase(controllerName)}Controller.js`);
         if (this._controllers.has(lowerPath)) {
             return this._controllers.get(lowerPath);
@@ -744,13 +749,55 @@ class MasterRouter {
                     toController: controller,
                     toAction: action,
                     constraint : constraint,
-                    authorize: routeOptions.authorize,
+                    authorize: routeOptions.allowAnonymous ? undefined : routeOptions.authorize,   // [AllowAnonymous] wins
                     allowAnonymous: !!routeOptions.allowAnonymous,
-                    outputCache: routeOptions.outputCache      // v2.8.0 [OutputCache]
+                    outputCache: routeOptions.outputCache,     // v2.8.0 [OutputCache]
+                    name: routeOptions.name || undefined       // v2.10.0 named route (urlFor)
                 };
 
                 $that._routes[$that.currentRouteName].routes.push(route);
+                if (route.name) $that._named.set(route.name, route);
 
+            },
+
+            /**
+             * v2.10.0 — route group (ASP.NET MapGroup): a path prefix plus default
+             * route options (authorize, allowAnonymous, outputCache) applied to
+             * every route registered through the returned builder.
+             *   router.group('/api/v1', { authorize: true }, (g) => { g.route('/items', 'items#index', 'get'); g.resources('posts'); });
+             */
+            group: function(prefix, groupOptions, fn){
+                if (typeof groupOptions === 'function') { fn = groupOptions; groupOptions = {}; }
+                groupOptions = groupOptions || {};
+                const parent = this;
+                const pfx = '/' + String(prefix || '').replace(/^\/|\/$/g, '');
+                const join = (p) => { const rel = String(p || '').replace(/^\/+/, ''); const base = pfx === '/' ? '' : pfx; return rel ? `${base}/${rel}` : (base || '/'); };
+                const merge = (opts) => {
+                    let o = {};
+                    if (typeof opts === 'function') o = { constraint: opts }; else if (opts && typeof opts === 'object') o = { ...opts };
+                    const inheritable = ['authorize', 'allowAnonymous', 'outputCache'];
+                    for (const k of inheritable) if (o[k] === undefined && groupOptions[k] !== undefined) o[k] = groupOptions[k];
+                    if (o.allowAnonymous) o.authorize = undefined;   // a route opting out beats the group's authorize
+                    return o;
+                };
+                const builder = {
+                    route(p, toPath, type, opts) { parent.route(join(p), toPath, type, merge(opts)); return builder; },
+                    resources(name, opts = {}) {
+                        const o = merge(opts);
+                        const only = Array.isArray(opts.only) ? opts.only : null, except = Array.isArray(opts.except) ? opts.except : [];
+                        const table = [['get', `/${name}`, 'index'], ['get', `/${name}/new`, 'new'], ['post', `/${name}`, 'create'], ['get', `/${name}/:id`, 'show'], ['get', `/${name}/:id/edit`, 'edit'], ['put', `/${name}/:id`, 'update'], ['delete', `/${name}/:id`, 'destroy']];
+                        for (const [m, p, action] of table) {
+                            if ((only && !only.includes(action)) || except.includes(action)) continue;
+                            const ro = { ...o }; delete ro.only; delete ro.except;
+                            if (ro.outputCache !== undefined && !['index', 'show'].includes(action)) delete ro.outputCache;
+                            parent.route(join(p), `${name}#${action}`, m, ro);
+                        }
+                        return builder;
+                    },
+                    group(p, opts, f) { return parent.group(join(p), { ...groupOptions, ...(typeof opts === 'object' && opts ? opts : {}) }, typeof opts === 'function' ? opts : f); },
+                };
+                if (typeof fn === 'function') fn(builder);
+                return builder;
             },
 
             resources: function(routeName, resourceOptions = {}){ // function to add to list of routes using resources bulk
@@ -826,6 +873,61 @@ class MasterRouter {
                     });
             }
         }
+    }
+
+    /**
+     * v2.10.0 — minimal API (ASP.NET app.MapGet/MapPost): register a handler for
+     * a path without a controller file. The handler runs as a controller action:
+     * `this` has ok/created/problem/authorize/signIn/logger/user/model…, and the
+     * request object is the first argument; a returned value is sent as JSON.
+     * options: { name, authorize, allowAnonymous, outputCache, schemas, openapi, constraint }
+     */
+    mapHandler(method, routePath, handler, options = {}) {
+        if (typeof handler !== 'function') throw new TypeError('master.map.<method>(path, handler, options): handler must be a function');
+        if (!this._programmatic.has('minimal')) {
+            const Minimal = class MinimalApiController { constructor(requestObject) { this.requestObject = requestObject; } };
+            Minimal.schemas = {}; Minimal.openapi = {}; Minimal.outputCache = {}; Minimal.authorize = {}; Minimal.allowAnonymous = [];
+            this._programmatic.set('minimal', Minimal);
+        }
+        const Minimal = this._programmatic.get('minimal');
+        const action = `m${++this._minimalSeq}`;
+        Minimal.prototype[action] = handler;
+        if (options.schemas) Minimal.schemas[action] = options.schemas;
+        if (options.openapi) Minimal.openapi[action] = options.openapi;
+        if (options.outputCache !== undefined) Minimal.outputCache[action] = options.outputCache;
+        if (!this.currentRouteName || !this._routes || !this._routes[this.currentRouteName]) {
+            this.setup({ root: (this._master && this._master.root) || process.cwd(), isComponent: false });
+        }
+        const routeOptions = { name: options.name, authorize: options.authorize, allowAnonymous: options.allowAnonymous, outputCache: options.outputCache, constraint: options.constraint };
+        const methods = method === 'any' ? ['get', 'post', 'put', 'patch', 'delete'] : [method];
+        const builder = this.start();
+        for (const m of methods) builder.route(routePath, `minimal#${action}`, m, routeOptions);
+        return this;
+    }
+
+    /**
+     * v2.10.0 — URL generation for a named route (ASP.NET LinkGenerator / Url.Action):
+     *   router.route('/items/:id(int)', 'items#show', 'get', { name: 'item' });
+     *   master.urlFor('item', { id: 5 }, { query: { tab: 'info' } })  ->  '/items/5?tab=info'
+     */
+    urlFor(name, params = {}, { query, absolute } = {}) {
+        const route = this._named.get(name);
+        if (!route) throw new Error(`urlFor: no route named '${name}' (known: ${[...this._named.keys()].join(', ') || 'none'})`);
+        const segs = String(route.path).split('/').map((seg) => {
+            const m = seg.match(/^:([A-Za-z_$][\w$]*)(?:\(.+\))?$/);
+            if (!m) return seg;
+            const v = params && params[m[1]];
+            if (v === undefined || v === null) throw new Error(`urlFor('${name}'): missing route parameter '${m[1]}'`);
+            return encodeURIComponent(String(v));
+        });
+        let url = '/' + segs.filter((s, i) => !(i === 0 && s === '')).join('/');
+        if (url !== '/' && url.endsWith('/')) url = url.slice(0, -1);
+        if (query && typeof query === 'object') {
+            const qs = Object.entries(query).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
+            if (qs) url += '?' + qs;
+        }
+        if (absolute) url = String(absolute).replace(/\/+$/, '') + url;
+        return url;
     }
 
     /**
@@ -1102,6 +1204,7 @@ class MasterRouter {
                  control.environment = this._master.environment || null;
                  // v2.7.0: ILogger<T> with the controller as category
                  control.logger = (this._master.logging && typeof this._master.logging.createLogger === "function") ? this._master.logging.createLogger(Control.name || requestObject.toController) : null;
+                 control.urlFor = (name, params, opts) => this.urlFor(name, params, opts);   // v2.10.0 named routes
 
                  const afterBind = () => {
                      const runFiltersAndAction = () => {

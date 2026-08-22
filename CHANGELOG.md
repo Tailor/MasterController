@@ -1,5 +1,17 @@
 # MasterController Changelog
 
+## 2.10.0 — Minimal APIs, route groups, named routes/urlFor, test client
+
+Closes gaps #8 and the routing part of #9 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **Minimal APIs** (`MapGet/MapPost/…`): `master.map.get/post/put/patch/delete/any(path, handler, { authorize, allowAnonymous, outputCache, schemas, openapi, name, constraint })` — handlers run as controller actions (full `this` surface: results, auth, model binding, logger, options, urlFor); a returned value is sent as JSON; included in OpenAPI.
+- **Route groups** (`MapGroup`): `router.group(prefix, { authorize, allowAnonymous, outputCache }, (g) => g.route(...) / g.resources(...) / g.group(...))` — prefix + inherited defaults, per-route overrides.
+- **Named routes + URL generation** (`LinkGenerator`): `{ name }` on routes/minimal APIs, `master.urlFor(name, params, { query, absolute })`, `this.urlFor(...)` in controllers/handlers (typed constraints respected, params encoded, loud errors).
+- **Test client** (`WebApplicationFactory`/`TestServer`): `await master.createTestClient({ root, app, environment, configure })` → `get/post/put/patch/delete/head` with JSON bodies, query, cookie jar (Set-Cookie captured, expired cookies dropped), `withBearer()/withHeaders()/withCookie()`, `{ status, ok, headers, text, json() }`, `close()`; boots on an ephemeral 127.0.0.1 port. Named exports `TestClient`, `createTestClient`.
+- Router: programmatic controller registry (`_programmatic`), `_named` map.
+
+Tests: `test/minimal-api-testing.test.js`. Docs: `docs/MINIMAL_APIS_AND_TESTING.md`, README.
+
 ## 2.9.0 — OpenAPI (AddOpenApi/MapOpenApi + Swagger UI)
 
 Closes gap #7 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.

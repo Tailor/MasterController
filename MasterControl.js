@@ -55,6 +55,7 @@ import { HostedServiceManager, BackgroundService, PeriodicTimerService, Backgrou
 import { LoggerFactory, consoleProvider, memoryProvider, requestLoggingScope } from './MasterLogging.js';
 import { DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, compressionMiddleware } from './MasterCaching.js';
 import { OpenApiGenerator, openApiMiddleware } from './MasterOpenApi.js';
+import { TestClient, createTestClient } from './MasterTesting.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -423,6 +424,23 @@ class MasterControl {
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
     }
+
+    // ---- v2.10.0: minimal APIs, named routes, test client -------------------
+    /**
+     * Minimal APIs (ASP.NET app.MapGet/MapPost/…): handlers without controller files.
+     *   master.map.get('/ping', function () { this.ok({ pong: true }); });
+     *   master.map.post('/items', async function (obj) { return { created: this.model }; }, { authorize: true, schemas: { body: {...} }, name: 'createItem' });
+     */
+    get map() {
+        if (!this.router) throw new Error('master.map: call master.setupServer() first');
+        const r = this.router;
+        const mk = (m) => (path, handler, options) => { r.mapHandler(m, path, handler, options); return this.map; };
+        return { get: mk('get'), post: mk('post'), put: mk('put'), patch: mk('patch'), delete: mk('delete'), any: mk('any') };
+    }
+    /** URL for a named route (ASP.NET LinkGenerator): master.urlFor('item', { id: 5 }, { query }) */
+    urlFor(name, params, opts) { if (!this.router) throw new Error('urlFor: call master.setupServer() first'); return this.router.urlFor(name, params, opts); }
+    /** WebApplicationFactory-style client: boots the app on an ephemeral port and returns a TestClient. */
+    createTestClient(opts) { return createTestClient(this, opts); }
 
     // ---- v2.9.0: OpenAPI (AddOpenApi/MapOpenApi + Swagger UI) --------------
     /**
@@ -1933,4 +1951,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, OpenApiGenerator };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, OpenApiGenerator, TestClient, createTestClient };

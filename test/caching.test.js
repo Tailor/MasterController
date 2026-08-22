@@ -23,7 +23,7 @@ test('MemoryCacheStore: ttl, sliding, tags, LRU; DistributedCache.getOrCreate si
     await tick(30); assert.equal(await s.get('a'), undefined, 'expired');
     await s.set('d', 4); await s.set('e', 5); await s.set('f', 6);   // LRU eviction beyond 3
     assert.equal(s.size, 3); assert.equal(await s.get('c'), undefined, 'oldest evicted');
-    await s.set('sl', 'x', { slidingMs: 30 }); await tick(20); await s.get('sl'); await tick(20); assert.equal(await s.get('sl'), 'x', 'sliding expiration refreshed on read');
+    await s.set('sl', 'x', { slidingMs: 300 }); await tick(180); await s.get('sl'); await tick(180); assert.equal(await s.get('sl'), 'x', 'sliding expiration refreshed on read (360ms elapsed, window 300ms)');
 
     const cache = new DistributedCache();
     let calls = 0;

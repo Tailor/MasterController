@@ -1349,6 +1349,21 @@ class UsersController {
 
 ---
 
+## Minimal APIs, Route Groups, Named Routes & Test Client (v2.10.0)
+
+ASP.NET `MapGet/MapPost`, `MapGroup`, `LinkGenerator` and `WebApplicationFactory` equivalents. Full guide: [docs/MINIMAL_APIS_AND_TESTING.md](docs/MINIMAL_APIS_AND_TESTING.md).
+
+```javascript
+master.map.get('/ping', () => ({ pong: true }), { allowAnonymous: true, name: 'ping' });          // handler = controller action
+master.map.post('/items', async function () { this.created(this.urlFor('item', { id: 1 }), this.model); }, { authorize: true, schemas: { body: { name: 'string!' } } });
+router.group('/api/v1', { authorize: true }, (g) => { g.route('/me', 'account#me', 'get'); g.resources('posts'); });
+master.urlFor('item', { id: 5 }, { query: { tab: 'x' } });                                          // '/items/5?tab=x'
+const client = await master.createTestClient({ root, app: 'app' });                                // cookie jar, withBearer(), json()
+const res = await client.post('/login', { body: { email, password } }); (await client.get('/me')).json();
+```
+
+---
+
 ## OpenAPI (v2.9.0)
 
 ASP.NET `MapOpenApi()` + Swagger UI, generated from routes, typed constraints, `static schemas`, `authorize` and auth schemes — nothing to annotate twice. Full guide: [docs/OPENAPI.md](docs/OPENAPI.md).

@@ -71,6 +71,7 @@ Rails pieces worth matching that ASP.NET also has: generators ✓, migrations �
 
 ## Status
 
+- **2.10.0 shipped** — Minimal APIs (`master.map.*`), route groups, named routes + `urlFor`, WebApplicationFactory-style `createTestClient()`. (`docs/MINIMAL_APIS_AND_TESTING.md`)
 - **2.9.0 shipped** — OpenAPI 3.1 document generated from routes/constraints/schemas/authorize/auth schemes + Swagger UI page (`useOpenApi`). (`docs/OPENAPI.md`)
 - **2.8.0 shipped** — Response compression (gzip/br), output caching (policies, vary-by, tags, auth bypass), `master.cache` distributed cache (memory/Redis). (`docs/CACHING.md`)
 - **2.7.0 shipped** — Logging: `master.createLogger` / `this.logger`, per-category levels from configuration, templates, redaction, scopes across awaits, request correlation with `X-Request-Id`, console/JSON/custom providers. (`docs/LOGGING.md`)

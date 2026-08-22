@@ -373,6 +373,9 @@ export class AuthenticationService {
                 logger.info({ code: 'MC_AUTH_FAILED', scheme: name, reason: err && (err.code || err.message) });
             }
         }
+        // Explicit scheme(s) that did not authenticate must NOT fall back to a
+        // principal another scheme established earlier (ASP.NET AuthenticateAsync(scheme)).
+        if (schemeNames) return ClaimsPrincipal.anonymous();
         if (!(requestObject.user instanceof ClaimsPrincipal) || !requestObject.user.isAuthenticated) requestObject.user = ClaimsPrincipal.anonymous();
         return requestObject.user;
     }
