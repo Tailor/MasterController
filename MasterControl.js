@@ -476,6 +476,65 @@ class MasterControl {
     }
 
     /**
+     * Create a fresh DI scope — the equivalent of ASP.NET Core's
+     * `IServiceScopeFactory.CreateScope()`. Use it for work OUTSIDE the request
+     * pipeline (background timers, jobs, CLI tasks) that needs scoped services /
+     * contexts: a job builds a scope per run and disposes it after, so a scoped
+     * context is never shared across concurrent runs.
+     *
+     * Scoped services resolve lazily on first access and are cached for the
+     * scope (a scoped singleton), constructed with the scope so they read their
+     * dependencies off it. `dispose()` releases everything the scope built,
+     * closing any instance that exposes `close()` / `dispose()` (or `reset()`) —
+     * app-lifetime singletons (inherited via the prototype) are left alone.
+     *
+     * @example
+     *   const scope = master.createScope();
+     *   try { await scope.jobService.run(); } finally { await scope.dispose(); }
+     *   // or: await master.useScope(async (s) => s.jobService.run());
+     */
+    createScope(){
+        const scope = Object.create(this.requestList);   // inherit app singletons
+        const built = new Set();                          // scoped instances this scope constructed
+        for (const [key, className] of Object.entries(this._scopedList)) {
+            let instance;   // block-scoped per key
+            Object.defineProperty(scope, key, {
+                configurable: true, enumerable: true,
+                get(){
+                    if (instance === undefined) { instance = new className(scope); built.add(instance); }
+                    return instance;
+                },
+            });
+        }
+        Object.defineProperty(scope, 'dispose', {
+            enumerable: false, configurable: true,
+            value: async function(){
+                for (const inst of built) {
+                    try {
+                        if (inst && typeof inst.close === 'function') await inst.close();
+                        else if (inst && typeof inst.dispose === 'function') await inst.dispose();
+                        else if (inst && typeof inst.reset === 'function') inst.reset();
+                    } catch (_) { /* best-effort teardown */ }
+                }
+                built.clear();
+            },
+        });
+        return scope;
+    }
+
+    /**
+     * Run `fn(scope)` in a fresh scope and dispose it afterward — even if `fn`
+     * throws. The convenient form of createScope() for background jobs/timers.
+     *
+     * @example await master.useScope(async (scope) => { await scope.db.saveChanges(); });
+     */
+    async useScope(fn){
+        const scope = this.createScope();
+        try { return await fn(scope); }
+        finally { await scope.dispose(); }
+    }
+
+    /**
      * Register a component.
      *
      * A component is a self-contained module rooted at a folder. The framework
