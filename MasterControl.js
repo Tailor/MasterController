@@ -50,6 +50,7 @@ import { csp } from './security/CSPConfig.js';
 import { session } from './security/SessionSecurity.js';
 import { AuthenticationService, MasterAuthActions } from './security/MasterAuth.js';
 import { MasterResults, validate as validateModel, bindRequest, problemTypeFor } from './security/MasterModelBinding.js';
+import { ConfigurationRoot, OptionsManager, hostEnvironment } from './MasterConfiguration.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -391,6 +392,34 @@ class MasterControl {
     }
 
     // extends class methods to be used inside of the controller class using the THIS keyword
+    /**
+     * v2.5.0 — build (or rebuild) master.configuration / master.options /
+     * master.environment from the ASP.NET-like default layering:
+     *   config/appsettings.json < config/appsettings.{env}.json <
+     *   config/environments/env.{env}.json < user secrets < env vars (A__B) <
+     *   command line (--A:B=v) < master.configuration.set() overrides.
+     * Pass { sources: (cfg) => cfg.addJsonFile(...).addEnvironmentVariables('MYAPP_') }
+     * to replace the defaults; { userSecretsId, envPrefix, reloadOnChange } to tune them.
+     */
+    buildConfiguration(options = {}) {
+        const previous = this.configuration;
+        const cfg = new ConfigurationRoot({
+            root: this.root || process.cwd(),
+            environment: this.environmentType || process.env.NODE_ENV || 'development',
+            userSecretsId: options.userSecretsId || this.userSecretsId,
+            envPrefix: options.envPrefix || this.configurationEnvPrefix,
+            reloadOnChange: options.reloadOnChange !== undefined ? options.reloadOnChange : this.configurationReloadOnChange,
+        });
+        if (typeof options.sources === 'function') options.sources(cfg); else cfg.addDefaults();
+        cfg.build();
+        if (previous && typeof previous.close === 'function') previous.close();
+        this.configuration = cfg;
+        if (!this.options) this.options = new OptionsManager(cfg, validateModel);
+        else { this.options._configuration = cfg; this.options._invalidateAll(); cfg.onChange(() => this.options._invalidateAll()); }
+        this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
+        return cfg;
+    }
+
     extendController(element){
         element = new element();
         const propertyNames = Object.getOwnPropertyNames(element.__proto__);
@@ -819,6 +848,10 @@ class MasterControl {
             $that.session = new MasterSessionSecurity($that);
             // v2.3.0: authentication & authorization (ASP.NET AddAuthentication/AddAuthorization)
             $that.auth = new AuthenticationService($that);
+            // v2.5.0: layered configuration (IConfiguration), options (IOptions<T>) and
+            // host environment (IHostEnvironment). Rebuilt in start() so a root /
+            // environment set after setupServer() is honored.
+            $that.buildConfiguration();
 
             // Bind master to static-based modules (MasterAction, MasterActionFilters)
             // These can't use constructor injection because user controllers extend them.
@@ -1693,6 +1726,16 @@ class MasterControl {
             }
         }
         // If the file doesn't exist, we silently skip — v2.0+ doesn't require it.
+
+        // v2.5.0: honor root/environment set after setupServer(); then validate
+        // every configured options type up front (ASP.NET ValidateOnStart):
+        // a misconfigured app fails at boot, not on the first request.
+        if (this.configuration && (this.configuration._opts.root !== (this.root || process.cwd()) || this.configuration._opts.environment !== (this.environmentType || process.env.NODE_ENV || 'development'))) {
+            this.buildConfiguration();
+        }
+        if (this.options && typeof this.options.validateAll === 'function') {
+            await this.options.validateAll();
+        }
 
         // Authentication middleware (ASP.NET UseAuthentication): resolves the
         // caller's identity from the registered schemes into ctx.user. It never

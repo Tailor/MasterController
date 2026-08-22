@@ -1349,6 +1349,25 @@ class UsersController {
 
 ---
 
+## Configuration & Options (v2.5.0)
+
+ASP.NET `IConfiguration` layering + `IOptions<T>` validated at startup + `IHostEnvironment`. Full guide: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+```javascript
+// config/appsettings.json < config/appsettings.{env}.json < config/environments/env.{env}.json
+// < ~/.master/usersecrets/<id>/secrets.json < env vars (Smtp__host) < --Smtp:port=587 < set()
+master.userSecretsId = 'my-app';
+const server = master.setupServer('http');
+master.configuration.get('Smtp:host');                 // case-insensitive ':' keys
+master.configuration.getConnectionString('Default');
+master.options.configure('Smtp', { schema: { host: 'string!', port: { type: 'integer', min: 1 } }, defaults: { tls: true } });
+await master.start(server);                             // ValidateOnStart — bad config fails the boot
+master.options.get('Smtp');                             // frozen, validated; controllers: this.options.Smtp
+master.environment.isProduction;                        // IHostEnvironment
+```
+
+---
+
 ## Model Binding, Validation & ProblemDetails (v2.4.0)
 
 ASP.NET `[ApiController]` behaviors: per-action schemas bind `this.model`, invalid input answers 400 `ValidationProblemDetails`, errors are RFC 7807 `application/problem+json`, typed results, typed route constraints. Full guide: [docs/MODEL_BINDING.md](docs/MODEL_BINDING.md).

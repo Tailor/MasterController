@@ -1094,6 +1094,10 @@ class MasterRouter {
 
              const proceed = () => {
                  control.user = requestObject.user || control.user;
+                 // v2.5.0: IOptions<T> values + IConfiguration on the controller
+                 control.options = this._master.options ? this._master.options.all() : {};
+                 control.configuration = this._master.configuration || null;
+                 control.environment = this._master.environment || null;
 
                  const afterBind = () => {
                  // check if before function is avaliable and wait for it to return

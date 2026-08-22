@@ -1,5 +1,16 @@
 # MasterController Changelog
 
+## 2.5.0 — Configuration & Options (IConfiguration / IOptions<T> / IHostEnvironment)
+
+Closes gap #3 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **`master.configuration`** (`MasterConfiguration.js`): layered, case-insensitive, `:`-keyed configuration built in `setupServer()` (rebuilt at `start()` when root/environment changed): `config/appsettings.json` < `config/appsettings.{env}.json` < `config/environments/env.{env}.json` < **user secrets** (`~/.master/usersecrets/<id>/secrets.json`, `master.userSecretsId` / `MASTER_USER_SECRETS_ID`, base dir `MASTER_USER_SECRETS_PATH`) < **environment variables** (`Section__Key`, optional `master.configurationEnvPrefix`) < **command line** (`--Section:Key=value`) < `set()`. API: `get(key, default)`, `has`, `getSection`, `getConnectionString`, `bind(section, defaults)`, `set`, `reload`, `onChange`, `sources`; builders `addJsonFile/addUserSecrets/addEnvironmentVariables/addCommandLine/addInMemory`; `master.buildConfiguration({ sources })` to replace the defaults; `reloadOnChange` file watching.
+- **`master.options`** (Options pattern): `configure(name, { section, defaults, schema, validate, postConfigure })` using the 2.4.0 validation rules; **validated on `start()`** (`ValidateOnStart` — a misconfigured app fails at boot with every error listed); `get(name)` (frozen), `getAsync`, `validateAll`, `onChange(name, cb)` (`IOptionsMonitor`).
+- **`master.environment`** (`IHostEnvironment`): `name`, `isDevelopment/isStaging/isProduction/isTest`, `is(name)`.
+- Controllers get **`this.options`**, `this.configuration`, `this.environment` per request.
+
+Tests: `test/configuration.test.js`. Docs: `docs/CONFIGURATION.md`, README.
+
 ## 2.4.0 — Model binding, validation, ProblemDetails, typed results, typed route constraints
 
 Closes gap #2 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
