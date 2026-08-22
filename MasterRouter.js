@@ -375,8 +375,25 @@ const ROUTER_CONFIG = {
 const loadScopedListClasses = function(context){
     // FIXED: Use Object.entries() for safe iteration (prevents prototype pollution)
     for (const [key, className] of Object.entries(this._master._scopedList)) {
-        // Store scoped services in the context object (request-specific) instead of shared requestList
-        context[key] = new className();
+        // Lazy, per-scope resolution — mirrors ASP.NET Core DI (where EF's
+        // DbContext is a Scoped service). A scoped service is constructed on
+        // FIRST access within the request scope (not eagerly), cached for the
+        // rest of the scope, and is handed the scope so it can read its
+        // dependencies (e.g. `scope.userContext`) on demand — so registration
+        // order doesn't matter and a request builds only the services it
+        // actually touches. Backward compatible: existing no-arg scoped classes
+        // simply ignore the scope argument.
+        let instance;   // block-scoped per key: each getter closes over its own
+        Object.defineProperty(context, key, {
+            configurable: true,
+            enumerable: true,
+            get() {
+                if (instance === undefined) {
+                    instance = new className(context);
+                }
+                return instance;
+            },
+        });
     }
 };
 
