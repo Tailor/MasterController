@@ -54,6 +54,7 @@ import { ConfigurationRoot, OptionsManager, hostEnvironment } from './MasterConf
 import { HostedServiceManager, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, QueuedHostedService } from './MasterHosting.js';
 import { LoggerFactory, consoleProvider, memoryProvider, requestLoggingScope } from './MasterLogging.js';
 import { DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, compressionMiddleware } from './MasterCaching.js';
+import { OpenApiGenerator, openApiMiddleware } from './MasterOpenApi.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -421,6 +422,21 @@ class MasterControl {
         else { this.options._configuration = cfg; this.options._invalidateAll(); cfg.onChange(() => this.options._invalidateAll()); }
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
+    }
+
+    // ---- v2.9.0: OpenAPI (AddOpenApi/MapOpenApi + Swagger UI) --------------
+    /**
+     * Serve an OpenAPI 3.1 document generated from routes, typed constraints,
+     * `static schemas`, `authorize` and auth schemes. Options: { path: '/openapi.json',
+     * ui: '/docs' | true | false, title, version, description, servers, tags, filter, transform }.
+     * Call before start(). `master.openApi.document()` returns the object.
+     */
+    useOpenApi(opts = {}) {
+        if (!this.pipeline) throw new Error('useOpenApi(): call master.setupServer() first');
+        if (this._openApiInstalled) return this;
+        this._openApiInstalled = true;
+        this.pipeline.use(openApiMiddleware(this, opts));
+        return this;
     }
 
     // ---- v2.8.0: response compression (UseResponseCompression) ------------
@@ -1917,4 +1933,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, OpenApiGenerator };

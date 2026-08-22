@@ -1349,6 +1349,16 @@ class UsersController {
 
 ---
 
+## OpenAPI (v2.9.0)
+
+ASP.NET `MapOpenApi()` + Swagger UI, generated from routes, typed constraints, `static schemas`, `authorize` and auth schemes — nothing to annotate twice. Full guide: [docs/OPENAPI.md](docs/OPENAPI.md).
+
+```javascript
+master.useOpenApi({ title: 'Items API', version: '2.0.0', ui: '/docs' });   // GET /openapi.json, GET /docs
+```
+
+---
+
 ## Caching & Compression (v2.8.0)
 
 ASP.NET `UseResponseCompression`, `[OutputCache]` policies with tags/vary-by, and `IDistributedCache` (memory or Redis). Full guide: [docs/CACHING.md](docs/CACHING.md).

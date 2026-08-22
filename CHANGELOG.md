@@ -1,5 +1,13 @@
 # MasterController Changelog
 
+## 2.9.0 — OpenAPI (AddOpenApi/MapOpenApi + Swagger UI)
+
+Closes gap #7 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **`master.useOpenApi({ path, ui, title, version, description, servers, tags, filter, transform })`** (`MasterOpenApi.js`) serves an **OpenAPI 3.1 document** generated from the app: routes (`route`/`resources`) → paths/operations, typed route constraints → path parameter schemas, `static schemas` → `requestBody` / query / header / path parameters (validation rules → JSON Schema) + `400 ValidationProblemDetails`, route/controller `authorize` → `security` + `401/403`, `master.auth` schemes → `components.securitySchemes`, `static openapi = { action: { summary, description, tags, responses, deprecated, operationId } }`, `outputCache` → `x-output-cache`. Optional **Swagger UI** page (`ui: '/docs'`, CDN-loaded). `master.openApi.document()` / `invalidate()`.
+
+Tests: `test/openapi.test.js` (schema conversion, path conversion, end-to-end document + UI). Docs: `docs/OPENAPI.md`, README.
+
 ## 2.8.0 — Response compression, output caching, distributed cache
 
 Closes gap #6 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
