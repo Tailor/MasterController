@@ -53,8 +53,9 @@ function errorHandlerMiddleware(handler, controllerName, actionName) {
       sendErrorResponse(
         requestObject.response,
         mcError,
-        requestObject.pathName
-      );
+        requestObject.pathName,
+        requestObject.request
+        );
 
       // Log to monitoring
       logger.error({
@@ -113,8 +114,9 @@ function notFoundMiddleware(requestObject) {
   sendErrorResponse(
     requestObject.response,
     mcError,
-    requestObject.pathName
-  );
+    requestObject.pathName,
+    requestObject.request
+    );
 }
 
 /**

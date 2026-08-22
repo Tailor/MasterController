@@ -10,6 +10,7 @@ const tools = new toolClass();
 // Enhanced error handling
 import { handleRoutingError, handleControllerError, sendErrorResponse } from './error/MasterBackendErrorHandler.js';
 import { resolveControllerAuthorize } from './security/MasterAuth.js';
+import { resolveControllerSchemas, bindRequest, writeValidationProblem } from './security/MasterModelBinding.js';
 import { logger } from './error/MasterErrorLogger.js';
 import { performanceTracker, errorHandlerMiddleware } from './error/MasterErrorMiddleware.js';
 
@@ -53,6 +54,71 @@ const ROUTER_CONFIG = {
     MAX_ROUTE_LENGTH: 2048
 };
 
+const ROUTE_PARAM_RE = /^:([A-Za-z_$][\w$]*)(?:\((.+)\))?$/;
+const UUID_PARAM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PARAM_CONSTRAINTS = {
+    int:      (v) => /^-?\d+$/.test(v) ? { ok: true, value: Number(v) } : { ok: false },
+    number:   (v) => (v !== '' && !Number.isNaN(Number(v)) && Number.isFinite(Number(v))) ? { ok: true, value: Number(v) } : { ok: false },
+    bool:     (v) => /^(true|false|1|0)$/i.test(v) ? { ok: true, value: /^(true|1)$/i.test(v) } : { ok: false },
+    uuid:     (v) => UUID_PARAM_RE.test(v) ? { ok: true, value: v.toLowerCase() } : { ok: false },
+    alpha:    (v) => /^[A-Za-z]+$/.test(v) ? { ok: true, value: v } : { ok: false },
+    alphanum: (v) => /^[A-Za-z0-9]+$/.test(v) ? { ok: true, value: v } : { ok: false },
+    slug:     (v) => /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/.test(v) ? { ok: true, value: v } : { ok: false },
+};
+PARAM_CONSTRAINTS.double = PARAM_CONSTRAINTS.float = PARAM_CONSTRAINTS.number;
+PARAM_CONSTRAINTS.guid = PARAM_CONSTRAINTS.uuid;
+PARAM_CONSTRAINTS.string = (v) => ({ ok: true, value: v });
+
+/** Original-case path segments of the request (for route values); null when unknown. */
+function originalPathSegments(requestObject) {
+    try {
+        let pathname = requestObject && requestObject.requrl && requestObject.requrl.pathname;
+        if (!pathname && requestObject && requestObject.request && requestObject.request.url) {
+            pathname = new URL(requestObject.request.url, 'http://localhost').pathname;
+        }
+        if (!pathname) return null;
+        const trimmed = String(pathname).replace(/^\/|\/$/g, '');
+        return trimmed.split('/');
+    } catch (_) {
+        return null;
+    }
+}
+
+/** ':id(int)' -> { name: 'id', constraint: 'int' } ; ':id' -> { name: 'id', constraint: null } */
+function parseRouteParam(segment) {
+    const m = String(segment).match(ROUTE_PARAM_RE);
+    if (!m) return { name: String(segment).replace(':', ''), constraint: null };
+    return { name: m[1], constraint: m[2] ? m[2].trim() : null };
+}
+
+/** Evaluate a typed constraint against a raw path segment -> { ok, value }. */
+function checkParamConstraint(constraint, raw) {
+    if (raw === undefined || raw === null) return { ok: false };
+    const value = decodeURIComponent(String(raw));
+    const lower = constraint.toLowerCase();
+    if (PARAM_CONSTRAINTS[lower]) return PARAM_CONSTRAINTS[lower](value);
+    let m;
+    if ((m = lower.match(/^length\((\d+)\)$/))) return value.length === Number(m[1]) ? { ok: true, value } : { ok: false };
+    if ((m = lower.match(/^minlength\((\d+)\)$/))) return value.length >= Number(m[1]) ? { ok: true, value } : { ok: false };
+    if ((m = lower.match(/^maxlength\((\d+)\)$/))) return value.length <= Number(m[1]) ? { ok: true, value } : { ok: false };
+    if ((m = lower.match(/^min\((-?\d+)\)$/))) { const n = Number(value); return (/^-?\d+$/.test(value) && n >= Number(m[1])) ? { ok: true, value: n } : { ok: false }; }
+    if ((m = lower.match(/^max\((-?\d+)\)$/))) { const n = Number(value); return (/^-?\d+$/.test(value) && n <= Number(m[1])) ? { ok: true, value: n } : { ok: false }; }
+    if ((m = constraint.match(/^regex:(.+)$/s))) { try { return new RegExp(m[1]).test(value) ? { ok: true, value } : { ok: false }; } catch (_) { return { ok: false }; } }
+    return { ok: false };
+}
+
+/** Reject unknown constraint names at registration time (fail fast). */
+function validateRouteParamConstraints(path) {
+    for (const seg of String(path).split('/')) {
+        if (!seg.startsWith(':')) continue;
+        const p = parseRouteParam(seg);
+        if (!p.constraint) continue;
+        const lower = p.constraint.toLowerCase();
+        const ok = PARAM_CONSTRAINTS[lower] || /^(length|minlength|maxlength|min|max)\((-?\d+)\)$/.test(lower) || /^regex:.+$/s.test(p.constraint);
+        if (!ok) throw new Error(`Unknown route constraint '${p.constraint}' in segment '${seg}' (int, number, bool, uuid, alpha, alphanum, slug, length(n), minlength(n), maxlength(n), min(n), max(n), regex:…)`);
+    }
+}
+
  /**
   * Normalize and match request path against route path, extracting parameters
   *
@@ -73,7 +139,7 @@ const ROUTER_CONFIG = {
   * // params = { id: "123" }
   * // result = { requestPath: "/users/123", routePath: "/users/123" }
   */
- const normalizePaths = function(requestPath, routePath, requestParams){
+ const normalizePaths = function(requestPath, routePath, requestParams, originalSegments = null){
     const obj = {
         requestPath : "",
         routePath : ""
@@ -83,20 +149,39 @@ const ROUTER_CONFIG = {
     const routePathList = routePath.split("/");
 
     for(let i = 0; i < requestPathList.length; i++){
-        const requestItem = requestPathList[i];
+        // Matching is case-insensitive (requestPath is lowercased), but route
+        // VALUES keep the caller's casing when the original segments are known
+        // (v2.4.0 — ids/tokens/slugs are case-sensitive; ASP.NET preserves them).
+        const requestItem = (originalSegments && originalSegments.length === requestPathList.length && originalSegments[i] !== undefined)
+            ? originalSegments[i]
+            : requestPathList[i];
         const routeItem = routePathList[i];
         if(routeItem){
             if(routeItem.indexOf(":") > -1){
-                const paramName = routeItem.replace(":", "");
+                // v2.4.0: typed route constraints — ':id(int)', ':code(regex:^[A-Z]{3}$)' …
+                // (ASP.NET {id:int}). A constraint miss makes the route not match so
+                // the router can try the next one; matched values are coerced.
+                const parsed = parseRouteParam(routeItem);
+                const paramName = parsed.name;
                 const paramValue = requestItem;
+                if (parsed.constraint) {
+                    const check = checkParamConstraint(parsed.constraint, paramValue);
+                    if (!check.ok) {
+                        routePathList[i] = '\u0000';        // cannot equal any request segment
+                        continue;
+                    }
+                    requestParams[paramName] = check.value;
+                    routePathList[i] = requestPathList[i];   // match on the lowercased segment
+                    continue;
+                }
 
                 // Security: Sanitize route parameter
                 const sanitizedValue = sanitizeRouteParam(paramName, paramValue);
 
                 requestParams[paramName] = sanitizedValue;
-                // FIX: Use requestItem (original value) not sanitizedValue for route matching
+                // FIX: Use the request segment (not sanitizedValue) for route matching
                 // The route pattern should match against the actual request path
-                routePathList[i] = requestItem;
+                routePathList[i] = requestPathList[i];   // match on the lowercased segment
             }
         }
     }
@@ -291,7 +376,7 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
                         // FIX: Create a clean copy of params for each route test to prevent parameter pollution
                         // This prevents parameters from non-matching routes from accumulating in requestObject.params
                         const testParams = Object.assign({}, requestObject.params);
-                        const pathObj = normalizePaths(requestObject.pathName, route.path, testParams);
+                        const pathObj = normalizePaths(requestObject.pathName, route.path, testParams, originalPathSegments(requestObject));
 
                         // if we find the route that matches the request
                         // HEAD requests match GET routes per HTTP spec (RFC 9110 §9.3.2)
@@ -315,12 +400,12 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
                                         __dispatchMatchedRoute(requestObject, emitter, route, root, isComponent, routeDefForAuth);
                                     } catch (dispatchError) {
                                         const routeError = handleRoutingError(requestObject.pathName, [], { type: 'CONSTRAINT_ERROR', route: routeDefForAuth, error: dispatchError });
-                                        sendErrorResponse(requestObject.response, routeError, requestObject.pathName);
+                                        sendErrorResponse(requestObject.response, routeError, requestObject.pathName, requestObject.request);
                                     }
                                 }).catch((authError) => {
                                     logger.error({ code: 'MC_ERR_ROUTE_AUTHORIZE', message: `Route authorization failed for ${routeDefForAuth.path}`, error: authError && authError.message, stack: authError && authError.stack });
                                     const routeError = handleRoutingError(requestObject.pathName, [], { type: 'CONSTRAINT_ERROR', route: routeDefForAuth, error: authError });
-                                    sendErrorResponse(requestObject.response, routeError, requestObject.pathName);
+                                    sendErrorResponse(requestObject.response, routeError, requestObject.pathName, requestObject.request);
                                 });
                                 return true;
                             }
@@ -423,8 +508,10 @@ function validateRoutePath(path) {
         throw new Error(`Route path exceeds maximum length (${ROUTER_CONFIG.MAX_ROUTE_LENGTH} characters)`);
     }
 
-    // Check for invalid characters
-    if (/[<>{}[\]\\^`|]/.test(path)) {
+    // Check for invalid characters — outside typed-constraint bodies
+    // (v2.4.0: ':code(regex:^[A-Z]{3}$)' legitimately contains ^ [ ] { }).
+    const withoutConstraints = String(path).split('/').map(seg => seg.startsWith(':') ? seg.replace(/\(.*\)$/s, '') : seg).join('/');
+    if (/[<>{}[\]\\^`|]/.test(withoutConstraints)) {
         throw new Error(`Route path contains invalid characters: ${path}`);
     }
 }
@@ -620,6 +707,7 @@ class MasterRouter {
                 // Input validation
                 validateRoutePath(path);
                 validateHttpMethod(type);
+                validateRouteParamConstraints(path);   // v2.4.0 typed constraints
 
                 // v2.3.0: the 4th argument may be an options object —
                 // { constraint?, authorize?, allowAnonymous? } — so a route can carry
@@ -904,7 +992,7 @@ class MasterRouter {
                      currentRoute.routeDef
                  );
 
-                 sendErrorResponse(requestObject.response, error, requestObject.pathName);
+                 sendErrorResponse(requestObject.response, error, requestObject.pathName, requestObject.request);
                  performanceTracker.end(requestId);
                  return;
              }
@@ -978,7 +1066,7 @@ class MasterRouter {
                                 requestObject.pathName,
                                 currentRoute.routeDef // Pass route definition
                             );
-                            sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                            sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
                             performanceTracker.end(requestId);
                             // MEMORY LEAK FIX: Clean up event listeners
                             _callEmit.removeAllListeners();
@@ -993,7 +1081,7 @@ class MasterRouter {
                         requestObject.pathName,
                         currentRoute.routeDef // Pass route definition
                     );
-                    sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                    sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
                     performanceTracker.end(requestId);
                     // MEMORY LEAK FIX: Clean up event listeners
                     _callEmit.removeAllListeners();
@@ -1006,6 +1094,8 @@ class MasterRouter {
 
              const proceed = () => {
                  control.user = requestObject.user || control.user;
+
+                 const afterBind = () => {
                  // check if before function is avaliable and wait for it to return
                  if(control.__hasBeforeAction(control, requestObject)){
                      control.__callBeforeAction(control, requestObject, _callEmit)
@@ -1018,7 +1108,7 @@ class MasterRouter {
                                      requestObject.pathName,
                                      currentRoute.routeDef
                                  );
-                                 sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                                 sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
                              }
                              performanceTracker.end(requestId);
                              _callEmit.removeAllListeners();
@@ -1026,6 +1116,33 @@ class MasterRouter {
                  }else{
                     _callEmit.emit("controller");
                  }
+                 };
+
+                 // v2.4.0: model binding + validation (ASP.NET [ApiController]):
+                 // static schemas = { action: { body, query, route } } binds this.model /
+                 // this.modelState before filters run; invalid -> 400 ValidationProblemDetails
+                 // unless static autoValidate = false.
+                 const bindSpec = resolveControllerSchemas(Control, requestObject.toAction);
+                 if (!bindSpec) { afterBind(); return; }
+                 bindRequest(requestObject, bindSpec).then((bound) => {
+                     control.model = bound.value;
+                     control.modelState = bound.modelState;
+                     requestObject.model = bound.value;
+                     if (!bound.valid && Control.autoValidate !== false) {
+                         writeValidationProblem(requestObject.response, bound.errors, { request: requestObject.request });
+                         performanceTracker.end(requestId);
+                         _callEmit.removeAllListeners();
+                         return;
+                     }
+                     afterBind();
+                 }).catch((error) => {
+                     if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
+                         const mcError = handleControllerError(error, requestObject.toController, requestObject.toAction, requestObject.pathName, currentRoute.routeDef);
+                         sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
+                     }
+                     performanceTracker.end(requestId);
+                     _callEmit.removeAllListeners();
+                 });
              };
 
              // v2.3.0: controller-level authorization (ASP.NET [Authorize] on the
@@ -1043,7 +1160,7 @@ class MasterRouter {
                  }).catch((error) => {
                      if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
                          const mcError = handleControllerError(error, requestObject.toController, requestObject.toAction, requestObject.pathName, currentRoute.routeDef);
-                         sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                         sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
                      }
                      performanceTracker.end(requestId);
                      _callEmit.removeAllListeners();
@@ -1059,7 +1176,7 @@ class MasterRouter {
                  requestObject.pathName,
                  currentRoute.routeDef // Pass route definition
              );
-             sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+             sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
              performanceTracker.end(requestId);
          }
 
@@ -1182,7 +1299,7 @@ class MasterRouter {
                 }
 
                 const mcError = handleRoutingError(requestObject.pathName, allRoutes);
-                sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                sendErrorResponse(requestObject.response, mcError, requestObject.pathName, requestObject.request);
                 // MEMORY LEAK FIX: Clean up event listeners if route not found
                 _loadEmit.removeAllListeners();
             }

@@ -71,4 +71,5 @@ Rails pieces worth matching that ASP.NET also has: generators ✓, migrations �
 
 ## Status
 
+- **2.4.0 shipped** — Model binding (`static schemas`, `this.model`/`modelState`, auto-400 ValidationProblemDetails), validation rules, RFC 7807 ProblemDetails for API clients (incl. unhandled errors), typed results (`ok/created/noContent/file/problem…`), typed route constraints (`:id(int)`). (`docs/MODEL_BINDING.md`)
 - **2.3.0 shipped** — Authentication & Authorization: JWT bearer (HS/RS/PS/ES), signed cookie, custom schemes; policies; route/controller/in-action `[Authorize]` + `[AllowAnonymous]`; `ClaimsPrincipal` on `this.user`; sign-in/out; password hasher; 401/403 ProblemDetails. (`docs/AUTHENTICATION.md`)

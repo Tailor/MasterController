@@ -1,5 +1,17 @@
 # MasterController Changelog
 
+## 2.4.0 — Model binding, validation, ProblemDetails, typed results, typed route constraints
+
+Closes gap #2 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **Declarative binding** (`security/MasterModelBinding.js`): `static schemas = { action: { body, query, route, form, files, headers } }` binds **`this.model`** (merged, coerced, unknown fields stripped) and **`this.modelState`** before filters run; invalid input answers **400 `ValidationProblemDetails`** automatically (`static autoValidate = false` to handle `modelState` yourself). Explicit `await this.bind(spec)`, `this.validateModel(data, schema)`, `master.validation.validate/bind`.
+- **Validation rules** (DataAnnotations-like): types `string/number/integer/boolean/email/url/uuid/date/datetime/array/object/any`, `required`, `default`, `min/max`, `minLength/maxLength`, `pattern`, `enum`, `items`, nested `properties`, `custom` (async), shorthands `'integer!'`; JSON-Schema-like object form accepted; errors keyed like `ModelState` (`address.city`, `tags[1]`).
+- **ProblemDetails (RFC 7807)** everywhere: `this.problem({...})`, `this.validationProblem(errors)`, `badRequest/unauthorized/forbidden/notFound/conflict/unprocessable`; **unhandled controller/routing errors answer `application/problem+json` to API clients** (Accept JSON / XHR / JSON body / bearer token) and keep HTML pages for browsers; the pipeline's 500 handler body gains `type/title/status/instance` (superset of `{ error, errorId }`).
+- **Typed results** (ControllerBase): `ok`, `created(location, data)`, `accepted`, `noContent`, `statusCode(code, body)`, `file(pathOrBuffer, { contentType, fileName, inline })` (streams files, `Content-Disposition`).
+- **Typed route constraints**: `'/items/:id(int)'` → `obj.params.id` is a number; `int, number, bool, uuid, alpha, alphanum, slug, length(n), minlength(n), maxlength(n), min(n), max(n), regex:…`; a miss lets the next route match; unknown constraint names fail at registration.
+
+Tests: `test/model-binding.test.js` (rules/coercion/nesting/custom, per-source binding, ModelState, ProblemDetails writer, end-to-end through HTTP: constraints, auto-400, 201+Location, query defaults, 422 manual, `bind()`, 204, file download, 500 problem+json vs HTML). Docs: `docs/MODEL_BINDING.md`, README.
+
 ## 2.3.0 — Authentication & Authorization (ASP.NET Core parity)
 
 Closes gap #1 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.

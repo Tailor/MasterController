@@ -33,6 +33,25 @@ import { levenshteinDistance } from './MasterErrorHandler.js';
 
 const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.master === 'development';
 
+// RFC 7807 helpers (v2.4.0) — inlined here (no import of the binding module)
+// to keep the error handler dependency-free and avoid a cycle.
+function wantsJson(request) {
+  if (!request || !request.headers) return false;
+  const h = request.headers;
+  if (h['x-requested-with'] === 'XMLHttpRequest') return true;
+  const ct = String(h['content-type'] || '');
+  const accept = String(h.accept || '');
+  if (/application\/(json|problem\+json)/i.test(accept) && !/text\/html/i.test(accept)) return true;
+  if (!accept || accept === '*/*') return /application\/json/i.test(ct) || !!h.authorization;
+  return false;
+}
+function problemTypeFor(status) {
+  const s = Number(status);
+  if (s >= 500) return `https://tools.ietf.org/html/rfc9110#section-15.6.${s - 499}`;
+  if (s >= 400) return `https://tools.ietf.org/html/rfc9110#section-15.5.${s - 399}`;
+  return 'about:blank';
+}
+
 // Backend-specific error codes
 const BACKEND_ERROR_CODES = {
   MC_ERR_ROUTE_NOT_FOUND: {
@@ -752,13 +771,37 @@ function handleFileReadError(error, filePath) {
 /**
  * Send error response to client
  */
-function sendErrorResponse(response, error, requestPath) {
+function sendErrorResponse(response, error, requestPath, request = null) {
   if (!response || response.headersSent) {
     return;
   }
 
   const httpCode = BACKEND_ERROR_CODES[error.code]?.httpCode || 500;
   const isNotFound = httpCode === 404;
+
+  // v2.4.0: API clients (Accept: application/json, XHR, JSON bodies, bearer
+  // tokens) get RFC 7807 ProblemDetails instead of an HTML error page
+  // (ASP.NET Core ProblemDetails). Browsers keep the HTML pages below.
+  if (request && wantsJson(request)) {
+    try {
+      const body = {
+        type: problemTypeFor(httpCode),
+        title: httpCode === 404 ? 'Not Found' : (httpCode === 405 ? 'Method Not Allowed' : 'Internal Server Error'),
+        status: httpCode,
+        instance: '/' + String(requestPath || '').replace(/^\/+/, ''),
+      };
+      // Never echo the raw error message outside development (schema /
+      // driver text disclosure); operators correlate through the log.
+      if (isDevelopment && (error.originalError || error).message) body.detail = String((error.originalError || error).message);
+      if (error.code) body.code = error.code;
+      const json = JSON.stringify(body);
+      response.writeHead(httpCode, { 'Content-Type': 'application/problem+json', 'Content-Length': Buffer.byteLength(json), 'Cache-Control': 'no-store' });
+      response.end(json);
+      return;
+    } catch (sendError) {
+      console.error('[MasterController] Failed to send problem response:', sendError);
+    }
+  }
 
   try {
     if (isNotFound) {

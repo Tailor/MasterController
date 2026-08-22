@@ -49,6 +49,7 @@ import { security, securityHeaders } from './security/SecurityMiddleware.js';
 import { csp } from './security/CSPConfig.js';
 import { session } from './security/SessionSecurity.js';
 import { AuthenticationService, MasterAuthActions } from './security/MasterAuth.js';
+import { MasterResults, validate as validateModel, bindRequest, problemTypeFor } from './security/MasterModelBinding.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -841,6 +842,13 @@ class MasterControl {
                 if (typeof $that.extendController === 'function') {
                     $that.extendController(MasterAuthActions);
                 }
+                // v2.4.0: typed results (ok/created/noContent/notFound/problem/file…),
+                // this.bind()/validateModel() (ASP.NET ControllerBase + model binding)
+                MasterResults.bindMaster($that);
+                if (typeof $that.extendController === 'function') {
+                    $that.extendController(MasterResults);
+                }
+                $that.validation = { validate: validateModel, bind: bindRequest };
                 if (SecurityEnforcement && typeof SecurityEnforcement.bindMaster === 'function') {
                     SecurityEnforcement.bindMaster($that);
                     if (typeof $that.extend === 'function') {
@@ -1733,7 +1741,14 @@ class MasterControl {
                 // reflected XSS / JSON injection), database driver text
                 // (schema disclosure), padding-oracle distinguishers, etc.
                 // Operators correlate via errorId in the log.
+                // v2.4.0: RFC 7807 ProblemDetails fields (type/title/status/instance)
+                // alongside the legacy { error, errorId } keys — a superset, so
+                // existing clients keep working.
                 ctx.response.end(JSON.stringify({
+                    type: problemTypeFor(500),
+                    title: 'Internal Server Error',
+                    status: 500,
+                    instance: ctx.request && ctx.request.url ? String(ctx.request.url).split('?')[0] : undefined,
                     error: 'Internal Server Error',
                     errorId: errorId
                 }));

@@ -1349,6 +1349,32 @@ class UsersController {
 
 ---
 
+## Model Binding, Validation & ProblemDetails (v2.4.0)
+
+ASP.NET `[ApiController]` behaviors: per-action schemas bind `this.model`, invalid input answers 400 `ValidationProblemDetails`, errors are RFC 7807 `application/problem+json`, typed results, typed route constraints. Full guide: [docs/MODEL_BINDING.md](docs/MODEL_BINDING.md).
+
+```javascript
+// config/routes.js — typed constraints ({id:int} in ASP.NET)
+router.route('/items/:id(int)', 'items#show', 'get');
+router.route('/codes/:code(regex:^[A-Z]{3}$)', 'items#code', 'get');
+
+// app/controllers/itemsController.js
+export default class ItemsController {
+    static schemas = {                                            // [FromBody]/[FromQuery] + DataAnnotations
+        create: { body: { name: { type: 'string', required: true, minLength: 2 }, price: { type: 'number', min: 0 } } },
+        index:  { query: { page: { type: 'integer', default: 1, min: 1 } } },
+    };
+    async create() {                                               // invalid -> automatic 400 ValidationProblemDetails
+        const item = await this.db.Item.add(this.model);           // this.model: validated + coerced, unknown fields stripped
+        await this.db.saveChanges();
+        this.created(`/items/${item.id}`, item);                   // 201 + Location (also ok/accepted/noContent/notFound/conflict/file/problem)
+    }
+    show(obj) { this.ok({ id: obj.params.id }); }                   // obj.params.id is a Number
+}
+```
+
+---
+
 ## Authentication & Authorization (v2.3.0)
 
 Modeled on ASP.NET Core: **schemes** authenticate (JWT bearer, signed cookie, custom), **policies** authorize, `[Authorize]` goes on routes and controllers, and the caller is a `ClaimsPrincipal` on `this.user`. Full guide: [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
