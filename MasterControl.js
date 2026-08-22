@@ -52,6 +52,7 @@ import { AuthenticationService, MasterAuthActions } from './security/MasterAuth.
 import { MasterResults, validate as validateModel, bindRequest, problemTypeFor } from './security/MasterModelBinding.js';
 import { ConfigurationRoot, OptionsManager, hostEnvironment } from './MasterConfiguration.js';
 import { HostedServiceManager, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, QueuedHostedService } from './MasterHosting.js';
+import { LoggerFactory, consoleProvider, memoryProvider, requestLoggingScope } from './MasterLogging.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -420,6 +421,12 @@ class MasterControl {
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
     }
+
+    // ---- v2.7.0: logging (ILoggerFactory.CreateLogger) --------------------
+    _ensureLogging() { if (!this.logging) this.logging = new LoggerFactory({ configuration: this.configuration }); return this.logging; }
+    /** ILogger<T>: master.createLogger('Orders.Service').info('shipped {id}', { id }) */
+    createLogger(category) { return this._ensureLogging().createLogger(category); }
+    static memoryLogProvider(limit) { return memoryProvider(limit); }
 
     // ---- v2.6.0: hosted services / background work / host lifetime --------
 
@@ -881,6 +888,18 @@ class MasterControl {
             $that.buildConfiguration();
             // v2.6.0: hosted services, background queue and host lifetime (ASP.NET generic host)
             if (!$that.hosting) $that.hosting = new HostedServiceManager($that);
+            // v2.7.0: application logging (ILogger): categories, Logging:LogLevel from
+            // configuration, scopes, request correlation. Console provider by default
+            // (JSON lines in production); master.logging.addProvider(...) for sinks.
+            if (!$that.logging) {
+                $that.logging = new LoggerFactory({ configuration: $that.configuration, environment: $that.environmentType });
+                if (process.env.MC_DISABLE_DEFAULT_LOG_PROVIDER !== '1') {
+                    $that.logging.addProvider(consoleProvider({ json: ($that.environmentType || process.env.NODE_ENV) === 'production' || String($that.configuration.get('Logging:Console:Json')) === 'true' }));
+                }
+            } else {
+                $that.logging._configuration = $that.configuration;
+                $that.logging.applyConfiguration();
+            }
 
             // Bind master to static-based modules (MasterAction, MasterActionFilters)
             // These can't use constructor injection because user controllers extend them.
@@ -1766,6 +1785,14 @@ class MasterControl {
             await this.options.validateAll();
         }
 
+        // v2.7.0: request logging scope — every request runs in an async logging
+        // scope { requestId, method, path } (X-Request-Id honored or generated and
+        // echoed), so any logger used during the request carries the correlation
+        // id; one access-log line per request at info (Logging:LogLevel:Request).
+        if (this.logging && this.requestLogging !== false) {
+            this.pipeline.use(requestLoggingScope(this.logging, { logRequests: this.requestLogging !== 'scopeOnly' }));
+        }
+
         // Authentication middleware (ASP.NET UseAuthentication): resolves the
         // caller's identity from the registered schemes into ctx.user. It never
         // blocks a request — authorization ([Authorize] on routes/controllers,
@@ -1875,4 +1902,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider };

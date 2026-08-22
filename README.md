@@ -1349,6 +1349,20 @@ class UsersController {
 
 ---
 
+## Logging (v2.7.0)
+
+ASP.NET `ILogger<T>`: category loggers, `Logging:LogLevel` per category from configuration, message templates, scopes across `await`, request correlation (`X-Request-Id`), pluggable providers. Full guide: [docs/LOGGING.md](docs/LOGGING.md).
+
+```javascript
+const log = master.createLogger('Orders.Service');
+log.info('order {id} placed', { id });                              // structured; sensitive keys redacted
+await log.scope({ orderId: id }, async () => { log.warn('retrying'); });   // scope flows through awaits
+// controllers: this.logger (category = controller), every request already scoped { requestId, method, path }
+master.logging.addProvider((entry) => ship(entry));                 // console (pretty / JSON in production) by default
+```
+
+---
+
 ## Hosted Services & Background Work (v2.6.0)
 
 ASP.NET generic-host parity: `IHostedService`/`BackgroundService`, `PeriodicTimer` jobs with a DI scope per run, a background task queue, `IHostApplicationLifetime` and graceful shutdown. Full guide: [docs/HOSTED_SERVICES.md](docs/HOSTED_SERVICES.md).

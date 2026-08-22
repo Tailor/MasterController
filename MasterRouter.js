@@ -1098,6 +1098,8 @@ class MasterRouter {
                  control.options = this._master.options ? this._master.options.all() : {};
                  control.configuration = this._master.configuration || null;
                  control.environment = this._master.environment || null;
+                 // v2.7.0: ILogger<T> with the controller as category
+                 control.logger = (this._master.logging && typeof this._master.logging.createLogger === "function") ? this._master.logging.createLogger(Control.name || requestObject.toController) : null;
 
                  const afterBind = () => {
                  // check if before function is avaliable and wait for it to return

@@ -1,5 +1,17 @@
 # MasterController Changelog
 
+## 2.7.0 — Logging (ILogger<T> parity)
+
+Closes gap #5 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **`master.createLogger(category)`** / **`this.logger`** in controllers (`MasterLogging.js`): levels `trace…critical`, `isEnabled`, message templates (`'user {id}'`), structured properties + error serialization, **redaction** of sensitive keys, `child(suffix)`.
+- **Levels from configuration**: `Logging:LogLevel:Default` and per-category prefixes (longest wins), `Logging:MinimumLevel`; re-applied on configuration reload; `master.logging.setMinimumLevel(level, prefix)`.
+- **Scopes** (`BeginScope`): `logger.beginScope(state)` / `await logger.scope(state, fn)` — carried across `await` via `AsyncLocalStorage`, nested merge.
+- **Request correlation**: each request runs in a scope `{ requestId, method, path }`; `X-Request-Id` honored or generated and echoed; access-log line per request (`Request` category; `master.requestLogging = 'scopeOnly' | false`).
+- **Providers**: `consoleProvider({ json })` default (JSON lines in production / `Logging:Console:Json`), `memoryProvider()`, `master.logging.addProvider(fn | { write, minimumLevel })`, `enrich()`; a throwing sink never breaks the app. Named exports: `LoggerFactory`, `consoleProvider`, `memoryProvider`.
+
+Tests: `test/logging.test.js` (levels/categories/templates/redaction/providers, scopes across awaits, console renderers, end-to-end request correlation + `this.logger`). Docs: `docs/LOGGING.md`, README.
+
 ## 2.6.0 — Hosted services, background work & host lifetime (ASP.NET generic host)
 
 Closes gap #4 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
