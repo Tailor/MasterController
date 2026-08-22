@@ -71,6 +71,7 @@ Rails pieces worth matching that ASP.NET also has: generators ✓, migrations �
 
 ## Status
 
+- **2.11.0 shipped** — API versioning (readers, 400 unsupported, report headers), request localization (`IStringLocalizer`, providers, `Content-Language`), readiness/liveness health endpoints. **Every item of the ranked plan has shipped (2.3.0 → 2.11.0).** Remaining by design: gRPC, Razor/view-component parity beyond the existing view engines, Identity UI (user management screens) — the primitives (password hasher, tokens, cookie/bearer schemes, policies) are in place. (`docs/VERSIONING_LOCALIZATION_HEALTH.md`)
 - **2.10.0 shipped** — Minimal APIs (`master.map.*`), route groups, named routes + `urlFor`, WebApplicationFactory-style `createTestClient()`. (`docs/MINIMAL_APIS_AND_TESTING.md`)
 - **2.9.0 shipped** — OpenAPI 3.1 document generated from routes/constraints/schemas/authorize/auth schemes + Swagger UI page (`useOpenApi`). (`docs/OPENAPI.md`)
 - **2.8.0 shipped** — Response compression (gzip/br), output caching (policies, vary-by, tags, auth bypass), `master.cache` distributed cache (memory/Redis). (`docs/CACHING.md`)

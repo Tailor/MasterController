@@ -1349,6 +1349,19 @@ class UsersController {
 
 ---
 
+## API Versioning, Localization & Health Endpoints (v2.11.0)
+
+Asp.Versioning, `RequestLocalization` + `IStringLocalizer`, and `MapHealthChecks` readiness/liveness. Full guide: [docs/VERSIONING_LOCALIZATION_HEALTH.md](docs/VERSIONING_LOCALIZATION_HEALTH.md).
+
+```javascript
+master.useApiVersioning({ defaultVersion: '1.0', readers: ['query:api-version', 'header:x-api-version', 'url-segment'] });
+router.route('/items', 'itemsV2#index', 'get', { apiVersion: ['2.0', '3.0'] });   // 400 Unsupported API version otherwise
+master.useRequestLocalization({ defaultCulture: 'en', supportedCultures: ['en', 'de'], resourcesDir: 'resources' });   // this.localizer('greeting', { name })
+master.useHealthChecks({ checks: { db: { check: () => db.canConnect(), tags: ['ready'] } } });   // /health, /health/live, /health/ready
+```
+
+---
+
 ## Minimal APIs, Route Groups, Named Routes & Test Client (v2.10.0)
 
 ASP.NET `MapGet/MapPost`, `MapGroup`, `LinkGenerator` and `WebApplicationFactory` equivalents. Full guide: [docs/MINIMAL_APIS_AND_TESTING.md](docs/MINIMAL_APIS_AND_TESTING.md).

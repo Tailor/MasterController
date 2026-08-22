@@ -56,6 +56,9 @@ import { LoggerFactory, consoleProvider, memoryProvider, requestLoggingScope } f
 import { DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, compressionMiddleware } from './MasterCaching.js';
 import { OpenApiGenerator, openApiMiddleware } from './MasterOpenApi.js';
 import { TestClient, createTestClient } from './MasterTesting.js';
+import { ApiVersioning } from './MasterApiVersioning.js';
+import { LocalizationService } from './MasterLocalization.js';
+import { HealthCheckService } from './MasterHealth.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -423,6 +426,32 @@ class MasterControl {
         else { this.options._configuration = cfg; this.options._invalidateAll(); cfg.onChange(() => this.options._invalidateAll()); }
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
+    }
+
+    // ---- v2.11.0: API versioning, request localization, health endpoints ----
+    /** Asp.Versioning: readers (query/header/media-type/url-segment), default version, ReportApiVersions; routes declare { apiVersion }. */
+    useApiVersioning(opts = {}) {
+        if (!this.pipeline) throw new Error('useApiVersioning(): call master.setupServer() first');
+        if (this.apiVersioning) { Object.assign(this.apiVersioning, new ApiVersioning(opts)); return this; }
+        this.apiVersioning = new ApiVersioning(opts);
+        this.pipeline.use(this.apiVersioning.middleware());
+        return this;
+    }
+    /** RequestLocalizationMiddleware + IStringLocalizer: ctx.culture / this.localizer('key', params). */
+    useRequestLocalization(opts = {}) {
+        if (!this.pipeline) throw new Error('useRequestLocalization(): call master.setupServer() first');
+        if (this.localization) return this;
+        this.localization = new LocalizationService({ root: this.root || process.cwd(), ...opts });
+        this.pipeline.use(this.localization.middleware());
+        return this;
+    }
+    /** Health checks with liveness/readiness endpoints (AddHealthChecks + MapHealthChecks). */
+    useHealthChecks(opts = {}) {
+        if (!this.pipeline) throw new Error('useHealthChecks(): call master.setupServer() first');
+        if (this.healthChecks) return this;
+        this.healthChecks = new HealthCheckService(this, opts);
+        this.pipeline.use(this.healthChecks.middleware());
+        return this;
     }
 
     // ---- v2.10.0: minimal APIs, named routes, test client -------------------
@@ -1951,4 +1980,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, OpenApiGenerator, TestClient, createTestClient };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager, LoggerFactory, consoleProvider, memoryProvider, DistributedCache, MemoryCacheStore, RedisCacheStore, OutputCache, OpenApiGenerator, TestClient, createTestClient, ApiVersioning, LocalizationService, HealthCheckService };

@@ -342,6 +342,22 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
  const processRoutes = function(requestObject, emitter, routeObject){
     const routeList = routeObject.routes;
     const root = routeObject.root;
+    // v2.11.0: versions served per path+method (built lazily, once per request)
+    let versionIndex = null;
+    const getVersionIndex = () => {
+        if (versionIndex) return versionIndex;
+        versionIndex = new Map();
+        for (const r of (Array.isArray(routeList) ? routeList : [])) {
+            if (r.apiVersion === undefined || r.apiVersion === null) continue;
+            const key = `${r.path}|${r.type}`;
+            const e = versionIndex.get(key) || { supported: new Set(), deprecated: new Set() };
+            for (const v of [].concat(r.apiVersion)) e.supported.add(String(v));
+            if (r.deprecated === true) for (const v of [].concat(r.apiVersion)) e.deprecated.add(String(v));
+            else if (r.deprecated) for (const v of [].concat(r.deprecated)) e.deprecated.add(String(v));
+            versionIndex.set(key, e);
+        }
+        return versionIndex;
+    };
     const isComponent = routeObject.isComponent;
     let currentRouteBeingProcessed = null; // Track current route for better error messages
 
@@ -384,6 +400,15 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
                         const methodMatches = route.type === requestObject.type
                             || (requestObject.type === HTTP_METHODS.HEAD && route.type === HTTP_METHODS.GET);
                         if(pathObj.requestPath === pathObj.routePath && methodMatches){
+                            // v2.11.0: API versioning — a versioned route serves only its versions.
+                            const versioning = requestObject.master && requestObject.master.apiVersioning;
+                            if (versioning && route.apiVersion !== undefined && route.apiVersion !== null) {
+                                // every version served on this path+method (all routes, not just the ones scanned so far)
+                                const entry = getVersionIndex().get(`${route.path}|${route.type}`) || { supported: new Set(), deprecated: new Set() };
+                                requestObject.__apiVersionMismatch = entry;
+                                if (!versioning.routeMatches(route, requestObject)) continue;
+                                requestObject.__apiVersions = { supported: [...entry.supported], deprecated: [...entry.deprecated] };
+                            }
                             // Only commit the extracted params if this route actually matches
                             requestObject.params = testParams;
 
@@ -752,7 +777,9 @@ class MasterRouter {
                     authorize: routeOptions.allowAnonymous ? undefined : routeOptions.authorize,   // [AllowAnonymous] wins
                     allowAnonymous: !!routeOptions.allowAnonymous,
                     outputCache: routeOptions.outputCache,     // v2.8.0 [OutputCache]
-                    name: routeOptions.name || undefined       // v2.10.0 named route (urlFor)
+                    name: routeOptions.name || undefined,      // v2.10.0 named route (urlFor)
+                    apiVersion: routeOptions.apiVersion,       // v2.11.0 [ApiVersion]
+                    deprecated: routeOptions.deprecated        // v2.11.0 [Obsolete] / deprecated versions
                 };
 
                 $that._routes[$that.currentRouteName].routes.push(route);
@@ -775,7 +802,7 @@ class MasterRouter {
                 const merge = (opts) => {
                     let o = {};
                     if (typeof opts === 'function') o = { constraint: opts }; else if (opts && typeof opts === 'object') o = { ...opts };
-                    const inheritable = ['authorize', 'allowAnonymous', 'outputCache'];
+                    const inheritable = ['authorize', 'allowAnonymous', 'outputCache', 'apiVersion'];
                     for (const k of inheritable) if (o[k] === undefined && groupOptions[k] !== undefined) o[k] = groupOptions[k];
                     if (o.allowAnonymous) o.authorize = undefined;   // a route opting out beats the group's authorize
                     return o;
@@ -898,7 +925,7 @@ class MasterRouter {
         if (!this.currentRouteName || !this._routes || !this._routes[this.currentRouteName]) {
             this.setup({ root: (this._master && this._master.root) || process.cwd(), isComponent: false });
         }
-        const routeOptions = { name: options.name, authorize: options.authorize, allowAnonymous: options.allowAnonymous, outputCache: options.outputCache, constraint: options.constraint };
+        const routeOptions = { name: options.name, authorize: options.authorize, allowAnonymous: options.allowAnonymous, outputCache: options.outputCache, constraint: options.constraint, apiVersion: options.apiVersion, deprecated: options.deprecated };
         const methods = method === 'any' ? ['get', 'post', 'put', 'patch', 'delete'] : [method];
         const builder = this.start();
         for (const m of methods) builder.route(routePath, `minimal#${action}`, m, routeOptions);
@@ -1205,6 +1232,14 @@ class MasterRouter {
                  // v2.7.0: ILogger<T> with the controller as category
                  control.logger = (this._master.logging && typeof this._master.logging.createLogger === "function") ? this._master.logging.createLogger(Control.name || requestObject.toController) : null;
                  control.urlFor = (name, params, opts) => this.urlFor(name, params, opts);   // v2.10.0 named routes
+                 // v2.11.0: API version + culture/localizer on the controller; ReportApiVersions headers
+                 control.apiVersion = requestObject.apiVersion || null;
+                 control.culture = requestObject.culture || null;
+                 control.localizer = requestObject.localizer || null;
+                 if (requestObject.__apiVersions && this._master.apiVersioning && requestObject.response && !requestObject.response.headersSent) {
+                     const rh = this._master.apiVersioning.reportHeaders(requestObject.__apiVersions.supported, requestObject.__apiVersions.deprecated);
+                     for (const [k, v] of Object.entries(rh)) { try { requestObject.response.setHeader(k, v); } catch (_) { /* ignore */ } }
+                 }
 
                  const afterBind = () => {
                      const runFiltersAndAction = () => {
@@ -1412,6 +1447,13 @@ class MasterRouter {
                     routeFound = true;
                     break;
                }
+            }
+
+            if(routeFound === false && requestObject.__apiVersionMismatch && this._master && this._master.apiVersioning){
+                // v2.11.0: the path exists but no route serves the requested API version
+                this._master.apiVersioning.writeUnsupported(requestObject, [...requestObject.__apiVersionMismatch.supported]);
+                _loadEmit.removeAllListeners();
+                return;
             }
 
             if(routeFound === false){

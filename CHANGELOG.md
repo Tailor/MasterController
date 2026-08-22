@@ -1,5 +1,15 @@
 # MasterController Changelog
 
+## 2.11.0 — API versioning, request localization, readiness/liveness health endpoints
+
+Closes the last items (#9) of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **API versioning** (`MasterApiVersioning.js`, Asp.Versioning): `master.useApiVersioning({ defaultVersion, assumeDefaultWhenUnspecified, readers: ['query:api-version', 'header:x-api-version', 'media-type:v', 'url-segment'], reportApiVersions })`; routes/groups/minimal APIs declare `{ apiVersion: '2.0' | ['2.0','3.0'], deprecated }`; `ctx.apiVersion` / `this.apiVersion`; unsupported → `400 Unsupported API version` (ProblemDetails + `api-supported-versions`), malformed → `400 Invalid API version`; `api-supported-versions` / `api-deprecated-versions` response headers.
+- **Request localization** (`MasterLocalization.js`): `master.useRequestLocalization({ defaultCulture, supportedCultures, providers: ['query:culture', 'cookie:.Culture', 'accept-language', 'header:x-culture'], resourcesDir, resources })`, `master.localization.addResources(culture, dict)`; `ctx.culture`, `this.culture`, `this.localizer(key, params)` with culture → parent → default fallback, `formatNumber/formatCurrency/formatDate` via `Intl`; `Content-Language`.
+- **Health endpoints** (`MasterHealth.js`): `master.useHealthChecks({ path, livePath, readyPath, checks: { name: fn | { check, tags, timeoutMs, critical } }, authorize })`, `master.healthChecks.add/remove`; ASP.NET report shape (`Healthy/Degraded/Unhealthy`, per-check `durationMs/data/error`), 503 on Unhealthy, readiness Unhealthy during `master.stop()`.
+
+Tests: `test/versioning-localization-health.test.js`. Docs: `docs/VERSIONING_LOCALIZATION_HEALTH.md`, README.
+
 ## 2.10.0 — Minimal APIs, route groups, named routes/urlFor, test client
 
 Closes gaps #8 and the routing part of #9 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
