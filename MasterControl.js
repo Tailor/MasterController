@@ -51,6 +51,7 @@ import { session } from './security/SessionSecurity.js';
 import { AuthenticationService, MasterAuthActions } from './security/MasterAuth.js';
 import { MasterResults, validate as validateModel, bindRequest, problemTypeFor } from './security/MasterModelBinding.js';
 import { ConfigurationRoot, OptionsManager, hostEnvironment } from './MasterConfiguration.js';
+import { HostedServiceManager, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, QueuedHostedService } from './MasterHosting.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -419,6 +420,32 @@ class MasterControl {
         this.environment = hostEnvironment(this.environmentType || process.env.NODE_ENV);
         return cfg;
     }
+
+    // ---- v2.6.0: hosted services / background work / host lifetime --------
+
+    _ensureHosting() { if (!this.hosting) this.hosting = new HostedServiceManager(this); return this.hosting; }
+    /** IHostApplicationLifetime: onStarted / onStopping / onStopped / stoppingSignal */
+    get lifetime() { return this._ensureHosting().lifetime; }
+    get shutdownTimeoutMs() { return this._ensureHosting().shutdownTimeoutMs; }
+    set shutdownTimeoutMs(v) { this._ensureHosting().shutdownTimeoutMs = v; }
+    /** services.AddHostedService<T>() — a class (constructed with master) or an instance with start()/stop(). */
+    addHostedService(serviceOrClass, opts) { return this._ensureHosting().add(serviceOrClass, opts); }
+    /** PeriodicTimer pattern: run(scope, signal) every intervalMs with a fresh DI scope per run. */
+    addPeriodicService(name, intervalMs, run, opts = {}) {
+        return this._ensureHosting().add(new PeriodicTimerService(this, { name, intervalMs, run, ...opts }), { name });
+    }
+    /** IBackgroundTaskQueue: master.backgroundQueue.enqueue(async (scope, signal) => …). Drained by a hosted worker (set master.backgroundQueueConcurrency first). */
+    get backgroundQueue() {
+        if (!this._backgroundQueue) {
+            this._backgroundQueue = new BackgroundTaskQueue();
+            this._ensureHosting().add(new QueuedHostedService(this, this._backgroundQueue, { concurrency: this.backgroundQueueConcurrency || 1 }), { name: 'backgroundQueue' });
+        }
+        return this._backgroundQueue;
+    }
+    /** Graceful shutdown: stopping event -> server.close() -> hosted services in reverse -> stopped event. */
+    stop(opts) { return this._ensureHosting().stop(opts); }
+    /** SIGTERM/SIGINT -> master.stop() -> process.exit (exit: false to keep the process). Returns a disposer. */
+    useGracefulShutdown(opts) { return this._ensureHosting().useSignals(opts); }
 
     extendController(element){
         element = new element();
@@ -852,6 +879,8 @@ class MasterControl {
             // host environment (IHostEnvironment). Rebuilt in start() so a root /
             // environment set after setupServer() is honored.
             $that.buildConfiguration();
+            // v2.6.0: hosted services, background queue and host lifetime (ASP.NET generic host)
+            if (!$that.hosting) $that.hosting = new HostedServiceManager($that);
 
             // Bind master to static-based modules (MasterAction, MasterActionFilters)
             // These can't use constructor injection because user controllers extend them.
@@ -1797,6 +1826,17 @@ class MasterControl {
                 }));
             }
         });
+
+        // v2.6.0: start hosted services (registration order) once the pipeline is
+        // final; ApplicationStarted fires when the server is listening (or now,
+        // when the app never listens). A failing start aborts the boot.
+        const hosting = this._ensureHosting();
+        await hosting.start();
+        if (server && typeof server.once === 'function' && !server.listening) {
+            server.once('listening', () => { hosting.notifyStarted().catch(() => { /* logged */ }); });
+        } else {
+            await hosting.notifyStarted();
+        }
     }
 
     async startMVC(foldername){
@@ -1835,4 +1875,4 @@ class MasterControl {
 // The class itself is also exported as a named export for advanced use cases.
 const masterInstance = new MasterControl();
 export default masterInstance;
-export { MasterControl };
+export { MasterControl, BackgroundService, PeriodicTimerService, BackgroundTaskQueue, ConfigurationRoot, OptionsManager, HostedServiceManager };

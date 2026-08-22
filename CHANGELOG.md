@@ -1,5 +1,17 @@
 # MasterController Changelog
 
+## 2.6.0 — Hosted services, background work & host lifetime (ASP.NET generic host)
+
+Closes gap #4 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.
+
+- **`master.addHostedService(Class | instance)`** (`MasterHosting.js`): started in registration order at `master.start()` (a failing start aborts the boot), stopped in **reverse** by `master.stop()` with a per-service budget from `master.shutdownTimeoutMs` (30 s, `HostOptions.ShutdownTimeout`); services added after start are started immediately.
+- **`BackgroundService`** base (`executeAsync(signal)`, not awaited by start — ASP.NET semantics; `delay(ms, signal)`, `useScope()`/`createScope()`; `exceptionBehavior: 'stopHost'` default = `BackgroundServiceExceptionBehavior.StopHost`, `'ignore'` to opt out). Exported from the package (`import { BackgroundService } from 'mastercontroller'`).
+- **`master.addPeriodicService(name, intervalMs, run(scope, signal), { runOnStart, jitterMs, exceptionBehavior })`** — `PeriodicTimer` loop with a fresh DI scope per run (scoped MasterRecord context built and disposed per tick); failing ticks are logged and the loop continues.
+- **`master.backgroundQueue.enqueue(job(scope, signal))`** (`IBackgroundTaskQueue` + queued hosted worker, `master.backgroundQueueConcurrency`); resolves with the job result / rejects with its error.
+- **`master.lifetime`** (`IHostApplicationLifetime`): `onStarted` (fires when the server is listening), `onStopping`, `onStopped`, `stoppingSignal`, `isStopping`; **`master.stop()`** = stopping → `server.close()` (+ idle connections) → services reverse → stopped (idempotent); **`master.useGracefulShutdown({ signals, exit })`** for SIGTERM/SIGINT.
+
+Tests: `test/hosting.test.js`. Docs: `docs/HOSTED_SERVICES.md`, README.
+
 ## 2.5.0 — Configuration & Options (IConfiguration / IOptions<T> / IHostEnvironment)
 
 Closes gap #3 of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.

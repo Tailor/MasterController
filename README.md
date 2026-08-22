@@ -1349,6 +1349,23 @@ class UsersController {
 
 ---
 
+## Hosted Services & Background Work (v2.6.0)
+
+ASP.NET generic-host parity: `IHostedService`/`BackgroundService`, `PeriodicTimer` jobs with a DI scope per run, a background task queue, `IHostApplicationLifetime` and graceful shutdown. Full guide: [docs/HOSTED_SERVICES.md](docs/HOSTED_SERVICES.md).
+
+```javascript
+class OutboxDispatcher extends BackgroundService {                 // import { BackgroundService } from 'mastercontroller'
+    async executeAsync(signal) { while (!signal.aborted) { await this.useScope(async (scope) => { /* scope.db … */ }); await this.delay(2000, signal); } }
+}
+master.addHostedService(OutboxDispatcher);                          // started at master.start(), stopped in reverse on shutdown
+master.addPeriodicService('cleanup', 60_000, async (scope) => { /* fresh scope per run */ });
+await master.backgroundQueue.enqueue(async (scope) => { /* queued work */ });
+master.lifetime.onStopping(() => console.log('draining'));
+master.useGracefulShutdown();                                       // SIGTERM/SIGINT -> master.stop() (server.close + services) -> exit
+```
+
+---
+
 ## Configuration & Options (v2.5.0)
 
 ASP.NET `IConfiguration` layering + `IOptions<T>` validated at startup + `IHostEnvironment`. Full guide: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
