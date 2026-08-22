@@ -9,6 +9,7 @@ const tools = new toolClass();
 
 // Enhanced error handling
 import { handleRoutingError, handleControllerError, sendErrorResponse } from './error/MasterBackendErrorHandler.js';
+import { resolveControllerAuthorize } from './security/MasterAuth.js';
 import { logger } from './error/MasterErrorLogger.js';
 import { performanceTracker, errorHandlerMiddleware } from './error/MasterErrorMiddleware.js';
 
@@ -185,6 +186,48 @@ const ROUTER_CONFIG = {
  }
 
  /**
+ * Dispatch a matched route: run its constraint (if any) and emit
+ * ROUTE_CONSTRAINT_GOOD so the controller executes. Shared by the plain and
+ * the authorized (async) paths of processRoutes().
+ */
+const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isComponent, routeDef){
+    const setCurrentRoute = () => {
+        requestObject.currentRoute = {
+            root,
+            pathName: requestObject.pathName,
+            toAction: requestObject.toAction,
+            toController: requestObject.toController,
+            response: requestObject.response,
+            isComponent,
+            routeDef
+        };
+    };
+    if (typeof route.constraint === "function") {
+        const newObj = {};
+        newObj.next = function(){
+            setCurrentRoute();
+            emitter.emit(EVENT_NAMES.ROUTE_CONSTRAINT_GOOD, requestObject);
+        };
+        try {
+            route.constraint.call(newObj, requestObject);
+        } catch(constraintError) {
+            handleRoutingError(requestObject.pathName, [], { type: 'CONSTRAINT_ERROR', route: routeDef, error: constraintError });
+            logger.error({
+                code: 'MC_ERR_ROUTE_CONSTRAINT',
+                message: `Route constraint failed for ${routeDef && routeDef.path}`,
+                route: routeDef,
+                error: constraintError.message,
+                stack: constraintError.stack
+            });
+            throw constraintError;
+        }
+        return;
+    }
+    setCurrentRoute();
+    emitter.emit(EVENT_NAMES.ROUTE_CONSTRAINT_GOOD, requestObject);
+};
+
+/**
   * Process routes and match against request
   *
   * Iterates through registered routes, attempting to match the request path and HTTP method.
@@ -259,64 +302,31 @@ const ROUTER_CONFIG = {
                             requestObject.params = testParams;
 
                             // call Constraint
-                            if(typeof route.constraint === "function"){
-
-                                const newObj = {};
-                                //tools.combineObjects(newObj, this._master.controllerList);
-                                newObj.next = function(){
-                                    // CRITICAL FIX: Store route info in requestObject instead of global
-                                    requestObject.currentRoute = {
-                                        root,
-                                        pathName: requestObject.pathName,
-                                        toAction: requestObject.toAction,
-                                        toController: requestObject.toController,
-                                        response: requestObject.response,
-                                        isComponent,
-                                        routeDef: currentRouteBeingProcessed
-                                    };
-                                    emitter.emit(EVENT_NAMES.ROUTE_CONSTRAINT_GOOD, requestObject);
-                                };
-
-                                // Wrap constraint execution with error handling
-                                try {
-                                    route.constraint.call(newObj, requestObject);
-                                } catch(constraintError) {
-                                    const routeError = handleRoutingError(
-                                        requestObject.pathName,
-                                        [],
-                                        {
-                                            type: 'CONSTRAINT_ERROR',
-                                            route: currentRouteBeingProcessed,
-                                            error: constraintError
-                                        }
-                                    );
-                                    logger.error({
-                                        code: 'MC_ERR_ROUTE_CONSTRAINT',
-                                        message: `Route constraint failed for ${currentRouteBeingProcessed.path}`,
-                                        route: currentRouteBeingProcessed,
-                                        error: constraintError.message,
-                                        stack: constraintError.stack
-                                    });
-                                    throw constraintError;
-                                }
-
-                                return true;
-                            }else{
-
-                                // CRITICAL FIX: Store route info in requestObject instead of global
-                                requestObject.currentRoute = {
-                                    root,
-                                    pathName: requestObject.pathName,
-                                    toAction: requestObject.toAction,
-                                    toController: requestObject.toController,
-                                    response: requestObject.response,
-                                    isComponent,
-                                    routeDef: currentRouteBeingProcessed
-                                };
-                                emitter.emit(EVENT_NAMES.ROUTE_CONSTRAINT_GOOD, requestObject);
+                            // v2.3.0: route-level authorization (ASP.NET [Authorize] on an
+                            // endpoint) runs BEFORE the constraint. A failure has already
+                            // written the 401/403 (or redirect), so the route is "handled".
+                            if (route.allowAnonymous) requestObject.__allowAnonymous = true;
+                            const masterForAuth = requestObject.master;
+                            if (route.authorize !== undefined && route.authorize !== null && route.authorize !== false && masterForAuth && masterForAuth.auth) {
+                                const routeDefForAuth = currentRouteBeingProcessed;
+                                masterForAuth.auth.enforce(requestObject, route.authorize).then((allowed) => {
+                                    if (!allowed) return;
+                                    try {
+                                        __dispatchMatchedRoute(requestObject, emitter, route, root, isComponent, routeDefForAuth);
+                                    } catch (dispatchError) {
+                                        const routeError = handleRoutingError(requestObject.pathName, [], { type: 'CONSTRAINT_ERROR', route: routeDefForAuth, error: dispatchError });
+                                        sendErrorResponse(requestObject.response, routeError, requestObject.pathName);
+                                    }
+                                }).catch((authError) => {
+                                    logger.error({ code: 'MC_ERR_ROUTE_AUTHORIZE', message: `Route authorization failed for ${routeDefForAuth.path}`, error: authError && authError.message, stack: authError && authError.stack });
+                                    const routeError = handleRoutingError(requestObject.pathName, [], { type: 'CONSTRAINT_ERROR', route: routeDefForAuth, error: authError });
+                                    sendErrorResponse(requestObject.response, routeError, requestObject.pathName);
+                                });
                                 return true;
                             }
 
+                            __dispatchMatchedRoute(requestObject, emitter, route, root, isComponent, currentRouteBeingProcessed);
+                            return true;
                         }
 
                         if(pathObj.requestPath === pathObj.routePath && HTTP_METHODS.OPTIONS === requestObject.type.toLowerCase()){
@@ -611,6 +621,15 @@ class MasterRouter {
                 validateRoutePath(path);
                 validateHttpMethod(type);
 
+                // v2.3.0: the 4th argument may be an options object —
+                // { constraint?, authorize?, allowAnonymous? } — so a route can carry
+                // its own [Authorize] requirement (ASP.NET endpoint authorization).
+                let routeOptions = {};
+                if (constraint && typeof constraint === 'object') {
+                    routeOptions = constraint;
+                    constraint = routeOptions.constraint;
+                }
+
                 if (!toPath || typeof toPath !== 'string') {
                     throw new TypeError('Route target (toPath) must be a non-empty string');
                 }
@@ -635,14 +654,16 @@ class MasterRouter {
                     path: normalizeRoutePath(path),
                     toController: controller,
                     toAction: action,
-                    constraint : constraint
+                    constraint : constraint,
+                    authorize: routeOptions.authorize,
+                    allowAnonymous: !!routeOptions.allowAnonymous
                 };
 
                 $that._routes[$that.currentRouteName].routes.push(route);
 
             },
-        
-            resources: function(routeName){ // function to add to list of routes using resources bulk
+
+            resources: function(routeName, resourceOptions = {}){ // function to add to list of routes using resources bulk
                 // Input validation
                 if (!routeName || typeof routeName !== 'string') {
                     throw new TypeError('Resource name must be a non-empty string');
@@ -651,7 +672,13 @@ class MasterRouter {
                 validateIdentifier(routeName, 'resource');
                 validateRoutePath(`/${routeName}`);
 
-                $that._routes[$that.currentRouteName].routes.push({
+                // v2.3.0: resources('posts', { authorize: {...}, only: [...], except: [...] })
+                const authorize = resourceOptions && resourceOptions.authorize;
+                const only = resourceOptions && Array.isArray(resourceOptions.only) ? resourceOptions.only : null;
+                const except = resourceOptions && Array.isArray(resourceOptions.except) ? resourceOptions.except : [];
+                const add = (r) => { if ((!only || only.includes(r.toAction)) && !except.includes(r.toAction)) { r.authorize = authorize; $that._routes[$that.currentRouteName].routes.push(r); } };
+
+                add({
                         type: HTTP_METHODS.GET,
                         path: normalizeRoutePath(routeName),
                         toController :routeName,
@@ -659,7 +686,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         type: HTTP_METHODS.GET,
                         path: normalizeRoutePath(routeName),
                         toController :routeName,
@@ -667,7 +694,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         type: HTTP_METHODS.POST,
                         path: normalizeRoutePath(routeName),
                         toController :routeName,
@@ -675,7 +702,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         // pages/3
                         type: HTTP_METHODS.GET,
                         path: normalizeRoutePath(routeName + "/:id"),
@@ -684,7 +711,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         type: HTTP_METHODS.GET,
                         path: normalizeRoutePath(routeName + "/:id/edit"),
                         toController :routeName,
@@ -692,7 +719,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         type: HTTP_METHODS.PUT,
                         path: normalizeRoutePath(routeName + "/:id"),
                         toController :routeName,
@@ -700,7 +727,7 @@ class MasterRouter {
                         constraint : null
                     });
 
-                    $that._routes[$that.currentRouteName].routes.push({
+                    add({
                         type: HTTP_METHODS.DELETE,
                         path: normalizeRoutePath(routeName + "/:id"),
                         toController :routeName,
@@ -973,25 +1000,54 @@ class MasterRouter {
                 }
              });
 
-             // check if before function is avaliable and wait for it to return
-             if(control.__hasBeforeAction(control, requestObject)){
-                 control.__callBeforeAction(control, requestObject, _callEmit)
-                     .catch((error) => {
-                         if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
-                             const mcError = handleControllerError(
-                                 error,
-                                 requestObject.toController,
-                                 requestObject.toAction,
-                                 requestObject.pathName,
-                                 currentRoute.routeDef
-                             );
-                             sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
-                         }
-                         performanceTracker.end(requestId);
-                         _callEmit.removeAllListeners();
-                     });
-             }else{
-                _callEmit.emit("controller");
+             // v2.3.0: the caller's identity (ASP.NET HttpContext.User) is available
+             // as this.user in every action / filter.
+             control.user = requestObject.user || (this._master.auth ? this._master.auth.anonymous() : null);
+
+             const proceed = () => {
+                 control.user = requestObject.user || control.user;
+                 // check if before function is avaliable and wait for it to return
+                 if(control.__hasBeforeAction(control, requestObject)){
+                     control.__callBeforeAction(control, requestObject, _callEmit)
+                         .catch((error) => {
+                             if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
+                                 const mcError = handleControllerError(
+                                     error,
+                                     requestObject.toController,
+                                     requestObject.toAction,
+                                     requestObject.pathName,
+                                     currentRoute.routeDef
+                                 );
+                                 sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                             }
+                             performanceTracker.end(requestId);
+                             _callEmit.removeAllListeners();
+                         });
+                 }else{
+                    _callEmit.emit("controller");
+                 }
+             };
+
+             // v2.3.0: controller-level authorization (ASP.NET [Authorize] on the
+             // controller class): static authorize = true | 'Policy' | { roles } |
+             // { '*': spec, action: spec|false }; static allowAnonymous = true | [actions].
+             // Skipped when the route itself declared { allowAnonymous: true }.
+             const authSpec = requestObject.__allowAnonymous ? undefined : resolveControllerAuthorize(Control, requestObject.toAction);
+             if (authSpec === undefined || !this._master.auth) {
+                 proceed();
+             } else {
+                 this._master.auth.enforce(requestObject, authSpec).then((allowed) => {
+                     if (allowed) { proceed(); return; }
+                     performanceTracker.end(requestId);
+                     _callEmit.removeAllListeners();
+                 }).catch((error) => {
+                     if (!requestObject.response.headersSent && !requestObject.response._headerSent) {
+                         const mcError = handleControllerError(error, requestObject.toController, requestObject.toAction, requestObject.pathName, currentRoute.routeDef);
+                         sendErrorResponse(requestObject.response, mcError, requestObject.pathName);
+                     }
+                     performanceTracker.end(requestId);
+                     _callEmit.removeAllListeners();
+                 });
              }
 
          } catch (error) {

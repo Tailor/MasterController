@@ -48,6 +48,7 @@ import { logger } from './error/MasterErrorLogger.js';
 import { security, securityHeaders } from './security/SecurityMiddleware.js';
 import { csp } from './security/CSPConfig.js';
 import { session } from './security/SessionSecurity.js';
+import { AuthenticationService, MasterAuthActions } from './security/MasterAuth.js';
 
 // Initialize global error handling
 setupGlobalErrorHandlers();
@@ -815,6 +816,8 @@ class MasterControl {
             $that.socket = new MasterSocket($that);
             $that.tempdata = new MasterTemp($that);
             $that.session = new MasterSessionSecurity($that);
+            // v2.3.0: authentication & authorization (ASP.NET AddAuthentication/AddAuthorization)
+            $that.auth = new AuthenticationService($that);
 
             // Bind master to static-based modules (MasterAction, MasterActionFilters)
             // These can't use constructor injection because user controllers extend them.
@@ -832,6 +835,11 @@ class MasterControl {
                     if (typeof $that.extendController === 'function') {
                         $that.extendController(MasterActionFilters);
                     }
+                }
+                // v2.3.0: this.authorize()/signIn()/signOut()/issueToken()/challenge()/forbid() on controllers
+                MasterAuthActions.bindMaster($that);
+                if (typeof $that.extendController === 'function') {
+                    $that.extendController(MasterAuthActions);
                 }
                 if (SecurityEnforcement && typeof SecurityEnforcement.bindMaster === 'function') {
                     SecurityEnforcement.bindMaster($that);
@@ -1677,6 +1685,15 @@ class MasterControl {
             }
         }
         // If the file doesn't exist, we silently skip — v2.0+ doesn't require it.
+
+        // Authentication middleware (ASP.NET UseAuthentication): resolves the
+        // caller's identity from the registered schemes into ctx.user. It never
+        // blocks a request — authorization ([Authorize] on routes/controllers,
+        // this.authorize()) decides. Registered just before routing so user
+        // middleware (sessions, logging…) has already run.
+        if ($that.auth && typeof $that.auth.middleware === 'function') {
+            $that.pipeline.use($that.auth.middleware());
+        }
 
         // Terminal routing middleware.
         // If the user provides config/load.js, we call it (legacy hook for CORS etc).

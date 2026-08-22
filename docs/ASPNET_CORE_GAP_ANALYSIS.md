@@ -71,4 +71,4 @@ Rails pieces worth matching that ASP.NET also has: generators ✓, migrations �
 
 ## Status
 
-- 2.3.0 … (updated as releases ship)
+- **2.3.0 shipped** — Authentication & Authorization: JWT bearer (HS/RS/PS/ES), signed cookie, custom schemes; policies; route/controller/in-action `[Authorize]` + `[AllowAnonymous]`; `ClaimsPrincipal` on `this.user`; sign-in/out; password hasher; 401/403 ProblemDetails. (`docs/AUTHENTICATION.md`)

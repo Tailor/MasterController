@@ -1349,6 +1349,42 @@ class UsersController {
 
 ---
 
+## Authentication & Authorization (v2.3.0)
+
+Modeled on ASP.NET Core: **schemes** authenticate (JWT bearer, signed cookie, custom), **policies** authorize, `[Authorize]` goes on routes and controllers, and the caller is a `ClaimsPrincipal` on `this.user`. Full guide: [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
+```javascript
+// server.js (after master.setupServer())
+master.auth.addJwtBearer('bearer', { secret: process.env.JWT_SECRET, issuer: 'my-api' });   // HS256; or publicKey + algorithm 'RS256'
+master.auth.addCookie('cookie', { secret: process.env.COOKIE_SECRET, mode: 'web', loginPath: '/login' });
+master.auth.addPolicy('AdminOnly', { roles: ['admin'] });
+master.auth.addPolicy('Senior', (user) => Number(user.findFirst('level')) >= 5);
+
+// config/routes.js — endpoint authorization
+router.route('/admin', 'admin#index', 'get', { authorize: { roles: ['admin'] } });   // [Authorize(Roles="admin")]
+router.route('/me', 'account#me', 'get', { authorize: true });                      // [Authorize]
+router.route('/health', 'health#index', 'get', { allowAnonymous: true });          // [AllowAnonymous]
+router.resources('posts', { authorize: 'Senior', except: ['index', 'show'] });
+
+// app/controllers/postsController.js — controller authorization
+export default class PostsController {
+    static authorize = { '*': true, index: false };          // per action ('*' = default)
+    async destroy() {
+        if (!(await this.authorize('AdminOnly'))) return;     // in-action: writes 401/403 itself
+        this.returnJson({ deleted: true, by: this.user.name });   // this.user = ClaimsPrincipal
+    }
+}
+
+// Sign in (cookie or bearer), password hashing
+const { valid } = await master.auth.passwordHasher.verify(password, user.passwordHash);
+const { token } = await this.signIn({ sub: user.id, name: user.name, roles: user.roles }, { scheme: 'bearer', expiresIn: '15m' });
+await this.signOut({ scheme: 'cookie' });
+```
+
+Unauthenticated → **401** (`application/problem+json` + `WWW-Authenticate`), authenticated but not allowed → **403**; cookie schemes in `mode: 'web'` redirect to `loginPath?returnUrl=…`. JWT supports HS/RS/PS/ES algorithms with `node:crypto` only.
+
+---
+
 ## CORS
 
 ### `master.cors.init(options)`
