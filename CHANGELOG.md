@@ -1,5 +1,14 @@
 # MasterController Changelog
 
+## 2.11.1 — real per-request DI scope; services on `this` (fix)
+
+Found while validating the `master new` scaffold: a `/health` route 500'd because the `AppContext` registered with `master.addScoped('db', AppContext)` was constructed on **every** request (and written into the shared singleton list).
+
+- **Fix (scoped DI):** the request pipeline now creates a real scope per request (`master.createScope()`): scoped services are built lazily on first use inside that request, cached for the rest of it, invisible to other requests, and disposed (`close`/`dispose`/`reset`) when the response closes — ASP.NET Core scoped-DI semantics. The previous middleware eagerly `new`'d every scoped class into the shared `requestList` on each request (a cross-request race). The router's request context now inherits `request scope → singletons`.
+- **Services on `this`:** controllers and minimal-API handlers get every registered service as a lazy accessor — `this.db`, `this.mailer`, … (singletons via `addSingleton`/`register`, scoped via `addScoped`) — as the README/docs already described; a controller's own members are never shadowed.
+- `MasterTools.combineObjects` copies accessor properties as accessors (never forces a lazy getter).
+- Test: `test/scoped-lazy.test.js`.
+
 ## 2.11.0 — API versioning, request localization, readiness/liveness health endpoints
 
 Closes the last items (#9) of `docs/ASPNET_CORE_GAP_ANALYSIS.md`. No new dependencies.

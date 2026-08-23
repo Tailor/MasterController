@@ -879,7 +879,16 @@ class MasterTools{
 
         for(const i in src){
             if (Object.prototype.hasOwnProperty.call(src, i) && isSafeKey(i)) {
-                obj[i] = src[i];
+                // Accessor properties (e.g. lazily-resolved scoped services such as
+                // the per-request DbContext) are copied AS accessors so that merging
+                // never forces their construction — a service is still only built on
+                // first real use within the request (ASP.NET Core scoped-DI semantics).
+                const desc = Object.getOwnPropertyDescriptor(src, i);
+                if (desc && (desc.get || desc.set)) {
+                    Object.defineProperty(obj, i, { ...desc, configurable: true });
+                } else {
+                    obj[i] = src[i];
+                }
             }
         }
         return obj;

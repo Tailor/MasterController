@@ -478,42 +478,29 @@ const __dispatchMatchedRoute = function(requestObject, emitter, route, root, isC
 };
 
 /**
- * Load scoped service instances into request context
+ * Expose DI services on the controller instance as lazy accessors (`this.db`,
+ * `this.mailer`, …) — ASP.NET Core-style: singletons (`addSingleton`/`register`),
+ * transients and the request's scoped services all resolve through the request
+ * context, so a scoped service is only constructed when an action actually uses
+ * it. Never shadows members the controller (or a mixin) already defines, and a
+ * later plain assignment (`this.logger = …`) replaces the accessor with a value.
  *
- * CRITICAL FIX: Stores scoped services in the request-specific context instead of
- * the shared requestList object. This prevents race conditions where concurrent
- * requests would overwrite each other's services, causing unpredictable behavior
- * and data corruption in production environments.
- *
- * @param {Object} context - Request-specific context object
- * @returns {void}
- *
- * @example
- * const requestContext = {};
- * loadScopedListClasses.call(masterRouter, requestContext);
- * // requestContext now has scoped service instances
+ * @param {Object} control - The controller instance for this request
+ * @param {Object} requestObject - Request context (inherits scope -> singletons)
+ * @param {Object} master - MasterControl instance (service registries)
  */
-const loadScopedListClasses = function(context){
-    // FIXED: Use Object.entries() for safe iteration (prevents prototype pollution)
-    for (const [key, className] of Object.entries(this._master._scopedList)) {
-        // Lazy, per-scope resolution — mirrors ASP.NET Core DI (where EF's
-        // DbContext is a Scoped service). A scoped service is constructed on
-        // FIRST access within the request scope (not eagerly), cached for the
-        // rest of the scope, and is handed the scope so it can read its
-        // dependencies (e.g. `scope.userContext`) on demand — so registration
-        // order doesn't matter and a request builds only the services it
-        // actually touches. Backward compatible: existing no-arg scoped classes
-        // simply ignore the scope argument.
-        let instance;   // block-scoped per key: each getter closes over its own
-        Object.defineProperty(context, key, {
+const exposeServices = function(control, requestObject, master){
+    const names = new Set([
+        ...Object.keys(master.requestList || {}),
+        ...Object.keys(master._scopedList || {}),
+    ]);
+    for (const name of names) {
+        if (name === '__proto__' || name === 'constructor' || name === 'prototype' || (name in control)) continue;
+        Object.defineProperty(control, name, {
             configurable: true,
-            enumerable: true,
-            get() {
-                if (instance === undefined) {
-                    instance = new className(context);
-                }
-                return instance;
-            },
+            enumerable: false,
+            get(){ return requestObject[name]; },
+            set(value){ Object.defineProperty(control, name, { value, writable: true, configurable: true, enumerable: true }); },
         });
     }
 };
@@ -1102,9 +1089,12 @@ class MasterRouter {
          // CRITICAL FIX: Use currentRoute from requestObject (not global)
          const currentRoute = requestObject.currentRoute;
 
-         // CRITICAL FIX: Create a request-specific context instead of using shared requestList
-         // This prevents race conditions where concurrent requests overwrite each other's services
-         const requestContext = Object.create(this._master.requestList);
+         // Request-specific context: inherits the request's DI scope (scoped services,
+         // lazily built — see MasterControl.createScope), which in turn inherits the
+         // app singletons (requestList). Never the shared requestList directly: that
+         // let concurrent requests overwrite each other's scoped services.
+         const requestScope = requestObject.scope || (requestObject.request && requestObject.request.__scope) || null;
+         const requestContext = Object.create(requestScope || this._master.requestList);
          tools.combineObjects(requestContext, requestObject);
          requestObject = requestContext;
          let Control = null;
@@ -1131,6 +1121,9 @@ class MasterRouter {
              tools.combineObjectPrototype(Control, this._master.controllerList);
              Control.prototype.__namespace = Control.name;
              const control = new Control(requestObject);
+             // DI services on `this` (ASP.NET-style): singletons, transients and the
+             // request's scoped services resolve lazily through the request context.
+             exposeServices(control, requestObject, this._master);
              // Set request-specific state on INSTANCE (not prototype) for concurrency safety
              control.__requestObject = requestObject;
              control.__currentRoute = currentRoute;
@@ -1425,10 +1418,8 @@ class MasterRouter {
             // FIX: Use direct reference instead of Object.create() to preserve request/response objects
             // Object.create() puts properties on prototype, causing undefined access issues
             const requestObject = rr;
-
-            // CRITICAL FIX: Load scoped services into request-specific context
-            // Pass requestObject so scoped services are stored per-request, not globally
-            loadScopedListClasses.call(this, requestObject);
+            // Scoped services come from the request's DI scope (created by the pipeline
+            // in MasterControl.start) and are resolved lazily in _call via the context chain.
             requestObject.pathName = requestObject.pathName.replace(/^\/|\/$/g, '').toLowerCase();
 
             const _loadEmit = new EventEmitter();

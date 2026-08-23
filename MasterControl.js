@@ -1642,16 +1642,18 @@ class MasterControl {
             if (typeof next === 'function') await next();
         });
 
-        // 4. Load Scoped Services (per request - always needed)
-        // Cache keys for performance (computed once, not on every request)
-        const scopedKeys = Object.keys($that._scopedList);
-
+        // 4. Request scope — ASP.NET Core scoped DI. Every request gets its OWN
+        // scope (createScope()): scoped services (e.g. the DbContext registered with
+        // addScoped) are built lazily on first use inside that request, shared for
+        // the rest of it, never visible to other requests, and disposed
+        // (close/dispose/reset) when the response closes. The router exposes the
+        // scope's services on the controller (`this.db`) and on the request context.
         $that.pipeline.use(async (ctx, next) => {
-            // Fixed: Use cached keys with direct array iteration (faster & safer)
-            for (let i = 0; i < scopedKeys.length; i++) {
-                const key = scopedKeys[i];
-                const className = $that._scopedList[key];
-                $that.requestList[key] = new className();
+            const scope = $that.createScope();
+            ctx.scope = scope;
+            if (ctx.request) ctx.request.__scope = scope;
+            if (ctx.response && typeof ctx.response.once === 'function') {
+                ctx.response.once('close', () => { scope.dispose().catch(() => {}); });
             }
             if (typeof next === 'function') await next();
         });
