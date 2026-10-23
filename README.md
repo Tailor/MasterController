@@ -124,7 +124,7 @@ npm install --save-dev eslint prettier
 ```
 
 **Requirements:**
-- Node.js 20.0.0 or higher
+- Node.js 22.12 or higher (a supported LTS line on its latest security patch — Node 20 is end-of-life)
 - ESM only (your `package.json` must have `"type": "module"`)
 - Redis 5.0+ (for horizontal scaling features)
 
@@ -145,7 +145,7 @@ The smallest possible MasterController app — one route, one controller, one JS
     "start": "node server.js"
   },
   "dependencies": {
-    "mastercontroller": "^2.0.0"
+    "mastercontroller": "^2.12.0"
   }
 }
 ```
@@ -483,7 +483,7 @@ Middleware receives a context object:
 {
     request: req,           // Node.js request object
     response: res,          // Node.js response object
-    requrl: parsedUrl,      // Parsed URL with query
+    requrl: parsedUrl,      // { pathname, search, query, path } — path as sent (no '..' resolution)
     pathName: 'api/users',  // Normalized path (lowercase)
     type: 'get',            // HTTP method (lowercase)
     params: {               // Route parameters + query + form data
@@ -4987,7 +4987,7 @@ curl -I https://yourdomain.com | grep -i strict
 17. ✅ **Set up CI/CD** with `.github/workflows/ci.yml`
 18. ✅ **Monitor logs** with centralized logging (ELK, Datadog)
 19. ✅ **Keep dependencies updated** with `npm audit`
-20. ✅ **Run Node.js 18+** for best performance and security
+20. ✅ **Run a supported Node.js LTS (22.12+, ideally 24) on its latest security patch** — Node 18 and 20 are end-of-life
 
 **📚 Complete guide:** [DEPLOYMENT.md](DEPLOYMENT.md)
 

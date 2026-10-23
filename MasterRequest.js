@@ -1,7 +1,7 @@
 
 // version 0.0.2
 
-import url from 'node:url';
+import querystring from 'node:querystring';
 import { StringDecoder } from 'node:string_decoder';
 import qs from 'qs';
 import { IncomingForm } from 'formidable';
@@ -31,6 +31,44 @@ const SIZE_LIMITS = {
     MAX_JSON_SIZE: 1 * 1024 * 1024,         // 1MB for JSON
     MAX_TEXT_SIZE: 1 * 1024 * 1024          // 1MB for text
 };
+
+/**
+ * Parse a request target (`req.url`) into the shape `ctx.requrl` has always had:
+ * `{ pathname, search, query, path, hash }`, with `query` a null-prototype object
+ * whose repeated keys become arrays.
+ *
+ * v2.12.0: replaces `url.parse(req.url, true)`. Node 24+ emits a runtime warning
+ * for `url.parse()` (DEP0169: non-standard parsing with security implications).
+ * The WHATWG `URL` parser is not a drop-in either: it resolves `..` segments and
+ * turns `//host/path` into a host, which would change what the router sees. This
+ * keeps the path exactly as sent — only `\` becomes `/`, as `url.parse` did.
+ *
+ * @param {string} rawUrl - The request target, e.g. `/users/42?tab=posts`
+ * @returns {{ pathname: string, search: string, query: Object, path: string, hash: string|null }}
+ */
+function parseRequestUrl(rawUrl) {
+    let target = typeof rawUrl === 'string' ? rawUrl : '';
+    // Absolute-form target (`GET http://host/path HTTP/1.1`, sent to proxies)
+    if (!target.startsWith('/') && /^[a-z][a-z0-9+.-]*:\/\//i.test(target)) {
+        try {
+            const absolute = new URL(target);
+            target = absolute.pathname + absolute.search + absolute.hash;
+        } catch (_) { /* not a valid absolute URL; parse it as a path */ }
+    }
+    const hashAt = target.indexOf('#');
+    const hash = hashAt === -1 ? null : target.slice(hashAt);
+    if (hashAt !== -1) target = target.slice(0, hashAt);
+    const queryAt = target.indexOf('?');
+    const pathname = (queryAt === -1 ? target : target.slice(0, queryAt)).replace(/\\/g, '/');
+    const search = queryAt === -1 ? '' : target.slice(queryAt);
+    return {
+        pathname,
+        search,
+        query: querystring.parse(search.slice(1)),
+        path: pathname + search,
+        hash
+    };
+}
 
 /**
  * MasterRequest - Request parsing and stream handling
@@ -195,10 +233,10 @@ class MasterRequest{
 
             // Fallback: If requrl not set, parse from request.url
             if (!requrl) {
-                requrl = url.parse(request.url, true);
+                requrl = parseRequestUrl(request.url);
             }
 
-            const querydata = url.parse(requrl, true);
+            const querydata = typeof requrl === 'string' ? parseRequestUrl(requrl) : requrl;
             $that.parsedURL.query = querydata.query;
             $that.form = new IncomingForm($that.options.formidable);
             if(request.headers['content-type'] || request.headers['transfer-encoding'] ){
@@ -978,4 +1016,4 @@ class MasterRequest{
     }
 }
 
-export { MasterRequest };
+export { MasterRequest, parseRequestUrl };

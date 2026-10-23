@@ -18,7 +18,7 @@ import SecurityEnforcement from './security/SecurityEnforcement.js';
 import { MasterPipeline } from './MasterPipeline.js';
 import { MasterTimeout } from './MasterTimeout.js';
 import { MasterRouter } from './MasterRouter.js';
-import { MasterRequest } from './MasterRequest.js';
+import { MasterRequest, parseRequestUrl } from './MasterRequest.js';
 import { MasterCors } from './MasterCors.js';
 import { MasterSocket } from './MasterSocket.js';
 import { MasterTemp } from './MasterTemp.js';
@@ -1694,7 +1694,7 @@ class MasterControl {
         // requestLoggerMiddleware with explicit field redaction.
 
         try {
-            const parsedUrl = url.parse(req.url);
+            const parsedUrl = parseRequestUrl(req.url);
             const pathname = parsedUrl.pathname;
 
             // ctx.isStatic intentionally not set. Static vs dynamic dispatch is
@@ -1706,7 +1706,7 @@ class MasterControl {
             const context = {
                 request: req,
                 response: res,
-                requrl: url.parse(req.url, true),
+                requrl: parsedUrl,
                 pathName: pathname.replace(/^\/|\/$/g, '').toLowerCase(),
                 type: req.method.toLowerCase(),
                 params: {},

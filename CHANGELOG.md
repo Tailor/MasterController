@@ -1,5 +1,33 @@
 # MasterController Changelog
 
+## 2.12.0 — security maintenance: patched `qs`, no `url.parse()`, Node 22.12+
+
+No API changes. Upgrade with `npm install mastercontroller@^2.12.0`.
+
+- **`qs` floor raised to `^6.16.1`** (runtime dependency). Fixes GHSA-x5fp-wj9c-mxmx
+  (CVE-2026-82562: bracket-key comma input bypasses `arrayLimit`) and
+  GHSA-4mjr-xmp4-gh2g (CVE-2026-82417: a value `qs.parse` produces under
+  `plainObjects: true` — the option MasterController pins for urlencoded bodies — makes a
+  later `qs.stringify` throw). Raising the floor means an app that upgrades
+  mastercontroller cannot keep a vulnerable `qs` from an old lockfile.
+- **Request URLs no longer go through `url.parse()`.** Node 24+ emits DEP0169 for it
+  ("not standardized and prone to errors that have security implications"), which every
+  app on Node 24+ logged as `MC_WARN_PROCESS_WARNING` on its first request. A new
+  `parseRequestUrl()` in `MasterRequest.js` builds `ctx.requrl` instead. It
+  is not the WHATWG `URL` parser on purpose: that resolves `..` segments and reads
+  `//evil.com/x` as a host, which would change what the router matches. `pathname`,
+  `search`, `path` and `query` (null-prototype, repeated keys as arrays) are identical to
+  what `url.parse(req.url, true)` returned; `test/request-url-parsing.test.js` pins this
+  against values captured from `url.parse`, and fails if DEP0169 is emitted again.
+- **`engines.node` is now `>=22.12.0`.** Node 20 reached end-of-life on 2026-04-30. Run
+  the current patch of your line — the 2026-10-20 Node.js security releases are 22.23.4,
+  24.22.1 and 26.12.1.
+- **`npm audit`: 0 vulnerabilities.** The lockfile also picks up `brace-expansion`
+  5.0.12 / 1.1.21 (DoS advisories, via `glob` and eslint) and `js-yaml` 4.3.2 (merge-key
+  DoS, via eslint — dev only).
+
+Verified: 114 tests pass on Node 22.23.4, 24.22.1 and 26.12.1.
+
 ## 2.11.1 — real per-request DI scope; services on `this` (fix)
 
 Found while validating the `master new` scaffold: a `/health` route 500'd because the `AppContext` registered with `master.addScoped('db', AppContext)` was constructed on **every** request (and written into the shared singleton list).
