@@ -14,6 +14,7 @@ import path from 'node:path';
 import { handleTemplateError, sendErrorResponse } from './error/MasterBackendErrorHandler.js';
 import { safeReadFile } from './error/MasterErrorMiddleware.js';
 import { logger } from './error/MasterErrorLogger.js';
+import { stringifyResponse } from './MasterJson.js';
 
 // Security - CSRF, validation, sanitization
 import { generateCSRFToken, validateCSRFToken } from './security/SecurityMiddleware.js';
@@ -150,17 +151,7 @@ class MasterAction{
 				return;
 			}
 
-			// Detect circular references
-			const seen = new WeakSet();
-			const json = JSON.stringify(data, (key, value) => {
-				if (typeof value === 'object' && value !== null) {
-					if (seen.has(value)) {
-						return '[Circular Reference]';
-					}
-					seen.add(value);
-				}
-				return value;
-			});
+			const json = stringifyResponse(data);
 
 			// Check response size
 			const byteSize = Buffer.byteLength(json, 'utf8');

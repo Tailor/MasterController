@@ -1,5 +1,19 @@
 # MasterController Changelog
 
+## 2.12.1 — a repeated object is written in full; only a real cycle becomes a marker
+
+No API changes. Upgrade with `npm install mastercontroller@^2.12.1`.
+
+- **`returnJson`, `returnJsonStatus` and a returned value no longer write a repeated object
+  as `"[Circular Reference]"`.** The check remembered every object it had written, so any
+  object that appeared twice, such as one tag on many cards, arrived as the object once and
+  as that string after that, in a 200 response. It now compares a value only with the values
+  above it, in `stringifyResponse()` in `MasterJson.js`. A value inside itself is still
+  written as `"[Circular Reference]"` and still does not throw.
+- **A response with repeated objects gets larger**, because each one is written in full. An
+  app that returns the same large object many times will see that, and `returnJson`'s 10 MB
+  limit applies to the full size.
+
 ## 2.12.0 — security maintenance: patched `qs`, no `url.parse()`, Node 22.12+
 
 No API changes. Upgrade with `npm install mastercontroller@^2.12.0`.

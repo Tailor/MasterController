@@ -12,6 +12,7 @@ import { handleRoutingError, handleControllerError, sendErrorResponse } from './
 import { resolveControllerAuthorize } from './security/MasterAuth.js';
 import { resolveControllerSchemas, bindRequest, writeValidationProblem } from './security/MasterModelBinding.js';
 import { logger } from './error/MasterErrorLogger.js';
+import { stringifyResponse } from './MasterJson.js';
 import { performanceTracker, errorHandlerMiddleware } from './error/MasterErrorMiddleware.js';
 
 // Security - Input validation and sanitization
@@ -1157,16 +1158,7 @@ class MasterRouter {
                             // and no response was sent yet (e.g., overridden returnJson pattern)
                             if (returnValue !== undefined && returnValue !== null
                                 && !requestObject.response.headersSent && !requestObject.response._headerSent) {
-                                const seen = new WeakSet();
-                                const json = JSON.stringify(returnValue, (key, value) => {
-                                    if (typeof value === 'object' && value !== null) {
-                                        if (seen.has(value)) {
-                                            return '[Circular Reference]';
-                                        }
-                                        seen.add(value);
-                                    }
-                                    return value;
-                                });
+                                const json = stringifyResponse(returnValue);
                                 // Use status field from return value as HTTP status code if it's a valid 4xx/5xx code
                                 const httpStatus = (returnValue && typeof returnValue.status === 'number' && returnValue.status >= 400 && returnValue.status <= 599)
                                     ? returnValue.status
